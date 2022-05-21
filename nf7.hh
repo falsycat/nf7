@@ -69,6 +69,20 @@ class File {
 
   using Id = uint64_t;
 
+  struct Event final {
+   public:
+    enum Type {
+      // emitted by outer
+      kCreate,
+      kRemove,
+
+      // emitted by file
+      kUpdate,
+    };
+    Id   id;
+    Type type;
+  };
+
   File() = delete;
   File(Env&) noexcept;
   virtual ~File() noexcept;
@@ -227,13 +241,34 @@ class Env {
   friend class File;
   virtual File::Id AddFile(File&) noexcept = 0;
   virtual void RemoveFile(File::Id) noexcept = 0;
+  virtual void HandleEvent(const File::Event&) noexcept = 0;
 
   friend class Context;
   virtual Context::Id AddContext(Context&) noexcept = 0;
   virtual void RemoveContext(Context::Id) noexcept = 0;
 
+  friend class Watcher;
+  virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
+  virtual void RemoveWatcher(Watcher&) noexcept = 0;
+
  private:
   std::filesystem::path npath_;
+};
+class Env::Watcher {
+ public:
+  Watcher(Env&) noexcept;
+  virtual ~Watcher() noexcept;
+  Watcher(const Watcher&) = delete;
+  Watcher(Watcher&&) = delete;
+  Watcher& operator=(const Watcher&) = delete;
+  Watcher& operator=(Watcher&&) = delete;
+
+  virtual void Handle(const File::Event&) noexcept = 0;
+
+  void Watch(File::Id) noexcept;
+
+ private:
+  Env* const env_;
 };
 
 }  // namespace nf7

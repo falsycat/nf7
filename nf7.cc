@@ -125,4 +125,13 @@ Context::~Context() noexcept {
   env_->RemoveContext(id_);
 }
 
+Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {
+}
+Env::Watcher::~Watcher() noexcept {
+  env_->RemoveWatcher(*this);
+}
+void Env::Watcher::Watch(File::Id id) noexcept {
+  env_->AddWatcher(id, *this);
+}
+
 }  // namespace nf7

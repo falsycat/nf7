@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
 #include <GL/glew.h>
 #include <imgui.h>
@@ -70,10 +72,19 @@ class Env final : public nf7::Env {
   File::Id AddFile(File& f) noexcept override {
     auto [itr, ok] = files_.emplace(file_next_++, &f);
     assert(ok);
+    HandleEvent({ .id = itr->first, .type = File::Event::kCreate });
     return itr->first;
   }
   void RemoveFile(File::Id id) noexcept override {
+    HandleEvent({ .id = id, .type = File::Event::kRemove });
     files_.erase(id);
+  }
+  void HandleEvent(const File::Event& e) noexcept override {
+    for (auto w : watchers_map_[0]) w->Handle(e);
+
+    auto itr = watchers_map_.find(e.id);
+    if (itr == watchers_map_.end()) return;
+    for (auto w : itr->second) w->Handle(e);
   }
 
   Context& GetContext(Context::Id id) const override {
@@ -92,15 +103,29 @@ class Env final : public nf7::Env {
     ctxs_.erase(id);
   }
 
+  void AddWatcher(File::Id id, Watcher& w) noexcept override {
+    watchers_map_[id].push_back(&w);
+    watchers_rmap_[&w].push_back(id);
+  }
+  void RemoveWatcher(Watcher& w) noexcept override {
+    for (const auto id : watchers_rmap_[&w]) {
+      auto& v = watchers_map_[id];
+      v.erase(std::remove(v.begin(), v.end(), &w), v.end());
+    }
+    watchers_rmap_.erase(&w);
+  }
+
  private:
   std::atomic<bool> alive_ = true;
   std::exception_ptr panic_;
 
   File::Id file_next_ = 1;
-  std::unordered_map<File::Id, File*> files_;
-
   Context::Id ctx_next_ = 1;
+  std::unordered_map<File::Id, File*> files_;
   std::unordered_map<Context::Id, Context*> ctxs_;
+
+  std::unordered_map<File::Id, std::vector<Watcher*>> watchers_map_;
+  std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;
 
   Queue<Task>     main_;
   Queue<Task>     sub_;
@@ -117,7 +142,7 @@ class Env final : public nf7::Env {
     panic_ = ptr;
   }
   void UpdatePanic() noexcept {
-    if (ImGui::BeginPopup("panic")) {
+    if (ImGui::BeginPopupModal("panic")) {
       ImGui::TextUnformatted("something went wrong X(");
 
       ImGui::BeginGroup();
@@ -128,6 +153,7 @@ class Env final : public nf7::Env {
           std::rethrow_exception(ptr);
         } catch (Exception& e) {
           e.UpdatePanic();
+          ImGui::Separator();
         }
       }
       ImGui::EndGroup();
