@@ -1,0 +1,201 @@
+include(FetchContent)
+
+
+if (KINGTAKER_STATIC)
+  set(BUILD_SHARED_LIBS OFF)
+else()
+  set(BUILD_SHARED_LIBS ON)
+endif()
+
+
+# ---- cereal ----
+# repository: https://github.com/USCiLab/cereal
+# license   : BSD-3
+
+FetchContent_Declare(
+  cereal
+  URL "https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.2.zip"
+)
+
+function (include_cereal)
+  set(BUILD_DOC                   OFF)
+  set(BUILD_SANDBOX               OFF)
+  set(SKIP_PERFORMANCE_COMPARISON OFF)
+  FetchContent_MakeAvailable(cereal)
+endfunction()
+include_cereal()
+
+
+# ---- GLEW ----
+# repository: https://github.com/Perlmint/glew-cmake
+# license   :  Modified BSD License, the Mesa 3-D License (MIT) and the Khronos License (MIT).
+
+FetchContent_Declare(
+  glew
+  URL "https://github.com/Perlmint/glew-cmake/archive/refs/tags/glew-cmake-2.2.0.zip"
+)
+FetchContent_MakeAvailable(glew)
+
+if (KINGTAKER_STATIC)
+  add_library(glew ALIAS libglew_static)
+else()
+  add_library(glew ALIAS libglew_shared)
+endif()
+
+
+# ---- GLFW ----
+# repository: https://github.com/glfw/glfw
+# license   : zlib
+
+FetchContent_Declare(
+  glfw
+  URL "https://github.com/glfw/glfw/archive/refs/tags/3.3.4.zip"
+)
+
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw)
+
+
+# ---- ImGUI (docking branch) ----
+# repository: https://github.com/ocornut/imgui/
+# license   : MIT
+
+FetchContent_Declare(
+  imgui
+  URL "https://github.com/ocornut/imgui/archive/9b0c26b0b2adae3ccf66dc9552fae4945d735a0c.zip"
+)
+FetchContent_Populate(imgui)
+
+add_library(imgui)
+target_sources(imgui
+  PRIVATE
+    "${imgui_SOURCE_DIR}/imgui.cpp"
+    "${imgui_SOURCE_DIR}/imgui_demo.cpp"
+    "${imgui_SOURCE_DIR}/imgui_draw.cpp"
+    "${imgui_SOURCE_DIR}/imgui_internal.h"
+    "${imgui_SOURCE_DIR}/imgui_tables.cpp"
+    "${imgui_SOURCE_DIR}/imgui_widgets.cpp"
+    "${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp"
+    "${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp"
+    "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp"
+  PUBLIC
+    "${imgui_SOURCE_DIR}/imgui.h"
+    "${imgui_SOURCE_DIR}/imstb_rectpack.h"
+    "${imgui_SOURCE_DIR}/imstb_textedit.h"
+    "${imgui_SOURCE_DIR}/imstb_truetype.h"
+    "${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.h"
+    "${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.h"
+    "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h"
+)
+target_include_directories(imgui SYSTEM
+  PUBLIC
+    "${imgui_SOURCE_DIR}"
+    "${imgui_SOURCE_DIR}/backends"
+    "${imgui_SOURCE_DIR}/misc/cpp"
+)
+target_link_libraries(imgui
+  PRIVATE glfw
+)
+
+
+# ---- ImNodes ----
+# repository: https://github.com/rokups/ImNodes
+# license   : MIT
+
+FetchContent_Declare(
+  imnodes
+  URL "https://github.com/rokups/ImNodes/archive/50f845875760517289b27ca265a9ad72057a644c.zip"
+)
+FetchContent_Populate(imnodes)
+
+add_library(imnodes)
+target_link_libraries(imnodes
+  PRIVATE
+    imgui
+)
+target_include_directories(imnodes SYSTEM
+  PUBLIC
+    "${imnodes_SOURCE_DIR}"
+)
+target_sources(imnodes
+  PUBLIC
+    "${imnodes_SOURCE_DIR}/ImNodes.h"
+  PRIVATE
+    "${imnodes_SOURCE_DIR}/ImNodes.cpp"
+)
+
+
+# ---- ImPlot ----
+# repository: https://github.com/epezent/implot
+# license   : MIT
+
+FetchContent_Declare(
+  implot
+  URL "https://github.com/epezent/implot/archive/refs/heads/master.zip"
+)
+FetchContent_Populate(implot)
+
+add_library(implot)
+target_link_libraries(implot
+  PRIVATE
+    imgui
+)
+target_include_directories(implot SYSTEM
+  PUBLIC
+    "${implot_SOURCE_DIR}"
+)
+target_sources(implot
+  PUBLIC
+    "${implot_SOURCE_DIR}/implot.h"
+    "${implot_SOURCE_DIR}/implot_internal.h"
+  PRIVATE
+    "${implot_SOURCE_DIR}/implot.cpp"
+    "${implot_SOURCE_DIR}/implot_items.cpp"
+)
+
+
+# ---- linalg.h ----
+# repository: https://github.com/sgorsten/linalg
+# license   : Unlicense
+
+FetchContent_Declare(
+  linalg_h
+  URL "https://github.com/sgorsten/linalg/archive/a3e87da35e32b781a4b6c01cdd5efbe7ae51c737.zip"
+)
+FetchContent_Populate(linalg_h)
+
+add_library(linalg.h INTERFACE)
+target_include_directories(linalg.h SYSTEM
+  INTERFACE .  "${linalg_h_SOURCE_DIR}"
+)
+target_sources(linalg.h
+  INTERFACE
+    "${linalg_h_SOURCE_DIR}/linalg.h"
+    linalg.hh
+)
+
+
+# ---- luajit ----
+# repository: https://github.com/LuaJIT/LuaJIT
+# license   : MIT
+
+FetchContent_Declare(
+  luajit
+  URL "https://github.com/LuaJIT/LuaJIT/archive/1d7b5029c5ba36870d25c67524034d452b761d27.zip"
+)
+FetchContent_Populate(luajit)
+
+function (include_luajit)
+  include(luajit.cmake)
+endfunction()
+include_luajit()
+
+
+# ---- source_location ----
+add_library(source_location INTERFACE)
+target_include_directories(source_location SYSTEM INTERFACE .)
+target_sources(source_location INTERFACE source_location.hh)
