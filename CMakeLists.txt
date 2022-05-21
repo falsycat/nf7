@@ -39,6 +39,8 @@ target_sources(nf7
     main.cc
     nf7.cc
     nf7.hh
+
+    common/queue.hh
 )
 target_link_libraries(nf7
   PRIVATE

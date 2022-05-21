@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <filesystem>
+#include <thread>
+
 #include <GL/glew.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -6,8 +10,181 @@
 
 #include "nf7.hh"
 
+#include "common/queue.hh"
+
 #include <GLFW/glfw3.h>
 
+
+using namespace nf7;
+
+class Env final : public nf7::Env {
+ public:
+  static constexpr size_t kSubTaskUnit = 64;
+
+  Env() noexcept : nf7::Env(std::filesystem::current_path()) {
+    // start threads
+    main_thread_ = std::thread([this]() { MainThread(); });
+    async_threads_.resize(std::max<size_t>(std::thread::hardware_concurrency(), 2));
+    for (auto& th : async_threads_) {
+      th = std::thread([this]() { AsyncThread(); });
+    }
+  }
+  ~Env() noexcept {
+    alive_ = false;
+    cv_.notify_one();
+    async_.Notify();
+
+    main_thread_.join();
+    for (auto& th : async_threads_) th.join();
+  }
+
+  void ExecMain(Context::Id, Task&& task) noexcept override {
+    main_.Push(std::move(task));
+  }
+  void ExecSub(Context::Id, Task&& task) noexcept override {
+    sub_.Push(std::move(task));
+  }
+  void ExecAsync(Context::Id, Task&& task) noexcept override {
+    async_.Push(std::move(task));
+  }
+
+  void Update() noexcept {
+    interrupt_ = true;
+    std::unique_lock<std::mutex> _(mtx_);
+
+    ImGui::PushID(this);
+    UpdatePanic();
+    ImGui::PopID();
+
+    cv_.notify_one();
+  }
+
+ protected:
+  File& GetFile(File::Id id) const override {
+    auto itr = files_.find(id);
+    if (itr == files_.end()) {
+      throw ExpiredException("file ("+std::to_string(id)+") is expired");
+    }
+    return *itr->second;
+  }
+  File::Id AddFile(File& f) noexcept override {
+    auto [itr, ok] = files_.emplace(file_next_++, &f);
+    assert(ok);
+    return itr->first;
+  }
+  void RemoveFile(File::Id id) noexcept override {
+    files_.erase(id);
+  }
+
+  Context& GetContext(Context::Id id) const override {
+    auto itr = ctxs_.find(id);
+    if (itr == ctxs_.end()) {
+      throw ExpiredException("context ("+std::to_string(id)+") is expired");
+    }
+    return *itr->second;
+  }
+  Context::Id AddContext(Context& ctx) noexcept override {
+    auto [itr, ok] = ctxs_.emplace(ctx_next_++, &ctx);
+    assert(ok);
+    return itr->first;
+  }
+  void RemoveContext(Context::Id id) noexcept override {
+    ctxs_.erase(id);
+  }
+
+ private:
+  std::atomic<bool> alive_ = true;
+  std::exception_ptr panic_;
+
+  File::Id file_next_ = 1;
+  std::unordered_map<File::Id, File*> files_;
+
+  Context::Id ctx_next_ = 1;
+  std::unordered_map<Context::Id, Context*> ctxs_;
+
+  Queue<Task>     main_;
+  Queue<Task>     sub_;
+  WaitQueue<Task> async_;
+
+  std::mutex               mtx_;
+  std::condition_variable  cv_;
+  std::atomic<bool>        interrupt_;
+  std::thread              main_thread_;
+  std::vector<std::thread> async_threads_;
+
+
+  void Panic(std::exception_ptr ptr = std::current_exception()) noexcept {
+    panic_ = ptr;
+  }
+  void UpdatePanic() noexcept {
+    if (ImGui::BeginPopup("panic")) {
+      ImGui::TextUnformatted("something went wrong X(");
+
+      ImGui::BeginGroup();
+      {
+        auto ptr = panic_;
+        while (ptr)
+        try {
+          std::rethrow_exception(ptr);
+        } catch (Exception& e) {
+          e.UpdatePanic();
+        }
+      }
+      ImGui::EndGroup();
+
+      if (ImGui::Button("abort")) {
+        std::abort();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("ignore")) {
+        panic_ = {};
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    } else {
+      if (panic_) ImGui::OpenPopup("panic");
+    }
+  }
+
+
+  void MainThread() noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
+    while (alive_) {
+      // exec main tasks
+      while (auto task = main_.Pop())
+      try {
+        (*task)();
+      } catch (Exception&) {
+        Panic();
+      }
+
+      // exec sub tasks until interrupted
+      while (!interrupt_) {
+        for (size_t i = 0; i < kSubTaskUnit; ++i) {
+          const auto task = sub_.Pop();
+          if (!task) break;
+          try {
+            (*task)();
+          } catch (Exception&) {
+            Panic();
+          }
+        }
+      }
+      cv_.wait(k);
+    }
+  }
+  void AsyncThread() noexcept {
+    while (alive_) {
+      while (auto task = async_.Pop())
+      try {
+        (*task)();
+      } catch (Exception&) {
+        Panic();
+      }
+      async_.Wait();
+    }
+  }
+};
 
 int main(int, char**) {
   // init display
@@ -52,27 +229,30 @@ int main(int, char**) {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init(glsl_version);
 
-  // main loop
-  while (true) {
-    // new frame
-    glfwPollEvents();
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+  // main logic
+  {
+    ::Env env;
+    glfwShowWindow(window);
+    while (!glfwWindowShouldClose(window)) {
+      // new frame
+      glfwPollEvents();
+      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_ImplGlfw_NewFrame();
+      ImGui::NewFrame();
 
-    // TODO: update
+      env.Update();
 
-    // render windows
-    ImGui::Render();
-    int w, h;
-    glfwGetFramebufferSize(window, &w, &h);
-    glViewport(0, 0, w, h);
-    glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    glfwSwapBuffers(window);
-
-    // TODO: handle queue
+      // render windows
+      ImGui::Render();
+      int w, h;
+      glfwGetFramebufferSize(window, &w, &h);
+      glViewport(0, 0, w, h);
+      glClear(GL_COLOR_BUFFER_BIT);
+      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      glfwSwapBuffers(window);
+    }
   }
+
   // teardown ImGUI
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();

@@ -182,8 +182,6 @@ class Env {
  public:
   class Watcher;
 
-  using Task = std::function<void()>;
-
   Env() = delete;
   Env(const std::filesystem::path& npath) noexcept : npath_(npath) {
   }
@@ -193,20 +191,25 @@ class Env {
   Env& operator=(const Env&) = delete;
   Env& operator=(Env&&) = delete;
 
-  virtual File::Id AddFile(File&) noexcept = 0;
-  virtual File& RemoveFile(File::Id) noexcept = 0;
-  virtual File& GetFile(File::Id) = 0;
+  virtual File& GetFile(File::Id) const = 0;
+  virtual Context& GetContext(Context::Id) const = 0;
 
-  virtual Context::Id AddContext(Context&) noexcept = 0;
-  virtual Context& RemoveContext(Context::Id) noexcept = 0;
-  virtual Context& GetContext(Context::Id) = 0;
-
-  // thread-safe
+  // all Exec*() methods are thread-safe
+  using Task = std::function<void()>;
   virtual void ExecMain(Context::Id, Task&&) noexcept = 0;
   virtual void ExecSub(Context::Id, Task&&) noexcept = 0;
   virtual void ExecAsync(Context::Id, Task&&) noexcept = 0;
 
   const std::filesystem::path& npath() const noexcept { return npath_; }
+
+ protected:
+  friend class File;
+  virtual File::Id AddFile(File&) noexcept = 0;
+  virtual void RemoveFile(File::Id) noexcept = 0;
+
+  friend class Context;
+  virtual Context::Id AddContext(Context&) noexcept = 0;
+  virtual void RemoveContext(Context::Id) noexcept = 0;
 
  private:
   std::filesystem::path npath_;
