@@ -84,6 +84,10 @@ try {
 File& File::ResolveOrThrow(std::string_view p) const {
   return ResolveOrThrow(Path::Parse(p));
 }
+File::Interface& File::ifaceOrThrow(const std::type_info& t) {
+  if (auto ret = iface(t)) return *ret;
+  throw NotImplementedException(t.name()+"is not implemented"s);
+}
 
 File::TypeInfo::TypeInfo(const char* name) noexcept : name_(name) {
   auto& reg = registry_();

@@ -62,8 +62,10 @@ class ExpiredException : public Exception {
 class File {
  public:
   class TypeInfo;
+  class Interface;
   class Path;
   class NotFoundException;
+  class NotImplementedException;
 
   using Id = uint64_t;
 
@@ -92,7 +94,13 @@ class File {
   virtual const TypeInfo& type() const noexcept = 0;
   virtual Id id() const noexcept = 0;
   virtual Id parent() const noexcept = 0;
-  virtual void* iface(const std::type_info&) noexcept = 0;
+  virtual Interface* iface(const std::type_info&) noexcept = 0;
+  Interface& ifaceOrThrow(const std::type_info&);
+
+  template <typename T>
+  T* iface() noexcept { return dynamic_cast<T>(iface(typeid(T))); }
+  template <typename T>
+  T& ifaceOrThrow() { return dynamic_cast<T>(ifaceOrThrow(typeid(T))); }
 
   Env& env() const noexcept { return *env_; }
 
@@ -118,6 +126,15 @@ class File::TypeInfo {
 
  private:
   const char* name_;
+};
+class File::Interface {
+ public:
+  Interface() = default;
+  virtual ~Interface() = default;
+  Interface(const Interface&) = default;
+  Interface(Interface&&) = default;
+  Interface& operator=(const Interface&) = default;
+  Interface& operator=(Interface&&) = default;
 };
 class File::Path final {
  public:
@@ -147,6 +164,10 @@ class File::Path final {
   std::vector<std::string> terms_;
 };
 class File::NotFoundException : public Exception {
+ public:
+  using Exception::Exception;
+};
+class File::NotImplementedException : public Exception {
  public:
   using Exception::Exception;
 };
