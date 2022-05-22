@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -14,22 +15,50 @@
 #include "nf7.hh"
 
 #include "common/queue.hh"
+#include "common/yas.hh"
 
+// Include glfw lastly to prevent conflict with windows.h.
 #include <GLFW/glfw3.h>
 
 
 using namespace nf7;
+using namespace std::literals;
 
 class Env final : public nf7::Env {
  public:
+  static constexpr auto kFileName = "root.nf7";
+  static constexpr char kDefaultRoot[] = {
+#   include "generated/root.nf7.inc"
+  };
+
   static constexpr size_t kSubTaskUnit = 64;
 
   Env() noexcept : nf7::Env(std::filesystem::current_path()) {
+    ::Env::Push(*this);
+
     // start threads
     main_thread_ = std::thread([this]() { MainThread(); });
     async_threads_.resize(std::max<size_t>(std::thread::hardware_concurrency(), 2));
     for (auto& th : async_threads_) {
       th = std::thread([this]() { AsyncThread(); });
+    }
+
+    // deserialize
+    try {
+      if (!std::filesystem::exists(kFileName)) {
+        std::ofstream of(kFileName);
+        if (!of) throw Exception("failed to open native file: "s+kFileName);
+        of.write(kDefaultRoot, sizeof(kDefaultRoot));
+        of.flush();
+        if (!of) throw Exception("failed to write to native file: "s+kFileName);
+      }
+      try {
+        yas::load<yas::file|yas::binary>("root.nf7", root_);
+      } catch (yas::io_exception&) {
+        throw Exception("failed to read: "s+kFileName);
+      }
+    } catch (Exception&) {
+      Panic();
     }
   }
   ~Env() noexcept {
@@ -39,6 +68,8 @@ class Env final : public nf7::Env {
 
     main_thread_.join();
     for (auto& th : async_threads_) th.join();
+
+    ::Env::Pop();
   }
 
   void ExecMain(Context::Id, Task&& task) noexcept override {
@@ -117,6 +148,8 @@ class Env final : public nf7::Env {
   }
 
  private:
+  std::unique_ptr<File> root_;
+
   std::atomic<bool> alive_ = true;
   std::exception_ptr panic_;
 
@@ -154,6 +187,9 @@ class Env final : public nf7::Env {
           std::rethrow_exception(ptr);
         } catch (Exception& e) {
           e.UpdatePanic();
+          ImGui::Separator();
+        } catch (std::exception& e) {
+          ImGui::Text("std::exception (%s)", e.what());
           ImGui::Separator();
         }
       }
