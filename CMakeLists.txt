@@ -40,9 +40,12 @@ target_sources(nf7
     nf7.cc
     nf7.hh
 
+    common/dir.hh
     common/queue.hh
     common/type_info.hh
     common/yas.hh
+
+    file/system_dir.cc
 )
 target_link_libraries(nf7
   PRIVATE
