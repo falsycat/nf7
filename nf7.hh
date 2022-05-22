@@ -152,6 +152,8 @@ class File::Interface {
 };
 class File::Path final {
  public:
+  static bool ValidateTerm(std::string_view) noexcept;
+
   Path() = default;
   Path(std::initializer_list<std::string> terms) noexcept :
       terms_(terms.begin(), terms.end()) {

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <filesystem>
 #include <thread>
 #include <unordered_map>

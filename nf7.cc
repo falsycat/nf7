@@ -99,6 +99,20 @@ File::TypeInfo::~TypeInfo() noexcept {
   reg.erase(std::string(name_));
 }
 
+bool File::Path::ValidateTerm(std::string_view term) noexcept {
+  constexpr size_t kMaxTermSize = 256;
+  if (term.size() > kMaxTermSize) {
+    return false;
+  }
+
+  static const char kAllowedChars[] =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "0123456789_";
+  if (term.find_first_not_of(kAllowedChars) != std::string_view::npos) {
+    return false;
+  }
+  return true;
+}
 File::Path File::Path::Deserialize(Deserializer& d) {
   Path p;
   d(p.terms_);
@@ -107,8 +121,24 @@ File::Path File::Path::Deserialize(Deserializer& d) {
 void File::Path::Serialize(Serializer& s) const noexcept {
   s(terms_);
 }
-File::Path File::Path::Parse(std::string_view) {
-  return {};  // TODO
+File::Path File::Path::Parse(std::string_view p) {
+  std::vector<std::string> ret;
+
+  auto st = p.begin(), itr = st;
+  for (; itr < p.end(); ++itr) {
+    if (*itr == '/') {
+      if (st < itr) ret.push_back(std::string {st, itr});
+      st = itr + 1;
+    }
+  }
+  if (st < itr) ret.push_back(std::string {st, itr});
+
+  for (const auto& term : ret) {
+    if (!ValidateTerm(term)) {
+      throw DeserializeException("invalid term: "+term);
+    }
+  }
+  return {std::move(ret)};
 }
 std::string File::Path::Stringify() const noexcept {
   std::string ret;
