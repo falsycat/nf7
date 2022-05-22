@@ -7,6 +7,7 @@ project(nf7 CXX)
 option(NF7_STATIC "link all libs statically" ON)
 
 set(NF7_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/include/generated")
+file(MAKE_DIRECTORY "${NF7_GENERATED_INCLUDE_DIR}")
 
 set(CMAKE_CXX_STANDARD          20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +21,7 @@ set(NF7_CXX_FLAGS
 )
 
 add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
+add_subdirectory(tool)
 
 
 # ---- application ----
@@ -59,3 +61,14 @@ target_link_libraries(nf7
     source_location
     yas
 )
+
+# ---- resource compile ----
+set(NF7_DEFAULT_ROOT_INC "${NF7_GENERATED_INCLUDE_DIR}/root.nf7.inc")
+add_custom_command(
+  OUTPUT ${NF7_DEFAULT_ROOT_INC}
+  DEPENDS nf7-init
+  COMMAND $<TARGET_FILE:nf7-init> > ${NF7_DEFAULT_ROOT_INC}
+  COMMENT "generating root.nf7..."
+  VERBATIM
+)
+target_sources(nf7 PRIVATE ${NF7_DEFAULT_ROOT_INC})
