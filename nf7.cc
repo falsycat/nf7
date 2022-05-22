@@ -24,7 +24,18 @@ void Exception::UpdatePanic() const noexcept {
   ImGui::Text("from %s:%d", srcloc_.file_name(), srcloc_.line());
 }
 
-File::File(Env& env) noexcept : env_(&env) {
+const std::map<std::string, const File::TypeInfo*>& File::registry() noexcept {
+  return registry_();
+}
+const File::TypeInfo& File::registry(std::string_view name) {
+  const auto  sname = std::string(name);
+  const auto& reg   = registry_();
+
+  auto itr = reg.find(sname);
+  if (itr == reg.end()) throw NotFoundException("missing type: "+sname);
+  return *itr->second;
+}
+File::File(const TypeInfo& t, Env& env) noexcept : type_(&t), env_(&env) {
 }
 File::~File() noexcept {
   assert(id_ == 0);
@@ -89,7 +100,10 @@ File::Interface& File::ifaceOrThrow(const std::type_info& t) {
   throw NotImplementedException(t.name()+"is not implemented"s);
 }
 
-File::TypeInfo::TypeInfo(const char* name) noexcept : name_(name) {
+File::TypeInfo::TypeInfo(const std::string&                cat,
+                         const std::string&                name,
+                         std::unordered_set<std::string>&& flags) noexcept :
+    cat_(cat), name_(name), flags_(std::move(flags)) {
   auto& reg = registry_();
   auto [itr, uniq] = reg.emplace(std::string(name_), this);
   assert(uniq);

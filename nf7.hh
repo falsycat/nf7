@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -84,7 +85,7 @@ class File {
   };
 
   File() = delete;
-  File(Env&) noexcept;
+  File(const TypeInfo&, Env&) noexcept;
   virtual ~File() noexcept;
   File(const File&) = delete;
   File(File&&) = delete;
@@ -105,9 +106,6 @@ class File {
   File& ResolveOrThrow(const Path&) const;
   File& ResolveOrThrow(std::string_view) const;
 
-  virtual const TypeInfo& type() const noexcept = 0;
-  virtual Id id() const noexcept = 0;
-  virtual Id parent() const noexcept = 0;
   virtual Interface* iface(const std::type_info&) noexcept = 0;
   Interface& ifaceOrThrow(const std::type_info&);
 
@@ -116,9 +114,13 @@ class File {
   template <typename T>
   T& ifaceOrThrow() { return dynamic_cast<T>(ifaceOrThrow(typeid(T))); }
 
+  const TypeInfo& type() const noexcept { return *type_; }
   Env& env() const noexcept { return *env_; }
+  Id id() const noexcept { return id_; }
+  Id parent() const noexcept { return parent_; }
 
  private:
+  const TypeInfo* const type_;
   Env* const env_;
 
   Id id_ = 0, parent_ = 0;
@@ -126,20 +128,26 @@ class File {
 class File::TypeInfo {
  public:
   TypeInfo() = delete;
-  TypeInfo(const char* name) noexcept;
+  TypeInfo(const std::string& cat,
+           const std::string& name,
+           std::unordered_set<std::string>&&) noexcept;
   ~TypeInfo() noexcept;
   TypeInfo(const TypeInfo&) = delete;
   TypeInfo(TypeInfo&&) = delete;
   TypeInfo& operator=(const TypeInfo&) = delete;
   TypeInfo& operator=(TypeInfo&&) = delete;
 
-  virtual void Create(Env&) const noexcept = 0;
   virtual std::unique_ptr<File> Deserialize(Env&, Deserializer&) const = 0;
+  virtual std::unique_ptr<File> Create(Env&) const noexcept = 0;
 
-  const char* name() const noexcept { return name_; }
+  const std::string& cat() const noexcept { return cat_; }
+  const std::string& name() const noexcept { return name_; }
+  const std::unordered_set<std::string>& flags() const noexcept { return flags_; }
 
  private:
-  const char* name_;
+  const std::string cat_;
+  const std::string name_;
+  const std::unordered_set<std::string> flags_;
 };
 class File::Interface {
  public:
