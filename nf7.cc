@@ -51,12 +51,18 @@ void File::MoveUnder(Id parent) noexcept {
     parent_ = parent;
     id_     = env_->AddFile(*this);
   } else {
-    assert(parent_ != 0);
+    assert((id_ == 1) != (parent_ != 0));
     assert(id_ != 0);
     env_->RemoveFile(id_);
     id_     = 0;
     parent_ = 0;
   }
+}
+void File::MakeAsRoot() noexcept {
+  assert(parent_ == 0);
+  assert(id_ == 0);
+
+  id_ = env_->AddFile(*this);
 }
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;

@@ -42,13 +42,6 @@ class Dir final : public File, public nf7::Dir {
     return std::make_unique<Dir>(env, std::move(items));
   }
 
-  void MoveUnder(File::Id parent) noexcept override {
-    File::MoveUnder(parent);
-    for (const auto& item : items_) {
-      item.second->MoveUnder(id());
-    }
-  }
-
   File& Add(std::string_view name, std::unique_ptr<File>&& f) override {
     const auto sname = std::string(name);
 
@@ -77,6 +70,18 @@ class Dir final : public File, public nf7::Dir {
   }
 
   void Update() noexcept override;
+
+  void Handle(const Event& ev) noexcept override {
+    switch (ev.type) {
+    case Event::kAdd:
+    case Event::kRemove:
+      for (const auto& item : items_) item.second->MoveUnder(ev.id);
+      break;
+
+    default:
+      ;
+    }
+  }
 
   File::Interface* iface(const std::type_info& t) noexcept override {
     return PtrSelector<nf7::Dir>(t).Select(this);

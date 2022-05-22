@@ -88,8 +88,11 @@ class File {
   virtual void Serialize(Serializer&) const noexcept = 0;
   virtual std::unique_ptr<File> Clone(Env&) const noexcept = 0;
 
-  virtual void MoveUnder(Id) noexcept;
-  virtual void Update() noexcept = 0;
+  void MoveUnder(Id) noexcept;
+  void MakeAsRoot() noexcept;
+
+  virtual void Update() noexcept { }
+  virtual void Handle(const Event&) noexcept { }
 
   virtual File* Find(std::string_view) const noexcept { return nullptr; }
   File& FindOrThrow(std::string_view name) const;
@@ -119,12 +122,15 @@ class File {
 struct File::Event final {
  public:
   enum Type {
-    // emitted by outer
-    kCreate,
+    // emitted by Env
+    kAdd,
     kRemove,
 
-    // emitted by file
+    // emitted from inside of File
     kUpdate,
+
+    // emitted from outside of File
+    kReqFocus,
   };
   Id   id;
   Type type;

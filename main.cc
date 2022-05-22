@@ -54,6 +54,7 @@ class Env final : public nf7::Env {
       }
       try {
         yas::load<yas::file|yas::binary>("root.nf7", root_);
+        root_->MakeAsRoot();
       } catch (yas::io_exception&) {
         throw Exception("failed to read: "s+kFileName);
       }
@@ -104,19 +105,27 @@ class Env final : public nf7::Env {
   File::Id AddFile(File& f) noexcept override {
     auto [itr, ok] = files_.emplace(file_next_++, &f);
     assert(ok);
-    HandleEvent({ .id = itr->first, .type = File::Event::kCreate });
+    HandleEvent({ .id = itr->first, .type = File::Event::kAdd });
     return itr->first;
   }
   void RemoveFile(File::Id id) noexcept override {
     HandleEvent({ .id = id, .type = File::Event::kRemove });
     files_.erase(id);
   }
-  void HandleEvent(const File::Event& e) noexcept override {
-    for (auto w : watchers_map_[0]) w->Handle(e);
+  void HandleEvent(const File::Event& e) noexcept override
+  try {
+    // trigger File::Handle()
+    GetFile(e.id).Handle(e);
 
+    // trigger file watcher
     auto itr = watchers_map_.find(e.id);
-    if (itr == watchers_map_.end()) return;
-    for (auto w : itr->second) w->Handle(e);
+    if (itr != watchers_map_.end()) {
+      for (auto w : itr->second) w->Handle(e);
+    }
+
+    // trigger global watcher
+    for (auto w : watchers_map_[0]) w->Handle(e);
+  } catch (ExpiredException&) {
   }
 
   Context& GetContext(Context::Id id) const override {
