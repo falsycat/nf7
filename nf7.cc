@@ -3,9 +3,10 @@
 #include <cassert>
 #include <map>
 
-#include <cereal/types/string.hpp>
-#include <cereal/types/vector.hpp>
 #include <imgui.h>
+#include <yas/serialize.hpp>
+#include <yas/types/std/string.hpp>
+#include <yas/types/std/vector.hpp>
 
 
 using namespace std::literals;
@@ -13,8 +14,11 @@ using namespace std::literals;
 
 namespace nf7 {
 
+static std::vector<Env*> env_stack_;
+
+// static variable in function ensures that entity is initialized before using
 static inline auto& registry_() noexcept {
-  static std::map<std::string, File::TypeInfo*> registry_;
+  static std::map<std::string, const File::TypeInfo*> registry_;
   return registry_;
 }
 
@@ -39,21 +43,6 @@ File::File(const TypeInfo& t, Env& env) noexcept : type_(&t), env_(&env) {
 }
 File::~File() noexcept {
   assert(id_ == 0);
-}
-std::unique_ptr<File> File::Deserialize(Env& env, Deserializer& d) {
-  std::string type;
-  d(type);
-
-  const auto& reg = registry_();
-  auto itr = reg.find(type);
-  if (itr == reg.end()) {
-    throw DeserializeException("unknown actor type: "s+type);
-  }
-  return itr->second->Deserialize(env, d);
-}
-void File::Serialize(Serializer& s) const noexcept {
-  s(std::string(type().name()));
-  SerializeParam(s);
 }
 void File::MoveUnder(Id parent) noexcept {
   if (parent) {
@@ -113,46 +102,27 @@ File::TypeInfo::~TypeInfo() noexcept {
   reg.erase(std::string(name_));
 }
 
-bool File::Path::ValidateTerm(std::string_view term) noexcept {
-  constexpr size_t kMaxTermSize = 256;
-  if (term.size() > kMaxTermSize) {
-    return false;
-  }
-
-  static const char kAllowedChars[] =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "0123456789_";
-  if (term.find_first_not_of(kAllowedChars) != std::string_view::npos) {
-    return false;
-  }
-  return true;
+File::Path::Path(Deserializer& ar) {
+  ar(terms_);
+  Validate();
 }
-File::Path File::Path::Deserialize(Deserializer& d) {
-  Path p;
-  d(p.terms_);
-  return p;
-}
-void File::Path::Serialize(Serializer& s) const noexcept {
-  s(terms_);
+void File::Path::Serialize(Serializer& ar) const noexcept {
+  ar(terms_);
 }
 File::Path File::Path::Parse(std::string_view p) {
-  std::vector<std::string> ret;
+  Path ret;
 
   auto st = p.begin(), itr = st;
   for (; itr < p.end(); ++itr) {
     if (*itr == '/') {
-      if (st < itr) ret.push_back(std::string {st, itr});
+      if (st < itr) ret.terms_.push_back(std::string {st, itr});
       st = itr + 1;
     }
   }
-  if (st < itr) ret.push_back(std::string {st, itr});
+  if (st < itr) ret.terms_.push_back(std::string {st, itr});
 
-  for (const auto& term : ret) {
-    if (!ValidateTerm(term)) {
-      throw DeserializeException("invalid term: "+term);
-    }
-  }
-  return {std::move(ret)};
+  ret.Validate();
+  return ret;
 }
 std::string File::Path::Stringify() const noexcept {
   std::string ret;
@@ -161,12 +131,38 @@ std::string File::Path::Stringify() const noexcept {
   }
   return ret;
 }
+void File::Path::ValidateTerm(std::string_view term) {
+  constexpr size_t kMaxTermSize = 256;
+  if (term.size() > kMaxTermSize) {
+    throw Exception("too long term (must be less than 256)");
+  }
+
+  static const char kAllowedChars[] =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "0123456789_";
+  if (term.find_first_not_of(kAllowedChars) != std::string_view::npos) {
+    throw Exception("invalid char found in term");
+  }
+}
+void File::Path::Validate() const {
+  for (const auto& term : terms_) ValidateTerm(term);
+}
 
 Context::Context(Env& env, File::Id initiator, Context::Id parent) noexcept :
     env_(&env), initiator_(initiator), id_(env_->AddContext(*this)), parent_(parent) {
 }
 Context::~Context() noexcept {
   env_->RemoveContext(id_);
+}
+
+void Env::Push(Env& env) noexcept {
+  env_stack_.push_back(&env);
+}
+Env& Env::Peek() noexcept {
+  return *env_stack_.back();
+}
+void Env::Pop() noexcept {
+  env_stack_.pop_back();
 }
 
 Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {

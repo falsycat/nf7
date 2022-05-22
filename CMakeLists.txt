@@ -41,10 +41,11 @@ target_sources(nf7
     nf7.hh
 
     common/queue.hh
+    common/type_info.hh
+    common/yas.hh
 )
 target_link_libraries(nf7
   PRIVATE
-    cereal::cereal
     glew
     glfw
     imgui
@@ -53,4 +54,5 @@ target_link_libraries(nf7
     linalg.h
     luajit
     source_location
+    yas
 )

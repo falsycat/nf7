@@ -8,24 +8,6 @@ else()
 endif()
 
 
-# ---- cereal ----
-# repository: https://github.com/USCiLab/cereal
-# license   : BSD-3
-
-FetchContent_Declare(
-  cereal
-  URL "https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.2.zip"
-)
-
-function (include_cereal)
-  set(BUILD_DOC                   OFF)
-  set(BUILD_SANDBOX               OFF)
-  set(SKIP_PERFORMANCE_COMPARISON OFF)
-  FetchContent_MakeAvailable(cereal)
-endfunction()
-include_cereal()
-
-
 # ---- GLEW ----
 # repository: https://github.com/Perlmint/glew-cmake
 # license   :  Modified BSD License, the Mesa 3-D License (MIT) and the Khronos License (MIT).
@@ -199,3 +181,17 @@ include_luajit()
 add_library(source_location INTERFACE)
 target_include_directories(source_location SYSTEM INTERFACE .)
 target_sources(source_location INTERFACE source_location.hh)
+
+
+# ---- yas  ----
+# repository: https://github.com/niXman/yas
+# license   : Boost
+
+FetchContent_Declare(
+  yas
+  URL "https://github.com/niXman/yas/archive/refs/tags/7.1.0.zip"
+)
+FetchContent_Populate(yas)
+
+add_library(yas INTERFACE)
+target_include_directories(yas SYSTEM INTERFACE "${yas_SOURCE_DIR}/include")

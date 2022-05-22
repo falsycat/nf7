@@ -4,6 +4,8 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <iostream>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -12,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include <cereal/archives/binary.hpp>
 #include <source_location.hh>
+#include <yas/serialize.hpp>
 
 
 namespace nf7 {
@@ -23,8 +25,8 @@ class File;
 class Context;
 class Env;
 
-using Deserializer = cereal::BinaryInputArchive;
-using Serializer   = cereal::BinaryOutputArchive;
+using Serializer   = yas::binary_oarchive<yas::file_ostream, yas::binary>;
+using Deserializer = yas::binary_iarchive<yas::file_istream, yas::binary>;
 
 class Exception {
  public:
@@ -62,6 +64,8 @@ class ExpiredException : public Exception {
 
 class File {
  public:
+  struct Event;
+
   class TypeInfo;
   class Interface;
   class Path;
@@ -70,19 +74,8 @@ class File {
 
   using Id = uint64_t;
 
-  struct Event final {
-   public:
-    enum Type {
-      // emitted by outer
-      kCreate,
-      kRemove,
-
-      // emitted by file
-      kUpdate,
-    };
-    Id   id;
-    Type type;
-  };
+  static const std::map<std::string, const TypeInfo*>& registry() noexcept;
+  static const TypeInfo& registry(std::string_view);
 
   File() = delete;
   File(const TypeInfo&, Env&) noexcept;
@@ -92,9 +85,7 @@ class File {
   File& operator=(const File&) = delete;
   File& operator=(File&&) = delete;
 
-  static std::unique_ptr<File> Deserialize(Env&, Deserializer&);
-  void Serialize(Serializer&) const noexcept;
-  virtual void SerializeParam(Serializer&) const noexcept = 0;
+  virtual void Serialize(Serializer&) const noexcept = 0;
   virtual std::unique_ptr<File> Clone(Env&) const noexcept = 0;
 
   virtual void MoveUnder(Id) noexcept;
@@ -124,6 +115,19 @@ class File {
   Env* const env_;
 
   Id id_ = 0, parent_ = 0;
+};
+struct File::Event final {
+ public:
+  enum Type {
+    // emitted by outer
+    kCreate,
+    kRemove,
+
+    // emitted by file
+    kUpdate,
+  };
+  Id   id;
+  Type type;
 };
 class File::TypeInfo {
  public:
@@ -160,8 +164,6 @@ class File::Interface {
 };
 class File::Path final {
  public:
-  static bool ValidateTerm(std::string_view) noexcept;
-
   Path() = default;
   Path(std::initializer_list<std::string> terms) noexcept :
       terms_(terms.begin(), terms.end()) {
@@ -176,10 +178,13 @@ class File::Path final {
   bool operator==(const Path& p) const noexcept { return terms_ == p.terms_; }
   bool operator!=(const Path& p) const noexcept { return terms_ != p.terms_; }
 
-  static Path Deserialize(Deserializer&);
+  Path(Deserializer&);
   void Serialize(Serializer&) const noexcept;
   static Path Parse(std::string_view);
   std::string Stringify() const noexcept;
+
+  static void ValidateTerm(std::string_view);
+  void Validate() const;
 
   std::span<const std::string> terms() const noexcept { return terms_; }
   const std::string& terms(size_t i) const noexcept { return terms_[i]; }
@@ -226,6 +231,10 @@ class Context {
 class Env {
  public:
   class Watcher;
+
+  static void Push(Env&) noexcept;
+  static Env& Peek() noexcept;
+  static void Pop() noexcept;
 
   Env() = delete;
   Env(const std::filesystem::path& npath) noexcept : npath_(npath) {
