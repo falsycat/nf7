@@ -88,8 +88,9 @@ class File {
   virtual void Serialize(Serializer&) const noexcept = 0;
   virtual std::unique_ptr<File> Clone(Env&) const noexcept = 0;
 
-  void MoveUnder(Id) noexcept;
+  void MoveUnder(File& parent, std::string_view) noexcept;
   void MakeAsRoot() noexcept;
+  void Isolate() noexcept;
 
   virtual void Update() noexcept { }
   virtual void Handle(const Event&) noexcept { }
@@ -108,28 +109,33 @@ class File {
   template <typename T>
   T& ifaceOrThrow() { return dynamic_cast<T>(ifaceOrThrow(typeid(T))); }
 
+  Path abspath() const noexcept;
+
   const TypeInfo& type() const noexcept { return *type_; }
   Env& env() const noexcept { return *env_; }
   Id id() const noexcept { return id_; }
-  Id parent() const noexcept { return parent_; }
+  File* parent() const noexcept { return parent_; }
+  const std::string& name() const noexcept { return name_; }
 
  private:
   const TypeInfo* const type_;
   Env* const env_;
 
-  Id id_ = 0, parent_ = 0;
+  Id          id_     = 0;
+  File*       parent_ = nullptr;
+  std::string name_;
 };
 struct File::Event final {
  public:
   enum Type {
-    // emitted by Env
+    // emitted by system (do not emit manually)
     kAdd,
     kRemove,
 
-    // emitted from inside of File
+    // can be emitted from inside of File
     kUpdate,
 
-    // emitted from outside of File
+    // can be emitted from outside of File
     kReqFocus,
   };
   Id   id;

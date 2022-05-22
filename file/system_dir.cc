@@ -49,7 +49,7 @@ class Dir final : public File, public nf7::Dir {
     if (!ok) throw DuplicateException("item name duplication: "+sname);
 
     auto& ret = *itr->second;
-    if (id()) ret.MoveUnder(id());
+    if (id()) ret.MoveUnder(*this, name);
     return ret;
   }
   std::unique_ptr<File> Remove(std::string_view name) noexcept override {
@@ -58,7 +58,7 @@ class Dir final : public File, public nf7::Dir {
 
     auto ret = std::move(itr->second);
     items_.erase(itr);
-    if (id()) ret->MoveUnder(0);
+    if (id()) ret->Isolate();
     return ret;
   }
   std::map<std::string, File*> FetchItems() const noexcept override {
@@ -74,8 +74,10 @@ class Dir final : public File, public nf7::Dir {
   void Handle(const Event& ev) noexcept override {
     switch (ev.type) {
     case Event::kAdd:
+      for (const auto& item : items_) item.second->MoveUnder(*this, item.first);
+      break;
     case Event::kRemove:
-      for (const auto& item : items_) item.second->MoveUnder(ev.id);
+      for (const auto& item : items_) item.second->Isolate();
       break;
 
     default:

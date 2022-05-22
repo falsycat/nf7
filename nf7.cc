@@ -1,5 +1,6 @@
 #include "nf7.hh"
 
+#include <algorithm>
 #include <cassert>
 #include <map>
 
@@ -44,25 +45,34 @@ File::File(const TypeInfo& t, Env& env) noexcept : type_(&t), env_(&env) {
 File::~File() noexcept {
   assert(id_ == 0);
 }
-void File::MoveUnder(Id parent) noexcept {
-  if (parent) {
-    assert(parent_ == 0);
-    assert(id_ == 0);
-    parent_ = parent;
-    id_     = env_->AddFile(*this);
-  } else {
-    assert((id_ == 1) != (parent_ != 0));
-    assert(id_ != 0);
-    env_->RemoveFile(id_);
-    id_     = 0;
-    parent_ = 0;
-  }
+void File::MoveUnder(File& parent, std::string_view name) noexcept {
+  assert(parent_ == nullptr);
+  assert(id_ == 0);
+  assert(name_.empty());
+  parent_ = &parent;
+  name_   = name;
+  id_     = env_->AddFile(*this);
+
+  Handle({ .id = id_, .type = File::Event::kAdd });
 }
 void File::MakeAsRoot() noexcept {
-  assert(parent_ == 0);
+  assert(parent_ == nullptr);
   assert(id_ == 0);
-
+  assert(name_.empty());
   id_ = env_->AddFile(*this);
+
+  Handle({ .id = id_, .type = File::Event::kAdd });
+}
+void File::Isolate() noexcept {
+  assert(id_ != 0);
+  const auto pid = id_;
+
+  env_->RemoveFile(id_);
+  id_     = 0;
+  parent_ = nullptr;
+  name_   = "";
+
+  Handle({ .id = pid, .type = File::Event::kRemove });
 }
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;
@@ -76,7 +86,8 @@ try {
   auto ret = const_cast<File*>(this);
   for (const auto& term : p.terms()) {
     if (term == "..") {
-      ret = &env_->GetFile(parent_);
+      if (!parent_) throw NotFoundException("cannot go up over the root");
+      ret = parent_;
     } else if (term == ".") {
       // do nothing
     } else {
@@ -93,6 +104,16 @@ File& File::ResolveOrThrow(std::string_view p) const {
 File::Interface& File::ifaceOrThrow(const std::type_info& t) {
   if (auto ret = iface(t)) return *ret;
   throw NotImplementedException(t.name()+"is not implemented"s);
+}
+File::Path File::abspath() const noexcept {
+  std::vector<std::string> terms;
+  auto f = const_cast<File*>(this);
+  while (f) {
+    terms.push_back(f->name());
+    f = f->parent();
+  }
+  std::reverse(terms.begin(), terms.end());
+  return {std::move(terms)};
 }
 
 File::TypeInfo::TypeInfo(const std::string&                cat,

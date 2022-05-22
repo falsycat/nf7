@@ -70,6 +70,7 @@ class Env final : public nf7::Env {
     main_thread_.join();
     for (auto& th : async_threads_) th.join();
 
+    if (root_) root_->Isolate();
     ::Env::Pop();
   }
 
@@ -88,7 +89,13 @@ class Env final : public nf7::Env {
     std::unique_lock<std::mutex> _(mtx_);
 
     ImGui::PushID(this);
-    UpdatePanic();
+    {
+      ImGui::PushID(root_.get());
+      root_->Update();
+      ImGui::PopID();
+
+      UpdatePanic();
+    }
     ImGui::PopID();
 
     cv_.notify_one();
@@ -105,11 +112,9 @@ class Env final : public nf7::Env {
   File::Id AddFile(File& f) noexcept override {
     auto [itr, ok] = files_.emplace(file_next_++, &f);
     assert(ok);
-    HandleEvent({ .id = itr->first, .type = File::Event::kAdd });
     return itr->first;
   }
   void RemoveFile(File::Id id) noexcept override {
-    HandleEvent({ .id = id, .type = File::Event::kRemove });
     files_.erase(id);
   }
   void HandleEvent(const File::Event& e) noexcept override
