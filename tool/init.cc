@@ -32,19 +32,19 @@ struct serializer<
 }
 
 template <typename... Args>
-L Write(Ar& ar, Args&&... args) {
-  return [...args = std::forward<Args>(args), &ar]() mutable {
-   ar(std::forward<Args>(args)...);
-  };
+L Write(Ar& ar, const Args&... args) {
+  return [&args..., &ar]() { ar(args...); };
 }
 int main(void) {
   yas::mem_ostream os;
   Ar ar(os);
 
+# define WINDOW_(shown) shown
+
   ar("Dir"s);
   ar(std::map<std::string, L> {
-    { "home"s, Write(ar, "Dir"s, std::map<std::string, L> {}, false) },
-  }, false);
+    { "home"s, Write(ar, "Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
+  }, WINDOW_(true));
 
   const auto buf = os.get_shared_buffer();
   for (size_t i = 0; i < buf.size;) {

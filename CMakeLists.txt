@@ -43,6 +43,7 @@ target_sources(nf7
     nf7.hh
 
     common/dir.hh
+    common/gui_window.hh
     common/queue.hh
     common/type_info.hh
     common/yas.hh

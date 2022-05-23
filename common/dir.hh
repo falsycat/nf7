@@ -33,7 +33,16 @@ class Dir::DuplicateException : public Exception {
 
 class DirItem : public File::Interface {
  public:
-  DirItem() = default;
+  enum Flag : uint8_t {
+    kNone    = 0,
+    kTree    = 1 << 0,
+    kMenu    = 1 << 1,
+    kTooltip = 1 << 2,
+  };
+  using Flags = uint8_t;
+
+  DirItem(Flags flags) noexcept : flags_(flags) {
+  }
   virtual ~DirItem() = default;
   DirItem(const DirItem&) = delete;
   DirItem(DirItem&&) = delete;
@@ -43,6 +52,11 @@ class DirItem : public File::Interface {
   virtual void UpdateTree() noexcept { }
   virtual void UpdateMenu() noexcept { }
   virtual void UpdateTooltip() noexcept { }
+
+  Flags flags() const noexcept { return flags_; }
+
+ private:
+  Flags flags_;
 };
 
 }  // namespace nf7

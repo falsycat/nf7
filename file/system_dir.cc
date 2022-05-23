@@ -3,6 +3,8 @@
 #include <string>
 #include <string_view>
 
+#include <imgui.h>
+#include <imgui_stdlib.h>
 #include <yas/serialize.hpp>
 #include <yas/types/std/map.hpp>
 #include <yas/types/std/string.hpp>
@@ -10,6 +12,7 @@
 #include "nf7.hh"
 
 #include "common/dir.hh"
+#include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
 #include "common/type_info.hh"
 #include "common/yas.hh"
@@ -18,21 +21,23 @@
 namespace nf7 {
 namespace {
 
-class Dir final : public File, public nf7::Dir {
+class Dir final : public File, public nf7::Dir, public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<Dir> kType = {"System", "Dir", {"DirItem"}};
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
-  Dir(Env& env, ItemMap&& items = {}, bool shown = false) noexcept :
-      File(kType, env), items_(std::move(items)), shown_(shown) {
+  Dir(Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
+      File(kType, env),
+      DirItem(DirItem::kTree | DirItem::kMenu | DirItem::kTooltip),
+      items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
   }
 
   Dir(Env& env, Deserializer& ar) : Dir(env) {
-    ar(items_, shown_);
+    ar(items_, win_);
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(items_, shown_);
+    ar(items_, win_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
     ItemMap items;
@@ -70,6 +75,9 @@ class Dir final : public File, public nf7::Dir {
   }
 
   void Update() noexcept override;
+  void UpdateTree() noexcept override;
+  void UpdateMenu() noexcept override;
+  void UpdateTooltip() noexcept override;
 
   void Handle(const Event& ev) noexcept override {
     switch (ev.type) {
@@ -79,23 +87,206 @@ class Dir final : public File, public nf7::Dir {
     case Event::kRemove:
       for (const auto& item : items_) item.second->Isolate();
       break;
+    case Event::kReqFocus:
+      win_.SetFocus();
+      break;
 
     default:
-      ;
+      break;
     }
   }
 
   File::Interface* iface(const std::type_info& t) noexcept override {
-    return PtrSelector<nf7::Dir>(t).Select(this);
+    return InterfaceSelector<nf7::Dir, nf7::DirItem>(t).Select(this);
   }
 
  private:
-  ItemMap items_;
+  bool open_popup_new_    = false;
 
-  bool shown_;
+  // persistent params
+  ItemMap     items_;
+  gui::Window win_;
 };
 
 void Dir::Update() noexcept {
+  const auto  em    = ImGui::GetFontSize();
+  const auto& style = ImGui::GetStyle();
+
+  // update children
+  for (const auto& item : items_) {
+    ImGui::PushID(item.second.get());
+    item.second->Update();
+    ImGui::PopID();
+  }
+
+  // new item popup
+  if (ImGui::BeginPopup("NewItemPopup")) {
+    static const TypeInfo* selecting = nullptr;
+    static std::string cat_filter  = "";
+    static std::string name_filter = "";
+    static std::string name = "";
+
+    ImGui::TextUnformatted("adding new item...");
+
+    const auto left = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(6*em);
+    ImGui::InputTextWithHint("##cat_filter", "category", &cat_filter);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(6*em);
+    ImGui::InputTextWithHint("##name_filter", "name", &name_filter);
+    ImGui::SameLine();
+    const auto right = ImGui::GetCursorPosX() - style.ItemSpacing.x;
+    ImGui::NewLine();
+
+    if (ImGui::BeginListBox("type", {right-left, 4*em})) {
+      for (const auto& reg : registry()) {
+        const auto& t = *reg.second;
+        if (!t.flags().contains("DirItem")) continue;
+        if (!t.flags().contains("File_Factory")) continue;
+
+        const bool cat_match =
+            cat_filter.empty() || t.cat().find(cat_filter) != std::string::npos;
+        const bool name_match =
+            name_filter.empty() || t.name().find(name_filter) != std::string::npos;
+
+        const bool sel = (selecting == &t);
+        if (!cat_match || !name_match) {
+          if (sel) selecting = nullptr;
+          continue;
+        }
+
+        ImGui::PushID(&t);
+        constexpr auto kFlags =
+            ImGuiSelectableFlags_SpanAllColumns |
+            ImGuiSelectableFlags_AllowItemOverlap;
+        if (ImGui::Selectable("##selectable", sel, kFlags)) {
+          selecting = &t;
+        }
+        ImGui::SameLine();
+        ImGui::Text("%s / %s", t.cat().c_str(), t.name().c_str());
+        ImGui::PopID();
+      }
+      ImGui::EndListBox();
+    }
+    ImGui::SetNextItemWidth(right-left);
+    ImGui::InputText("name", &name);
+    ImGui::Spacing();
+
+    bool err = false;
+    if (selecting == nullptr) {
+      ImGui::Bullet(); ImGui::TextUnformatted("type is not selected");
+      err = true;
+    }
+    try {
+      Path::ValidateTerm(name);
+    } catch (Exception& e) {
+      ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
+      err = true;
+    }
+
+    if (!err) {
+      if (ImGui::Button("ok")) {
+        ImGui::CloseCurrentPopup();
+
+        // TODO: delegate to Context
+        auto task = [this, name = std::move(name), type = selecting]() {
+          Add(name, type->Create(env()));
+        };
+        env().ExecMain(0, std::move(task));
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "create %s/%s as %s",
+            selecting->cat().c_str(), selecting->name().c_str(), name.c_str());
+      }
+    }
+    ImGui::EndPopup();
+  }
+
+  // tree view window
+  const char* popup = nullptr;
+  ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
+  if (win_.Begin()) {
+    if (ImGui::BeginPopupContextWindow()) {
+      if (ImGui::MenuItem("new")) {
+        popup = "NewItemPopup";
+      }
+      ImGui::Separator();
+      UpdateMenu();
+      ImGui::EndPopup();
+    }
+    UpdateTree();
+  }
+  win_.End();
+  if (popup) ImGui::OpenPopup(popup);
+}
+void Dir::UpdateTree() noexcept {
+  for (const auto& item : items_) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_NoTreePushOnOpen |
+        ImGuiTreeNodeFlags_SpanFullWidth;
+
+    const auto& name = item.first;
+    auto&       file  = *item.second;
+    ImGui::PushID(&file);
+
+    auto* ditem = file.iface<nf7::DirItem>();
+    if (ditem && !(ditem->flags() & DirItem::kTree)) {
+      flags |= ImGuiTreeNodeFlags_Leaf;
+    }
+
+    const bool open = ImGui::TreeNodeEx(
+        item.second.get(), flags, "%s", name.c_str());
+
+    // tooltip
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::TextUnformatted(file.type().name().c_str());
+      ImGui::SameLine();
+      ImGui::TextDisabled(file.abspath().Stringify().c_str());
+      if (ditem && (ditem->flags() & DirItem::kTooltip)) {
+        ImGui::Indent();
+        ditem->UpdateTooltip();
+        ImGui::Unindent();
+      }
+      ImGui::EndTooltip();
+    }
+
+    // context menu
+    if (ImGui::BeginPopupContextItem()) {
+      if (ImGui::MenuItem("copy path")) {
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("remove")) {
+        // TODO: delegate to Context
+        env().ExecMain(0, [this, name]() { Remove(name); });
+      }
+      if (ImGui::MenuItem("rename")) {
+        env().ExecMain(0, []() { throw Exception("not implemented"); });
+      }
+      if (ditem && (ditem->flags() & DirItem::kMenu)) {
+        ImGui::Separator();
+        ditem->UpdateMenu();
+      }
+      ImGui::EndPopup();
+    }
+
+    // displayed contents
+    if (open) {
+      ImGui::TreePush(&file);
+      if (ditem && (ditem->flags() & DirItem::kTree)) {
+        ditem->UpdateTree();
+      }
+      ImGui::TreePop();
+    }
+    ImGui::PopID();
+  }
+}
+void Dir::UpdateMenu() noexcept {
+  win_.MenuItem_ToggleShown("TreeView");
+}
+void Dir::UpdateTooltip() noexcept {
+  ImGui::Text("children: %zu", items_.size());
 }
 
 }
