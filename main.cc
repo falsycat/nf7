@@ -74,13 +74,13 @@ class Env final : public nf7::Env {
     ::Env::Pop();
   }
 
-  void ExecMain(Context::Id, Task&& task) noexcept override {
+  void ExecMain(const std::shared_ptr<Context>&, Task&& task) noexcept override {
     main_.Push(std::move(task));
   }
-  void ExecSub(Context::Id, Task&& task) noexcept override {
+  void ExecSub(const std::shared_ptr<Context>&, Task&& task) noexcept override {
     sub_.Push(std::move(task));
   }
-  void ExecAsync(Context::Id, Task&& task) noexcept override {
+  void ExecAsync(const std::shared_ptr<Context>&, Task&& task) noexcept override {
     async_.Push(std::move(task));
   }
 

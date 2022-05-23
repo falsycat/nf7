@@ -262,9 +262,9 @@ class Env {
 
   // all Exec*() methods are thread-safe
   using Task = std::function<void()>;
-  virtual void ExecMain(Context::Id, Task&&) noexcept = 0;
-  virtual void ExecSub(Context::Id, Task&&) noexcept = 0;
-  virtual void ExecAsync(Context::Id, Task&&) noexcept = 0;
+  virtual void ExecMain(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
+  virtual void ExecSub(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
+  virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
 
   const std::filesystem::path& npath() const noexcept { return npath_; }
 

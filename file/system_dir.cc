@@ -11,6 +11,7 @@
 
 #include "nf7.hh"
 
+#include "common/context.hh"
 #include "common/dir.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
@@ -188,11 +189,11 @@ void Dir::Update() noexcept {
       if (ImGui::Button("ok")) {
         ImGui::CloseCurrentPopup();
 
-        // TODO: delegate to Context
+        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "adding new file");
         auto task = [this, name = std::move(name), type = selecting]() {
           Add(name, type->Create(env()));
         };
-        env().ExecMain(0, std::move(task));
+        env().ExecMain(ctx, std::move(task));
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
@@ -259,11 +260,12 @@ void Dir::UpdateTree() noexcept {
       }
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
-        // TODO: delegate to Context
-        env().ExecMain(0, [this, name]() { Remove(name); });
+        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "removing file");
+        env().ExecMain(ctx, [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
-        env().ExecMain(0, []() { throw Exception("not implemented"); });
+        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "renaming file");
+        env().ExecMain(ctx, []() { throw Exception("not implemented"); });
       }
       if (ditem && (ditem->flags() & DirItem::kMenu)) {
         ImGui::Separator();
