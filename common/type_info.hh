@@ -8,7 +8,7 @@ namespace nf7 {
 template <typename T>
 class GenericTypeInfo : public File::TypeInfo {
  public:
-  static constexpr bool kHasFactory = std::is_constructible<T, Env>::value;
+  static constexpr bool kHasFactory = std::is_constructible<T, Env&>::value;
 
   GenericTypeInfo(const std::string& cat,
                   const std::string& name,
