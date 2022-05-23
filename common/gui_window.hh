@@ -30,32 +30,19 @@ class Window {
       ImGui::SetNextWindowFocus();
       shown_ = true;
     }
-    if (std::exchange(set_shown_, false)) {
-      shown_ = true;
-    }
-    if (std::exchange(set_close_, false)) {
-      shown_ = false;
-    }
-    return shown_ && ImGui::Begin(id().c_str(), &shown_);
+    if (!shown_) return false;
+    need_end_ = true;
+    return ImGui::Begin(id().c_str(), &shown_);
   }
   void End() noexcept {
-    if (shown_) ImGui::End();
+    if (need_end_) {
+      ImGui::End();
+      need_end_ = false;
+    }
   }
 
   void SetFocus() noexcept {
     set_focus_ = true;
-  }
-  void Show() noexcept {
-    set_shown_ = true;
-  }
-  void Close() noexcept {
-    set_close_ = true;
-  }
-
-  void MenuItem_ToggleShown(const char* text) noexcept {
-    if (ImGui::MenuItem(text, nullptr, shown_)) {
-      shown_? Close(): Show();
-    }
   }
 
   template <typename Ar>
@@ -69,14 +56,14 @@ class Window {
   }
 
   bool shown() const noexcept { return shown_; }
+  bool& shown() noexcept { return shown_; }
 
  private:
   File* const owner_;
   std::string title_;
 
+  bool need_end_  = false;
   bool set_focus_ = false;
-  bool set_shown_ = false;
-  bool set_close_ = false;
 
   // persistent params
   bool shown_;

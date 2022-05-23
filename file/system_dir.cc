@@ -255,6 +255,7 @@ void Dir::UpdateTree() noexcept {
     // context menu
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("copy path")) {
+        ImGui::SetClipboardText(file.abspath().Stringify().c_str());
       }
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
@@ -283,7 +284,7 @@ void Dir::UpdateTree() noexcept {
   }
 }
 void Dir::UpdateMenu() noexcept {
-  win_.MenuItem_ToggleShown("TreeView");
+  ImGui::MenuItem("TreeView", nullptr, &win_.shown());
 }
 void Dir::UpdateTooltip() noexcept {
   ImGui::Text("children: %zu", items_.size());
