@@ -61,7 +61,8 @@ void File::MakeAsRoot() noexcept {
   assert(parent_ == nullptr);
   assert(id_ == 0);
   assert(name_.empty());
-  id_ = env_->AddFile(*this);
+  id_   = env_->AddFile(*this);
+  name_ = "$";
 
   Handle({ .id = id_, .type = File::Event::kAdd });
 }
@@ -156,11 +157,16 @@ File::Path File::Path::Parse(std::string_view p) {
 std::string File::Path::Stringify() const noexcept {
   std::string ret;
   for (const auto& term : terms_) {
-    ret += "/"+term;
+    ret += term + "/";
   }
+  if (ret.size() > 0) ret.erase(ret.end()-1);
   return ret;
 }
 void File::Path::ValidateTerm(std::string_view term) {
+  if (term.empty()) {
+    throw Exception("empty term");
+  }
+
   constexpr size_t kMaxTermSize = 256;
   if (term.size() > kMaxTermSize) {
     throw Exception("too long term (must be less than 256)");
