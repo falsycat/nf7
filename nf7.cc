@@ -26,7 +26,9 @@ static inline auto& registry_() noexcept {
 
 void Exception::UpdatePanic() const noexcept {
   ImGui::TextUnformatted(msg_.c_str());
+  ImGui::Indent();
   ImGui::Text("from %s:%d", srcloc_.file_name(), srcloc_.line());
+  ImGui::Unindent();
 }
 
 const std::map<std::string, const File::TypeInfo*>& File::registry() noexcept {

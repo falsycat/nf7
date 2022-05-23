@@ -190,11 +190,17 @@ class Env final : public nf7::Env {
     panic_ = ptr;
   }
   void UpdatePanic() noexcept {
+    const auto em = ImGui::GetFontSize();
+
+    ImGui::SetNextWindowSize({16*em, 12*em}, ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal("panic")) {
       ImGui::TextUnformatted("something went wrong X(");
 
-      ImGui::BeginGroup();
-      {
+      auto size = ImGui::GetContentRegionAvail();
+      size.y -= ImGui::GetFrameHeightWithSpacing();
+
+      const auto kFlags = ImGuiWindowFlags_HorizontalScrollbar;
+      if (ImGui::BeginChild("panic_detail", size, true, kFlags)) {
         auto ptr = panic_;
         while (ptr)
         try {
@@ -202,12 +208,15 @@ class Env final : public nf7::Env {
         } catch (Exception& e) {
           e.UpdatePanic();
           ImGui::Separator();
+          ptr = e.reason();
         } catch (std::exception& e) {
           ImGui::Text("std::exception (%s)", e.what());
           ImGui::Separator();
+          ptr = nullptr;
         }
+        ImGui::TextUnformatted("====END OF STACK====");
       }
-      ImGui::EndGroup();
+      ImGui::EndChild();
 
       if (ImGui::Button("abort")) {
         std::abort();
