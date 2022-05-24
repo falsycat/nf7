@@ -112,6 +112,7 @@ class File {
   T& ifaceOrThrow() { return dynamic_cast<T&>(ifaceOrThrow(typeid(T))); }
 
   Path abspath() const noexcept;
+  File& ancestorOrThrow(size_t) const;
 
   const TypeInfo& type() const noexcept { return *type_; }
   Env& env() const noexcept { return *env_; }

@@ -130,6 +130,14 @@ File::Path File::abspath() const noexcept {
   std::reverse(terms.begin(), terms.end());
   return {std::move(terms)};
 }
+File& File::ancestorOrThrow(size_t dist) const {
+  auto f = this;
+  for (size_t i = 0; i < dist && f; ++i) {
+    f = f->parent_;
+  }
+  if (!f) throw NotFoundException("cannot go up over the root");
+  return const_cast<File&>(*f);
+}
 
 File::TypeInfo::TypeInfo(const std::string&                cat,
                          const std::string&                name,
