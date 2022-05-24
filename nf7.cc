@@ -104,6 +104,19 @@ try {
 File& File::ResolveOrThrow(std::string_view p) const {
   return ResolveOrThrow(Path::Parse(p));
 }
+File& File::ResolveUpwardOrThrow(const Path& p) const {
+  auto f = this;
+  while (f->parent_)
+  try {
+    return f->ResolveOrThrow(p);
+  } catch (NotFoundException&) {
+    f = f->parent_;
+  }
+  throw NotFoundException("failed to resolve upward path: "+p.Stringify());
+}
+File& File::ResolveUpwardOrThrow(std::string_view p) const {
+  return ResolveUpwardOrThrow(Path::Parse(p));
+}
 File::Interface& File::ifaceOrThrow(const std::type_info& t) {
   if (auto ret = iface(t)) return *ret;
   throw NotImplementedException(t.name()+"is not implemented"s);

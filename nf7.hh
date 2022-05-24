@@ -100,6 +100,8 @@ class File {
 
   File& ResolveOrThrow(const Path&) const;
   File& ResolveOrThrow(std::string_view) const;
+  File& ResolveUpwardOrThrow(const Path&) const;
+  File& ResolveUpwardOrThrow(std::string_view) const;
 
   virtual Interface* iface(const std::type_info&) noexcept = 0;
   Interface& ifaceOrThrow(const std::type_info&);
