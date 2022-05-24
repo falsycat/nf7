@@ -43,7 +43,10 @@ int main(void) {
 
   ar("Dir"s);
   ar(std::map<std::string, L> {
-    { "home"s, Write(ar, "Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
+    { "_logger"s,
+        Write(ar, "Logger"s, WINDOW_(true), 1024, false, false) },
+    { "home"s,
+        Write(ar, "Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
   }, WINDOW_(true));
 
   const auto buf = os.get_shared_buffer();

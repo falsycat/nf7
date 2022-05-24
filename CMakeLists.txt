@@ -44,11 +44,14 @@ target_sources(nf7
 
     common/dir.hh
     common/gui_window.hh
+    common/logger.hh
+    common/logger_pool.hh
     common/queue.hh
     common/type_info.hh
     common/yas.hh
 
     file/system_dir.cc
+    file/system_logger.cc
 )
 target_link_libraries(nf7
   PRIVATE
