@@ -109,7 +109,7 @@ class File {
   template <typename T>
   T* iface() noexcept { return dynamic_cast<T*>(iface(typeid(T))); }
   template <typename T>
-  T& ifaceOrThrow() { return dynamic_cast<T*>(ifaceOrThrow(typeid(T))); }
+  T& ifaceOrThrow() { return dynamic_cast<T&>(ifaceOrThrow(typeid(T))); }
 
   Path abspath() const noexcept;
 

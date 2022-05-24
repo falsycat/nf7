@@ -83,7 +83,6 @@ File& File::FindOrThrow(std::string_view name) const {
 }
 File& File::ResolveOrThrow(const Path& p) const
 try {
-  assert(parent_ != 0);
   assert(id_ != 0);
 
   auto ret = const_cast<File*>(this);
@@ -105,8 +104,8 @@ File& File::ResolveOrThrow(std::string_view p) const {
   return ResolveOrThrow(Path::Parse(p));
 }
 File& File::ResolveUpwardOrThrow(const Path& p) const {
-  auto f = this;
-  while (f->parent_)
+  auto f = parent_;
+  while (f)
   try {
     return f->ResolveOrThrow(p);
   } catch (NotFoundException&) {
