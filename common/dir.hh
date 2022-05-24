@@ -15,11 +15,6 @@ class Dir : public File::Interface {
   class DuplicateException;
 
   Dir() = default;
-  virtual ~Dir() = default;
-  Dir(const Dir&) = default;
-  Dir(Dir&&) = default;
-  Dir& operator=(const Dir&) = default;
-  Dir& operator=(Dir&&) = default;
 
   virtual File& Add(std::string_view, std::unique_ptr<File>&&) = 0;
   virtual std::unique_ptr<File> Remove(std::string_view) noexcept = 0;
@@ -41,9 +36,9 @@ class DirItem : public File::Interface {
   };
   using Flags = uint8_t;
 
+  DirItem() = delete;
   DirItem(Flags flags) noexcept : flags_(flags) {
   }
-  virtual ~DirItem() = default;
   DirItem(const DirItem&) = delete;
   DirItem(DirItem&&) = delete;
   DirItem& operator=(const DirItem&) = delete;

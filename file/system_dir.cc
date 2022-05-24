@@ -48,6 +48,12 @@ class Dir final : public File, public nf7::Dir, public nf7::DirItem {
     return std::make_unique<Dir>(env, std::move(items));
   }
 
+  File* Find(std::string_view name) const noexcept override {
+    auto itr = items_.find(std::string(name));
+    if (itr == items_.end()) return nullptr;
+    return itr->second.get();
+  }
+
   File& Add(std::string_view name, std::unique_ptr<File>&& f) override {
     const auto sname = std::string(name);
 
@@ -102,8 +108,6 @@ class Dir final : public File, public nf7::Dir, public nf7::DirItem {
   }
 
  private:
-  bool open_popup_new_    = false;
-
   // persistent params
   ItemMap     items_;
   gui::Window win_;
