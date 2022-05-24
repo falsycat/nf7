@@ -41,12 +41,11 @@ int main(void) {
 
 # define WINDOW_(shown) shown
 
-  ar("Dir"s);
-  ar(std::map<std::string, L> {
+  ar("System/Dir"s, std::map<std::string, L> {
     { "_logger"s,
-        Write(ar, "Logger"s, WINDOW_(true), 1024, false, false) },
+        Write(ar, "System/Logger"s, WINDOW_(true), 1024, false, false) },
     { "home"s,
-        Write(ar, "Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
+        Write(ar, "System/Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
   }, WINDOW_(true));
 
   const auto buf = os.get_shared_buffer();

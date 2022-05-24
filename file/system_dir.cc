@@ -24,7 +24,7 @@ namespace {
 
 class Dir final : public File, public nf7::Dir, public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<Dir> kType = {"System", "Dir", {"DirItem"}};
+  static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"DirItem"}};
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
@@ -127,18 +127,14 @@ void Dir::Update() noexcept {
   // new item popup
   if (ImGui::BeginPopup("NewItemPopup")) {
     static const TypeInfo* selecting = nullptr;
-    static std::string cat_filter  = "";
-    static std::string name_filter = "";
-    static std::string name = "";
+    static std::string filter = "";
+    static std::string name   = "";
 
     ImGui::TextUnformatted("adding new item...");
 
     const auto left = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(6*em);
-    ImGui::InputTextWithHint("##cat_filter", "category", &cat_filter);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(6*em);
-    ImGui::InputTextWithHint("##name_filter", "name", &name_filter);
+    ImGui::InputTextWithHint("##filter", "filter", &filter);
     ImGui::SameLine();
     const auto right = ImGui::GetCursorPosX() - style.ItemSpacing.x;
     ImGui::NewLine();
@@ -149,13 +145,11 @@ void Dir::Update() noexcept {
         if (!t.flags().contains("DirItem")) continue;
         if (!t.flags().contains("File_Factory")) continue;
 
-        const bool cat_match =
-            cat_filter.empty() || t.cat().find(cat_filter) != std::string::npos;
         const bool name_match =
-            name_filter.empty() || t.name().find(name_filter) != std::string::npos;
+            filter.empty() || t.name().find(filter) != std::string::npos;
 
         const bool sel = (selecting == &t);
-        if (!cat_match || !name_match) {
+        if (!name_match) {
           if (sel) selecting = nullptr;
           continue;
         }
@@ -168,7 +162,7 @@ void Dir::Update() noexcept {
           selecting = &t;
         }
         ImGui::SameLine();
-        ImGui::Text("%s / %s", t.cat().c_str(), t.name().c_str());
+        ImGui::TextUnformatted(t.name().c_str());
         ImGui::PopID();
       }
       ImGui::EndListBox();
@@ -201,8 +195,7 @@ void Dir::Update() noexcept {
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "create %s/%s as %s",
-            selecting->cat().c_str(), selecting->name().c_str(), name.c_str());
+            "create %s as %s", selecting->name().c_str(), name.c_str());
       }
     }
     ImGui::EndPopup();

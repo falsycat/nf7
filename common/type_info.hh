@@ -10,10 +10,8 @@ class GenericTypeInfo : public File::TypeInfo {
  public:
   static constexpr bool kHasFactory = std::is_constructible<T, Env&>::value;
 
-  GenericTypeInfo(const std::string& cat,
-                  const std::string& name,
-                  std::unordered_set<std::string>&& v) noexcept :
-      TypeInfo(cat, name, AddFlags(std::move(v))) {
+  GenericTypeInfo(const std::string& name, std::unordered_set<std::string>&& v) noexcept :
+      TypeInfo(name, AddFlags(std::move(v))) {
   }
 
   std::unique_ptr<File> Deserialize(Env& env, Deserializer& d) const override

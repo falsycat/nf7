@@ -23,7 +23,7 @@ namespace {
 
 class Logger final : public File, public nf7::DirItem, public nf7::Logger {
  public:
-  static inline const GenericTypeInfo<Logger> kType = {"System", "Logger", {"DirItem"}};
+  static inline const GenericTypeInfo<Logger> kType = {"System/Logger", {"DirItem"}};
 
   struct Row final {
    public:

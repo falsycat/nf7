@@ -139,10 +139,9 @@ File& File::ancestorOrThrow(size_t dist) const {
   return const_cast<File&>(*f);
 }
 
-File::TypeInfo::TypeInfo(const std::string&                cat,
-                         const std::string&                name,
+File::TypeInfo::TypeInfo(const std::string& name,
                          std::unordered_set<std::string>&& flags) noexcept :
-    cat_(cat), name_(name), flags_(std::move(flags)) {
+    name_(name), flags_(std::move(flags)) {
   auto& reg = registry_();
   auto [itr, uniq] = reg.emplace(std::string(name_), this);
   assert(uniq);

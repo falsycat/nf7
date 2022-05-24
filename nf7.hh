@@ -147,9 +147,7 @@ struct File::Event final {
 class File::TypeInfo {
  public:
   TypeInfo() = delete;
-  TypeInfo(const std::string& cat,
-           const std::string& name,
-           std::unordered_set<std::string>&&) noexcept;
+  TypeInfo(const std::string& name, std::unordered_set<std::string>&&) noexcept;
   ~TypeInfo() noexcept;
   TypeInfo(const TypeInfo&) = delete;
   TypeInfo(TypeInfo&&) = delete;
@@ -159,12 +157,10 @@ class File::TypeInfo {
   virtual std::unique_ptr<File> Deserialize(Env&, Deserializer&) const = 0;
   virtual std::unique_ptr<File> Create(Env&) const noexcept = 0;
 
-  const std::string& cat() const noexcept { return cat_; }
   const std::string& name() const noexcept { return name_; }
   const std::unordered_set<std::string>& flags() const noexcept { return flags_; }
 
  private:
-  const std::string cat_;
   const std::string name_;
   const std::unordered_set<std::string> flags_;
 };
