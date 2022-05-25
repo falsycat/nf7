@@ -22,7 +22,9 @@
 namespace nf7 {
 namespace {
 
-class Dir final : public File, public nf7::Dir, public nf7::DirItem {
+class Dir final : public File,
+    public nf7::Dir,
+    public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"DirItem"}};
 
@@ -103,7 +105,7 @@ class Dir final : public File, public nf7::Dir, public nf7::DirItem {
     }
   }
 
-  File::Interface* iface(const std::type_info& t) noexcept override {
+  File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::Dir, nf7::DirItem>(t).Select(this);
   }
 
@@ -233,7 +235,7 @@ void Dir::UpdateTree() noexcept {
     auto&       file  = *item.second;
     ImGui::PushID(&file);
 
-    auto* ditem = file.iface<nf7::DirItem>();
+    auto* ditem = file.interface<nf7::DirItem>();
     if (ditem && !(ditem->flags() & DirItem::kTree)) {
       flags |= ImGuiTreeNodeFlags_Leaf;
     }

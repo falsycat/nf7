@@ -42,7 +42,7 @@ class LoggerPool : public Logger {
     auto& logger = owner_->
         ancestorOrThrow(search_min_dist_).
         ResolveUpwardOrThrow(kDefaultLoggerName).
-        ifaceOrThrow<nf7::Logger>();
+        interfaceOrThrow<nf7::Logger>();
     for (auto& item : items_) {
       item.file = owner_->id();
       logger.Write(std::move(item));

@@ -118,8 +118,8 @@ File& File::ResolveUpwardOrThrow(const Path& p) const {
 File& File::ResolveUpwardOrThrow(std::string_view p) const {
   return ResolveUpwardOrThrow(Path::Parse(p));
 }
-File::Interface& File::ifaceOrThrow(const std::type_info& t) {
-  if (auto ret = iface(t)) return *ret;
+File::Interface& File::interfaceOrThrow(const std::type_info& t) {
+  if (auto ret = interface(t)) return *ret;
   throw NotImplementedException(t.name()+"is not implemented"s);
 }
 File::Path File::abspath() const noexcept {

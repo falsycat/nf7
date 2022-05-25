@@ -21,7 +21,9 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Logger final : public File, public nf7::DirItem, public nf7::Logger {
+class Logger final : public File,
+    public nf7::DirItem,
+    public nf7::Logger {
  public:
   static inline const GenericTypeInfo<Logger> kType = {"System/Logger", {"DirItem"}};
 
@@ -91,7 +93,7 @@ class Logger final : public File, public nf7::DirItem, public nf7::Logger {
     updated_ = true;
   }
 
-  File::Interface* iface(const std::type_info& t) noexcept override {
+  File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::DirItem, nf7::Logger>(t).Select(this);
   }
 

@@ -103,13 +103,13 @@ class File {
   File& ResolveUpwardOrThrow(const Path&) const;
   File& ResolveUpwardOrThrow(std::string_view) const;
 
-  virtual Interface* iface(const std::type_info&) noexcept = 0;
-  Interface& ifaceOrThrow(const std::type_info&);
+  virtual Interface* interface(const std::type_info&) noexcept = 0;
+  Interface& interfaceOrThrow(const std::type_info&);
 
   template <typename T>
-  T* iface() noexcept { return dynamic_cast<T*>(iface(typeid(T))); }
+  T* interface() noexcept { return dynamic_cast<T*>(interface(typeid(T))); }
   template <typename T>
-  T& ifaceOrThrow() { return dynamic_cast<T&>(ifaceOrThrow(typeid(T))); }
+  T& interfaceOrThrow() { return dynamic_cast<T&>(interfaceOrThrow(typeid(T))); }
 
   Path abspath() const noexcept;
   File& ancestorOrThrow(size_t) const;
