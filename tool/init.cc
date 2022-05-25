@@ -42,6 +42,8 @@ int main(void) {
 # define WINDOW_(shown) shown
 
   ar("System/Dir"s, std::map<std::string, L> {
+    { "_imgui"s,
+        Write(ar, "System/ImGuiConfig"s, ""s) },
     { "_logger"s,
         Write(ar, "System/Logger"s, WINDOW_(true), 1024, false, false) },
     { "home"s,

@@ -51,6 +51,7 @@ target_sources(nf7
     common/yas.hh
 
     file/system_dir.cc
+    file/system_imgui_config.cc
     file/system_logger.cc
 )
 target_link_libraries(nf7
