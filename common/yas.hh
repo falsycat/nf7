@@ -5,6 +5,8 @@
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
 
+#include "nf7.hh"
+
 
 namespace yas::detail {
 

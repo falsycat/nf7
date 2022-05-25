@@ -39,7 +39,9 @@ const File::TypeInfo& File::registry(std::string_view name) {
   const auto& reg   = registry_();
 
   auto itr = reg.find(sname);
-  if (itr == reg.end()) throw NotFoundException("missing type: "+sname);
+  if (itr == reg.end()) {
+    throw Exception("unknown file type: "+sname);
+  }
   return *itr->second;
 }
 File::File(const TypeInfo& t, Env& env) noexcept : type_(&t), env_(&env) {

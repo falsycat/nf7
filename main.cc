@@ -90,10 +90,11 @@ class Env final : public nf7::Env {
 
     ImGui::PushID(this);
     {
-      ImGui::PushID(root_.get());
-      root_->Update();
-      ImGui::PopID();
-
+      if (root_) {
+        ImGui::PushID(root_.get());
+        root_->Update();
+        ImGui::PopID();
+      }
       UpdatePanic();
     }
     ImGui::PopID();
