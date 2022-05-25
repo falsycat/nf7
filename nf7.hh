@@ -263,6 +263,8 @@ class Env {
 
   virtual void Handle(const File::Event&) noexcept = 0;
 
+  virtual void Save() noexcept = 0;
+
   const std::filesystem::path& npath() const noexcept { return npath_; }
 
  protected:

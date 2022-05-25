@@ -100,6 +100,12 @@ class Env final : public nf7::Env {
   } catch (ExpiredException&) {
   }
 
+  void Save() noexcept override {
+    yas::file_ostream os(kFileName, yas::file_trunc);
+    yas::binary_oarchive<yas::file_ostream, yas::binary> oa(os);
+    oa & root_;
+  }
+
   void Update() noexcept {
     interrupt_ = true;
     std::unique_lock<std::mutex> _(mtx_);
@@ -330,6 +336,7 @@ int main(int, char**) {
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);
     }
+    env.Save();
   }
 
   // teardown ImGUI
