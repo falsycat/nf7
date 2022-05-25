@@ -114,8 +114,7 @@ class Dir final : public File, public nf7::Dir, public nf7::DirItem {
 };
 
 void Dir::Update() noexcept {
-  const auto  em    = ImGui::GetFontSize();
-  const auto& style = ImGui::GetStyle();
+  const auto em = ImGui::GetFontSize();
 
   // update children
   for (const auto& item : items_) {
@@ -130,16 +129,15 @@ void Dir::Update() noexcept {
     static std::string filter = "";
     static std::string name   = "";
 
-    ImGui::TextUnformatted("adding new item...");
+    ImGui::PushItemWidth(16*em);
+    ImGui::TextUnformatted("System/Dir: adding new item...");
 
-    const auto left = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(6*em);
-    ImGui::InputTextWithHint("##filter", "filter", &filter);
-    ImGui::SameLine();
-    const auto right = ImGui::GetCursorPosX() - style.ItemSpacing.x;
-    ImGui::NewLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    ImGui::InputText("name", &name);
+    ImGui::Spacing();
 
-    if (ImGui::BeginListBox("type", {right-left, 4*em})) {
+    ImGui::InputTextWithHint("type", "search", &filter);
+    if (ImGui::BeginListBox("##type_list", {16*em, 4*em})) {
       for (const auto& reg : registry()) {
         const auto& t = *reg.second;
         if (!t.flags().contains("DirItem")) continue;
@@ -167,10 +165,10 @@ void Dir::Update() noexcept {
       }
       ImGui::EndListBox();
     }
-    ImGui::SetNextItemWidth(right-left);
-    ImGui::InputText("name", &name);
+    ImGui::PopItemWidth();
     ImGui::Spacing();
 
+    // input validation
     bool err = false;
     if (selecting == nullptr) {
       ImGui::Bullet(); ImGui::TextUnformatted("type is not selected");
@@ -180,6 +178,10 @@ void Dir::Update() noexcept {
       Path::ValidateTerm(name);
     } catch (Exception& e) {
       ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
+      err = true;
+    }
+    if (items_.find(name) != items_.end()) {
+      ImGui::Bullet(); ImGui::Text("name duplicated");
       err = true;
     }
 
@@ -195,7 +197,8 @@ void Dir::Update() noexcept {
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "create %s as %s", selecting->name().c_str(), name.c_str());
+            "create %s as '%s' on '%s'",
+            selecting->name().c_str(), name.c_str(), abspath().Stringify().c_str());
       }
     }
     ImGui::EndPopup();
