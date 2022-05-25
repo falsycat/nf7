@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -11,10 +12,7 @@ namespace nf7 {
 
 class SimpleContext : public Context {
  public:
-  SimpleContext(
-      Env& env, File::Id initiator, Context::Id parent, size_t mem, std::string_view desc) noexcept :
-      Context(env, initiator, parent), mem_(mem), desc_(desc) {
-  }
+  using Context::Context;
 
   void CleanUp() noexcept override {
   }
@@ -29,7 +27,12 @@ class SimpleContext : public Context {
     return desc_;
   }
 
+  size_t& memoryUsage() noexcept { return mem_; }
+  std::string& description() noexcept { return desc_; }
+
   bool aborted() const noexcept { return abort_; }
+  size_t memoryUsage() const noexcept { return mem_; }
+  const std::string& description() const noexcept { return desc_; }
 
  private:
   std::atomic<bool> abort_ = false;

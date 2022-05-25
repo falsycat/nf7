@@ -84,6 +84,22 @@ class Env final : public nf7::Env {
     async_.Push(std::move(task));
   }
 
+  void Handle(const File::Event& e) noexcept override
+  try {
+    // trigger File::Handle()
+    GetFile(e.id).Handle(e);
+
+    // trigger file watcher
+    auto itr = watchers_map_.find(e.id);
+    if (itr != watchers_map_.end()) {
+      for (auto w : itr->second) w->Handle(e);
+    }
+
+    // trigger global watcher
+    for (auto w : watchers_map_[0]) w->Handle(e);
+  } catch (ExpiredException&) {
+  }
+
   void Update() noexcept {
     interrupt_ = true;
     std::unique_lock<std::mutex> _(mtx_);
@@ -118,36 +134,12 @@ class Env final : public nf7::Env {
   void RemoveFile(File::Id id) noexcept override {
     files_.erase(id);
   }
-  void HandleEvent(const File::Event& e) noexcept override
-  try {
-    // trigger File::Handle()
-    GetFile(e.id).Handle(e);
 
-    // trigger file watcher
-    auto itr = watchers_map_.find(e.id);
-    if (itr != watchers_map_.end()) {
-      for (auto w : itr->second) w->Handle(e);
-    }
-
-    // trigger global watcher
-    for (auto w : watchers_map_[0]) w->Handle(e);
-  } catch (ExpiredException&) {
+  void AddContext(Context& ctx) noexcept override {
+    ctxs_.push_back(&ctx);
   }
-
-  Context& GetContext(Context::Id id) const override {
-    auto itr = ctxs_.find(id);
-    if (itr == ctxs_.end()) {
-      throw ExpiredException("context ("+std::to_string(id)+") is expired");
-    }
-    return *itr->second;
-  }
-  Context::Id AddContext(Context& ctx) noexcept override {
-    auto [itr, ok] = ctxs_.emplace(ctx_next_++, &ctx);
-    assert(ok);
-    return itr->first;
-  }
-  void RemoveContext(Context::Id id) noexcept override {
-    ctxs_.erase(id);
+  void RemoveContext(Context& ctx) noexcept override {
+    ctxs_.erase(std::remove(ctxs_.begin(), ctxs_.end(), &ctx), ctxs_.end());
   }
 
   void AddWatcher(File::Id id, Watcher& w) noexcept override {
@@ -169,9 +161,9 @@ class Env final : public nf7::Env {
   std::exception_ptr panic_;
 
   File::Id file_next_ = 1;
-  Context::Id ctx_next_ = 1;
   std::unordered_map<File::Id, File*> files_;
-  std::unordered_map<Context::Id, Context*> ctxs_;
+
+  std::vector<Context*> ctxs_;
 
   std::unordered_map<File::Id, std::vector<Watcher*>> watchers_map_;
   std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;

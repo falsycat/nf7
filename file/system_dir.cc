@@ -191,7 +191,9 @@ void Dir::Update() noexcept {
       if (ImGui::Button("ok")) {
         ImGui::CloseCurrentPopup();
 
-        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "adding new file");
+        auto ctx = std::make_shared<SimpleContext>(env(), id());
+        ctx->description() = "adding new file on "+abspath().Stringify();
+
         auto task = [this, name = std::move(name), type = selecting]() {
           Add(name, type->Create(env()));
         };
@@ -264,11 +266,13 @@ void Dir::UpdateTree() noexcept {
       }
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
-        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "removing file");
+        auto ctx = std::make_shared<SimpleContext>(env(), id());
+        ctx->description() = "removing file on "+abspath().Stringify();
         env().ExecMain(ctx, [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
-        auto ctx  = std::make_shared<SimpleContext>(env(), id(), 0, 0, "renaming file");
+        auto ctx  = std::make_shared<SimpleContext>(env(), id());
+        ctx->description() = "renaming file on "+abspath().Stringify();
         env().ExecMain(ctx, []() { throw Exception("not implemented"); });
       }
       if (ditem && (ditem->flags() & DirItem::kMenu)) {

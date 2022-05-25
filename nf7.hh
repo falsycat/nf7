@@ -214,10 +214,8 @@ class File::NotImplementedException : public Exception {
 
 class Context {
  public:
-  using Id = uint64_t;
-
   Context() = delete;
-  Context(Env&, File::Id, Context::Id = 0) noexcept;
+  Context(Env&, File::Id, const std::weak_ptr<Context>& = {}) noexcept;
   virtual ~Context() noexcept;
 
   virtual void CleanUp() noexcept = 0;
@@ -228,15 +226,14 @@ class Context {
 
   Env& env() const noexcept { return *env_; }
   File::Id initiator() const noexcept { return initiator_; }
-  Id id() const noexcept { return id_; }
-  Id parent() const noexcept { return parent_; }
+  const std::weak_ptr<Context>& parent() const noexcept { return parent_; }
 
  private:
   Env* const env_;
 
   const File::Id initiator_;
 
-  const Id id_, parent_;
+  std::weak_ptr<Context> parent_;
 };
 
 class Env {
@@ -257,7 +254,6 @@ class Env {
   Env& operator=(Env&&) = delete;
 
   virtual File& GetFile(File::Id) const = 0;
-  virtual Context& GetContext(Context::Id) const = 0;
 
   // all Exec*() methods are thread-safe
   using Task = std::function<void()>;
@@ -265,17 +261,18 @@ class Env {
   virtual void ExecSub(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
   virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
 
+  virtual void Handle(const File::Event&) noexcept = 0;
+
   const std::filesystem::path& npath() const noexcept { return npath_; }
 
  protected:
   friend class File;
   virtual File::Id AddFile(File&) noexcept = 0;
   virtual void RemoveFile(File::Id) noexcept = 0;
-  virtual void HandleEvent(const File::Event&) noexcept = 0;
 
   friend class Context;
-  virtual Context::Id AddContext(Context&) noexcept = 0;
-  virtual void RemoveContext(Context::Id) noexcept = 0;
+  virtual void AddContext(Context&) noexcept = 0;
+  virtual void RemoveContext(Context&) noexcept = 0;
 
   friend class Watcher;
   virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
