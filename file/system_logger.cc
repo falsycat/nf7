@@ -146,6 +146,8 @@ void Logger::Update() noexcept {
     ImGui::OpenPopup(name);
   }
 
+  const auto em = ImGui::GetFontSize();
+
   // config popup
   if (ImGui::BeginPopup("ConfigPopup")) {
     ImGui::TextUnformatted("System/Logger Config");
@@ -172,7 +174,10 @@ void Logger::Update() noexcept {
   }
 
   // LogView
-  if (win_.Begin()) {
+  const auto kInit = [em]() {
+    ImGui::SetNextWindowSize({48*em, 16*em}, ImGuiCond_FirstUseEver);
+  };
+  if (win_.Begin(kInit)) {
     constexpr auto kTableFlags =
         ImGuiTableFlags_Resizable         |
         ImGuiTableFlags_Hideable          |
