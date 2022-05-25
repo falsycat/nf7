@@ -110,6 +110,10 @@ class Dir final : public File,
   }
 
  private:
+  const char* popup_ = nullptr;
+
+  std::string rename_target_;
+
   // persistent params
   ItemMap     items_;
   gui::Window win_;
@@ -123,6 +127,10 @@ void Dir::Update() noexcept {
     ImGui::PushID(item.second.get());
     item.second->Update();
     ImGui::PopID();
+  }
+
+  if (const auto popup = std::exchange(popup_, nullptr)) {
+    ImGui::OpenPopup(popup);
   }
 
   // new item popup
@@ -208,15 +216,51 @@ void Dir::Update() noexcept {
     ImGui::EndPopup();
   }
 
+  // rename popup
+  if (ImGui::BeginPopup("RenamePopup")) {
+    static std::string new_name;
+    ImGui::TextUnformatted("System/Dir: renaming an exsting item...");
+    ImGui::InputText("before", &rename_target_);
+
+    bool submit = false;
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    if (ImGui::InputText("after", &new_name, ImGuiInputTextFlags_EnterReturnsTrue)) {
+      submit = true;
+    }
+
+    if (ImGui::Button("ok")) {
+      submit = true;
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip(
+          "rename '%s' to '%s' on '%s'",
+          rename_target_.c_str(), new_name.c_str(), abspath().Stringify().c_str());
+    }
+
+    if (submit) {
+      ImGui::CloseCurrentPopup();
+
+      auto ctx = std::make_shared<SimpleContext>(env(), id());
+      ctx->description() = "renaming an item on "+abspath().Stringify();
+
+      auto task = [this, before = std::move(rename_target_), after = std::move(new_name)]() {
+        auto f = Remove(before);
+        if (!f) throw Exception("missing target");
+        Add(after, std::move(f));
+      };
+      env().ExecMain(ctx, std::move(task));
+    }
+    ImGui::EndPopup();
+  }
+
   // tree view window
   const auto kInit = [em]() {
     ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
   };
-  const char* popup = nullptr;
   if (win_.Begin(kInit)) {
     if (ImGui::BeginPopupContextWindow()) {
       if (ImGui::MenuItem("new")) {
-        popup = "NewItemPopup";
+        popup_ = "NewItemPopup";
       }
       ImGui::Separator();
       UpdateMenu();
@@ -225,7 +269,6 @@ void Dir::Update() noexcept {
     UpdateTree();
   }
   win_.End();
-  if (popup) ImGui::OpenPopup(popup);
 }
 void Dir::UpdateTree() noexcept {
   for (const auto& item : items_) {
@@ -271,9 +314,11 @@ void Dir::UpdateTree() noexcept {
         env().ExecMain(ctx, [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
-        auto ctx  = std::make_shared<SimpleContext>(env(), id());
-        ctx->description() = "renaming file on "+abspath().Stringify();
-        env().ExecMain(ctx, []() { throw Exception("not implemented"); });
+        rename_target_ = name;
+        popup_         = "RenamePopup";
+        // auto ctx  = std::make_shared<SimpleContext>(env(), id());
+        // ctx->description() = "renaming file on "+abspath().Stringify();
+        // env().ExecMain(ctx, []() { throw Exception("not implemented"); });
       }
       if (ditem && (ditem->flags() & DirItem::kMenu)) {
         ImGui::Separator();

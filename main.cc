@@ -258,7 +258,7 @@ class Env final : public nf7::Env {
       try {
         (*task)();
       } catch (Exception&) {
-        Panic();
+        // TODO: how to handle?
       }
       async_.Wait();
     }
