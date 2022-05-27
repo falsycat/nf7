@@ -8,8 +8,6 @@ namespace nf7 {
 template <typename T>
 class GenericTypeInfo : public File::TypeInfo {
  public:
-  static constexpr bool kHasFactory = std::is_constructible<T, Env&>::value;
-
   GenericTypeInfo(const std::string& name, std::unordered_set<std::string>&& v) noexcept :
       TypeInfo(name, AddFlags(std::move(v))) {
   }
@@ -21,7 +19,7 @@ class GenericTypeInfo : public File::TypeInfo {
     throw DeserializeException(std::string(name())+" deserialization failed");
   }
   std::unique_ptr<File> Create(Env& env) const noexcept override {
-    if constexpr (kHasFactory) {
+    if constexpr (std::is_constructible<T, Env&>::value) {
       return std::make_unique<T>(env);
     } else {
       return nullptr;
@@ -31,7 +29,7 @@ class GenericTypeInfo : public File::TypeInfo {
  private:
   static std::unordered_set<std::string> AddFlags(
       std::unordered_set<std::string>&& flags) noexcept {
-    if (kHasFactory) flags.insert("File_Factory");
+    if (std::is_constructible<T, Env&>::value) flags.insert("File_Factory");
     return flags;
   }
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <iostream>
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>

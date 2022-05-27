@@ -136,6 +136,7 @@ class Logger final : public File,
       return "ERRR";
     default:
       assert(false);
+      return "X(";
     }
   }
   static std::string GetLocationString(const std::source_location loc) noexcept {

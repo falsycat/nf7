@@ -28,29 +28,26 @@ class Env;
 using Serializer   = yas::binary_oarchive<yas::file_ostream, yas::binary>;
 using Deserializer = yas::binary_iarchive<yas::file_istream, yas::binary>;
 
-class Exception {
+class Exception : public std::nested_exception {
  public:
   Exception() = delete;
-  Exception(std::string_view msg,
-            std::exception_ptr reason = std::current_exception(),
-            std::source_location loc = std::source_location::current()) noexcept :
-      msg_(msg), reason_(reason), srcloc_(loc) {
+  Exception(std::string_view msg, std::source_location loc = std::source_location::current()) noexcept :
+      nested_exception(), msg_(msg), srcloc_(loc) {
   }
   virtual ~Exception() = default;
-  Exception(const Exception&) = delete;
-  Exception(Exception&&) = delete;
+  Exception(const Exception&) = default;
+  Exception(Exception&&) = default;
   Exception& operator=(const Exception&) = delete;
   Exception& operator=(Exception&&) = delete;
 
   virtual void UpdatePanic() const noexcept;
 
   const std::string& msg() const noexcept { return msg_; }
-  const std::exception_ptr reason() const noexcept { return reason_; }
   const std::source_location& srcloc() const noexcept { return srcloc_; }
+  std::exception_ptr reason() const noexcept { return nested_ptr(); }
 
  private:
   const std::string msg_;
-  const std::exception_ptr reason_;
   const std::source_location srcloc_;
 };
 class DeserializeException : public Exception {

@@ -46,7 +46,7 @@ class Env final : public nf7::Env {
     // deserialize
     try {
       if (!std::filesystem::exists(kFileName)) {
-        std::ofstream of(kFileName);
+        std::ofstream of(kFileName, std::ios::binary);
         if (!of) throw Exception("failed to open native file: "s+kFileName);
         of.write(kDefaultRoot, sizeof(kDefaultRoot));
         of.flush();

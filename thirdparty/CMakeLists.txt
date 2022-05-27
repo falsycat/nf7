@@ -1,7 +1,7 @@
 include(FetchContent)
 
 
-if (KINGTAKER_STATIC)
+if (NF7_STATIC)
   set(BUILD_SHARED_LIBS OFF)
 else()
   set(BUILD_SHARED_LIBS ON)
@@ -18,7 +18,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glew)
 
-if (KINGTAKER_STATIC)
+if (NF7_STATIC)
   add_library(glew ALIAS libglew_static)
 else()
   add_library(glew ALIAS libglew_shared)
@@ -52,7 +52,7 @@ FetchContent_Declare(
 )
 FetchContent_Populate(imgui)
 
-add_library(imgui)
+add_library(imgui STATIC)
 target_sources(imgui
   PRIVATE
     "${imgui_SOURCE_DIR}/imgui.cpp"

@@ -17,8 +17,10 @@ set(NF7_CXX_FLAGS
   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
     -Wno-overloaded-virtual>
   $<$<CXX_COMPILER_ID:MSVC>:
-    /W4 /WX>
+    /W4 /WX /Zc:__cplusplus /external:anglebrackets /external:W0>
 )
+
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
 add_subdirectory(tool)
