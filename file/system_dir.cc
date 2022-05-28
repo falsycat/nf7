@@ -11,11 +11,12 @@
 
 #include "nf7.hh"
 
-#include "common/context.hh"
 #include "common/dir.hh"
+#include "common/dir_item.hh"
+#include "common/generic_context.hh"
+#include "common/generic_type_info.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
-#include "common/type_info.hh"
 #include "common/yas.hh"
 
 
@@ -199,7 +200,7 @@ void Dir::Update() noexcept {
       if (ImGui::Button("ok")) {
         ImGui::CloseCurrentPopup();
 
-        auto ctx = std::make_shared<SimpleContext>(env(), id());
+        auto ctx = std::make_shared<GenericContext>(env(), id());
         ctx->description() = "adding new file on "+abspath().Stringify();
 
         auto task = [this, name = std::move(name), type = selecting]() {
@@ -240,7 +241,7 @@ void Dir::Update() noexcept {
     if (submit) {
       ImGui::CloseCurrentPopup();
 
-      auto ctx = std::make_shared<SimpleContext>(env(), id());
+      auto ctx = std::make_shared<GenericContext>(env(), id());
       ctx->description() = "renaming an item on "+abspath().Stringify();
 
       auto task = [this, before = std::move(rename_target_), after = std::move(new_name)]() {
@@ -309,16 +310,13 @@ void Dir::UpdateTree() noexcept {
       }
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
-        auto ctx = std::make_shared<SimpleContext>(env(), id());
+        auto ctx = std::make_shared<GenericContext>(env(), id());
         ctx->description() = "removing file on "+abspath().Stringify();
         env().ExecMain(ctx, [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
         rename_target_ = name;
         popup_         = "RenamePopup";
-        // auto ctx  = std::make_shared<SimpleContext>(env(), id());
-        // ctx->description() = "renaming file on "+abspath().Stringify();
-        // env().ExecMain(ctx, []() { throw Exception("not implemented"); });
       }
       if (ditem && (ditem->flags() & DirItem::kMenu)) {
         ImGui::Separator();

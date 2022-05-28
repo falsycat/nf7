@@ -10,7 +10,7 @@
 
 namespace nf7 {
 
-class SimpleContext : public Context {
+class GenericContext : public Context {
  public:
   using Context::Context;
 

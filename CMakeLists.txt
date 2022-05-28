@@ -45,11 +45,15 @@ target_sources(nf7
     nf7.hh
 
     common/dir.hh
+    common/dir_item.hh
+    common/file_ref.hh
+    common/generic_context.hh
+    common/generic_type_info.hh
     common/gui_window.hh
     common/logger.hh
     common/logger_pool.hh
+    common/ptr_selector.hh
     common/queue.hh
-    common/type_info.hh
     common/yas.hh
 
     file/system_dir.cc

@@ -7,12 +7,12 @@
 
 #include "nf7.hh"
 
-#include "common/dir.hh"
+#include "common/dir_item.hh"
+#include "common/generic_type_info.hh"
 #include "common/gui_window.hh"
 #include "common/logger.hh"
 #include "common/logger_pool.hh"
 #include "common/ptr_selector.hh"
-#include "common/type_info.hh"
 
 
 using namespace std::literals;
