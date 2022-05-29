@@ -215,11 +215,11 @@ class Context {
   Context(Env&, File::Id, const std::weak_ptr<Context>& = {}) noexcept;
   virtual ~Context() noexcept;
 
-  virtual void CleanUp() noexcept = 0;
-  virtual void Abort() noexcept = 0;
+  virtual void CleanUp() noexcept { }
+  virtual void Abort() noexcept { }
 
-  virtual size_t GetMemoryUsage() const noexcept = 0;
-  virtual std::string GetDescription() const noexcept = 0;
+  virtual size_t GetMemoryUsage() const noexcept { return 0; }
+  virtual std::string GetDescription() const noexcept { return ""; }
 
   Env& env() const noexcept { return *env_; }
   File::Id initiator() const noexcept { return initiator_; }
