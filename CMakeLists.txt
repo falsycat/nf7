@@ -44,19 +44,30 @@ target_sources(nf7
     nf7.cc
     nf7.hh
 
+    common/aggregate_command.hh
     common/dir.hh
     common/dir_item.hh
     common/file_ref.hh
     common/generic_context.hh
+    common/generic_history.hh
+    common/generic_memento.hh
     common/generic_type_info.hh
     common/gui_file.hh
+    common/gui_node.hh
     common/gui_window.hh
+    common/history.hh
+    common/lambda.hh
+    common/memento.hh
+    common/node.hh
+    common/node_link_store.hh
     common/logger.hh
     common/logger_pool.hh
     common/ptr_selector.hh
     common/queue.hh
+    common/value.hh
     common/yas.hh
 
+    file/node_network.cc
     file/system_dir.cc
     file/system_imgui_config.cc
     file/system_logger.cc
