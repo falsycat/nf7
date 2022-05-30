@@ -15,6 +15,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_file.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas.hh"
@@ -136,83 +137,18 @@ void Dir::Update() noexcept {
 
   // new item popup
   if (ImGui::BeginPopup("NewItemPopup")) {
-    static const TypeInfo* selecting = nullptr;
-    static std::string filter = "";
-    static std::string name   = "";
+    static nf7::gui::FileCreatePopup<
+        nf7::gui::kNameInput | nf7::gui::kNameDupCheck> p(
+            {"File_Factory", "DirItem"});
+    ImGui::TextUnformatted("System/Dir: adding new file...");
+    if (p.Update(*this)) {
+      auto ctx = std::make_shared<GenericContext>(env(), id());
+      ctx->description() = "adding new file on "+abspath().Stringify();
 
-    ImGui::PushItemWidth(16*em);
-    ImGui::TextUnformatted("System/Dir: adding new item...");
-
-    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-    ImGui::InputText("name", &name);
-    ImGui::Spacing();
-
-    ImGui::InputTextWithHint("type", "search", &filter);
-    if (ImGui::BeginListBox("##type_list", {16*em, 4*em})) {
-      for (const auto& reg : registry()) {
-        const auto& t = *reg.second;
-        if (!t.flags().contains("DirItem")) continue;
-        if (!t.flags().contains("File_Factory")) continue;
-
-        const bool name_match =
-            filter.empty() || t.name().find(filter) != std::string::npos;
-
-        const bool sel = (selecting == &t);
-        if (!name_match) {
-          if (sel) selecting = nullptr;
-          continue;
-        }
-
-        ImGui::PushID(&t);
-        constexpr auto kFlags =
-            ImGuiSelectableFlags_SpanAllColumns |
-            ImGuiSelectableFlags_AllowItemOverlap;
-        if (ImGui::Selectable("##selectable", sel, kFlags)) {
-          selecting = &t;
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(t.name().c_str());
-        ImGui::PopID();
-      }
-      ImGui::EndListBox();
-    }
-    ImGui::PopItemWidth();
-    ImGui::Spacing();
-
-    // input validation
-    bool err = false;
-    if (selecting == nullptr) {
-      ImGui::Bullet(); ImGui::TextUnformatted("type is not selected");
-      err = true;
-    }
-    try {
-      Path::ValidateTerm(name);
-    } catch (Exception& e) {
-      ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
-      err = true;
-    }
-    if (items_.find(name) != items_.end()) {
-      ImGui::Bullet(); ImGui::Text("name duplicated");
-      err = true;
-    }
-
-    if (!err) {
-      if (ImGui::Button("ok")) {
-        ImGui::CloseCurrentPopup();
-
-        auto ctx = std::make_shared<GenericContext>(env(), id());
-        ctx->description() = "adding new file on "+abspath().Stringify();
-
-        auto task = [this, name = std::move(name), type = selecting]() {
-          Add(name, type->Create(env()));
-        };
-        env().ExecMain(ctx, std::move(task));
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "create %s as '%s' on '%s'",
-            selecting->name().c_str(), name.c_str(), abspath().Stringify().c_str());
-      }
+      auto task = [this, name = p.name(), &type = p.type()]() {
+        Add(name, type.Create(env()));
+      };
+      env().ExecMain(ctx, std::move(task));
     }
     ImGui::EndPopup();
   }

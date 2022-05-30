@@ -49,6 +49,7 @@ target_sources(nf7
     common/file_ref.hh
     common/generic_context.hh
     common/generic_type_info.hh
+    common/gui_file.hh
     common/gui_window.hh
     common/logger.hh
     common/logger_pool.hh
