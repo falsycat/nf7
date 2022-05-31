@@ -46,6 +46,8 @@ int main(void) {
         Write(ar, "System/ImGuiConfig"s, ""s) },
     { "_logger"s,
         Write(ar, "System/Logger"s, WINDOW_(true), 1024, false, false) },
+    { "_luajit"s,
+        Write(ar, "LuaJIT/Context"s) },
     { "home"s,
         Write(ar, "System/Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
   }, WINDOW_(true));

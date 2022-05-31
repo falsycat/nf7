@@ -68,6 +68,7 @@ target_sources(nf7
     common/wait_queue.hh
     common/yas.hh
 
+    file/luajit_context.cc
     file/node_network.cc
     file/system_dir.cc
     file/system_imgui_config.cc
