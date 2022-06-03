@@ -291,10 +291,12 @@ class Network::ExecutionLambda : public nf7::Lambda {
     for (const auto& item : owner.items_) {
       if (auto inode = item->inode()) {
         if (auto lambda = inode->CreateLambdaForOuterInput()) {
+          AddChild(lambda);
           input_handlers_.push_back(std::move(lambda));
         }
       }
       if (auto lambda = item->node().CreateLambda()) {
+        AddChild(lambda);
         subs_[lambda.get()] = SubLambda {.lambda = lambda};
         lmap[item->id()] = std::move(lambda);
       }

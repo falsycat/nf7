@@ -212,7 +212,7 @@ class File::NotImplementedException : public Exception {
 class Context {
  public:
   Context() = delete;
-  Context(Env&, File::Id, const std::weak_ptr<Context>& = {}) noexcept;
+  Context(Env&, File::Id) noexcept;
   virtual ~Context() noexcept;
 
   virtual void CleanUp() noexcept { }
@@ -223,14 +223,17 @@ class Context {
 
   Env& env() const noexcept { return *env_; }
   File::Id initiator() const noexcept { return initiator_; }
-  const std::weak_ptr<Context>& parent() const noexcept { return parent_; }
+  std::span<const std::weak_ptr<Context>> children() const noexcept { return children_; }
+
+ protected:
+  void AddChild(const std::shared_ptr<Context>&) noexcept;
 
  private:
   Env* const env_;
 
   const File::Id initiator_;
 
-  std::weak_ptr<Context> parent_;
+  std::vector<std::weak_ptr<Context>> children_;
 };
 
 class Env {

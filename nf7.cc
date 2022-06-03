@@ -204,12 +204,15 @@ void File::Path::Validate() const {
   for (const auto& term : terms_) ValidateTerm(term);
 }
 
-Context::Context(Env& env, File::Id initiator, const std::weak_ptr<Context>& parent) noexcept :
-    env_(&env), initiator_(initiator), parent_(parent) {
+Context::Context(Env& env, File::Id initiator) noexcept :
+    env_(&env), initiator_(initiator) {
   env_->AddContext(*this);
 }
 Context::~Context() noexcept {
   env_->RemoveContext(*this);
+}
+void Context::AddChild(const std::shared_ptr<Context>& ctx) noexcept {
+  children_.emplace_back(ctx);
 }
 
 void Env::Push(Env& env) noexcept {
