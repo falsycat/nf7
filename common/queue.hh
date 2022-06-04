@@ -13,14 +13,18 @@ template <typename T>
 class Queue {
  public:
   Queue() = default;
-  Queue(const Queue&) = default;
-  Queue(Queue&&) = default;
-  Queue& operator=(const Queue&) = default;
-  Queue& operator=(Queue&&) = default;
+  Queue(const Queue&) = delete;
+  Queue(Queue&&) = delete;
+  Queue& operator=(const Queue&) = delete;
+  Queue& operator=(Queue&&) = delete;
 
   void Push(T&& task) noexcept {
     std::unique_lock<std::mutex> _(mtx_);
     tasks_.push_back(std::move(task));
+  }
+  void Interrupt(T&& task) noexcept {
+    std::unique_lock<std::mutex> _(mtx_);
+    tasks_.push_front(std::move(task));
   }
   std::optional<T> Pop() noexcept {
     std::unique_lock<std::mutex> k(mtx_);
@@ -29,6 +33,11 @@ class Queue {
     tasks_.pop_front();
     k.unlock();
     return ret;
+  }
+
+  void Clear() noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
+    tasks_.clear();
   }
 
  protected:

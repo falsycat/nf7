@@ -45,6 +45,10 @@ target_sources(nf7
     nf7.hh
 
     common/aggregate_command.hh
+    common/async_buffer.hh
+    common/async_buffer_adaptor.hh
+    common/buffer.hh
+    common/conditional_queue.hh
     common/dir.hh
     common/dir_item.hh
     common/file_ref.hh
@@ -58,6 +62,7 @@ target_sources(nf7
     common/history.hh
     common/lambda.hh
     common/memento.hh
+    common/native_file.hh
     common/node.hh
     common/node_link_store.hh
     common/logger.hh
@@ -68,11 +73,14 @@ target_sources(nf7
     common/wait_queue.hh
     common/yas.hh
 
+    $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
+
     file/luajit_context.cc
     file/node_network.cc
     file/system_dir.cc
     file/system_imgui_config.cc
     file/system_logger.cc
+    file/system_native_file.cc
 )
 target_link_libraries(nf7
   PRIVATE
