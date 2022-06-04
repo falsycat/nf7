@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cassert>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -15,6 +16,7 @@
 #include "nf7.hh"
 
 #include "common/queue.hh"
+#include "common/wait_queue.hh"
 #include "common/yas.hh"
 
 // Include glfw lastly to prevent conflict with windows.h.

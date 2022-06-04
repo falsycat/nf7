@@ -65,6 +65,7 @@ target_sources(nf7
     common/ptr_selector.hh
     common/queue.hh
     common/value.hh
+    common/wait_queue.hh
     common/yas.hh
 
     file/node_network.cc
