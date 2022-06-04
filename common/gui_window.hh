@@ -32,7 +32,7 @@ class Window {
     }
     if (!shown_) return false;
 
-    before();
+    if (before) before();
     need_end_ = true;
     return ImGui::Begin(id().c_str(), &shown_);
   }
