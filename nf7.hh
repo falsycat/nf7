@@ -170,7 +170,7 @@ class File::Interface {
   Interface& operator=(const Interface&) = default;
   Interface& operator=(Interface&&) = default;
 };
-class File::Path final {
+class File::Path {
  public:
   Path() = default;
   Path(std::initializer_list<std::string> terms) noexcept :

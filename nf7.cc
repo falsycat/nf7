@@ -94,6 +94,8 @@ try {
       ret = parent_;
     } else if (term == ".") {
       // do nothing
+    } else if (term == "$") {
+      while (ret->parent_) ret = ret->parent_;
     } else {
       ret = &ret->FindOrThrow(term);
     }
@@ -187,6 +189,8 @@ void File::Path::ValidateTerm(std::string_view term) {
   if (term.empty()) {
     throw Exception("empty term");
   }
+  if (term == "$")  return;
+  if (term == "..") return;
 
   constexpr size_t kMaxTermSize = 256;
   if (term.size() > kMaxTermSize) {
