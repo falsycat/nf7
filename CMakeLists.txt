@@ -61,17 +61,22 @@ target_sources(nf7
     common/gui_window.hh
     common/history.hh
     common/lambda.hh
+    common/lock.hh
+    common/logger.hh
+    common/logger_pool.hh
+    common/luajit_queue.hh
     common/memento.hh
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh
-    common/logger.hh
-    common/logger_pool.hh
     common/ptr_selector.hh
     common/queue.hh
     common/value.hh
     common/wait_queue.hh
-    common/yas.hh
+    common/yas_imgui.hh
+    common/yas_imnodes.hh
+    common/yas_nf7.hh
+    common/yas_std_filesystem.hh
 
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 

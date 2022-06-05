@@ -13,7 +13,7 @@
 
 #include "nf7.hh"
 
-#include "common/yas.hh"
+#include "common/yas_nf7.hh"
 
 
 namespace nf7 {

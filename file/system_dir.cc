@@ -18,7 +18,7 @@
 #include "common/gui_file.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
-#include "common/yas.hh"
+#include "common/yas_nf7.hh"
 
 
 namespace nf7 {

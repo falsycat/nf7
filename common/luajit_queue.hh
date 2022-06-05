@@ -7,7 +7,7 @@
 #include "nf7.hh"
 
 
-namespace nf7::lj {
+namespace nf7::luajit {
 
 class Queue : public File::Interface {
  public:
@@ -22,4 +22,4 @@ class Queue : public File::Interface {
   virtual void Push(const std::shared_ptr<nf7::Context>&, Task&&) noexcept = 0;
 };
 
-}  // namespace nf7::lj
+}  // namespace nf7::luajit

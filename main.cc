@@ -17,7 +17,7 @@
 
 #include "common/queue.hh"
 #include "common/wait_queue.hh"
-#include "common/yas.hh"
+#include "common/yas_nf7.hh"
 
 // Include glfw lastly to prevent conflict with windows.h.
 #include <GLFW/glfw3.h>

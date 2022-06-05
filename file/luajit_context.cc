@@ -9,7 +9,7 @@
 
 #include "common/dir_item.hh"
 #include "common/generic_type_info.hh"
-#include "common/lj_queue.hh"
+#include "common/luajit_queue.hh"
 #include "common/ptr_selector.hh"
 #include "common/wait_queue.hh"
 
@@ -19,7 +19,7 @@ namespace {
 
 class LuaContext final : public nf7::File,
     public nf7::DirItem,
-    public nf7::lj::Queue {
+    public nf7::luajit::Queue {
  public:
   static inline const GenericTypeInfo<LuaContext> kType = {"LuaJIT/Context", {"DirItem",}};
 
@@ -49,7 +49,7 @@ class LuaContext final : public nf7::File,
   void UpdateTooltip() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::lj::Queue>(t).Select(this);
+    return nf7::InterfaceSelector<nf7::DirItem, nf7::luajit::Queue>(t).Select(this);
   }
 
  private:

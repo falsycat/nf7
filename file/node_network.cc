@@ -31,9 +31,9 @@
 #include "common/node.hh"
 #include "common/node_link_store.hh"
 #include "common/ptr_selector.hh"
-#include "common/yas.hh"
 #include "common/yas_imgui.hh"
 #include "common/yas_imnodes.hh"
+#include "common/yas_nf7.hh"
 
 
 using namespace std::literals;
