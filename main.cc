@@ -123,6 +123,7 @@ class Env final : public nf7::Env {
     }
     ImGui::PopID();
 
+    interrupt_ = false;
     cv_.notify_one();
   }
 
@@ -182,7 +183,7 @@ class Env final : public nf7::Env {
 
   std::mutex               mtx_;
   std::condition_variable  cv_;
-  std::atomic<bool>        interrupt_;
+  std::atomic<bool>        interrupt_ = false;
   std::thread              main_thread_;
   std::vector<std::thread> async_threads_;
 
@@ -256,6 +257,7 @@ class Env final : public nf7::Env {
             Panic();
           }
         }
+        if (!alive_) return;
       }
       cv_.wait(k);
     }
