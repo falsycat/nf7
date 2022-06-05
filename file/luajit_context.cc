@@ -4,6 +4,7 @@
 #include <thread>
 
 #include <imgui.h>
+#include <lua.hpp>
 
 #include "nf7.hh"
 
@@ -18,19 +19,15 @@ namespace nf7 {
 namespace {
 
 class LuaContext final : public nf7::File,
-    public nf7::DirItem,
-    public nf7::luajit::Queue {
+    public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<LuaContext> kType = {"LuaJIT/Context", {"DirItem",}};
 
+  class Thread;
+
   LuaContext(Env& env) noexcept :
       File(kType, env), DirItem(DirItem::kTooltip),
-      th_([this]() { Main(); }) {
-  }
-  ~LuaContext() noexcept {
-    alive_ = false;
-    q_.Notify();
-    th_.join();
+      th_(std::make_shared<Thread>()) {
   }
 
   LuaContext(Env& env, Deserializer&) noexcept : LuaContext(env) {
@@ -41,24 +38,46 @@ class LuaContext final : public nf7::File,
     return std::make_unique<LuaContext>(env);
   }
 
+  void UpdateTooltip() noexcept override;
+
+  File::Interface* interface(const std::type_info& t) noexcept override {
+    return nf7::InterfaceSelector<
+        nf7::DirItem, nf7::luajit::Queue>(t).Select(this, th_.get());
+  }
+
+ private:
+  std::shared_ptr<Thread> th_;
+};
+
+class LuaContext::Thread final : public nf7::luajit::Queue,
+    public std::enable_shared_from_this<Thread> {
+ public:
+  Thread() noexcept : th_([this]() { Main(); }) {
+  }
+  ~Thread() noexcept {
+    alive_ = false;
+    q_.Notify();
+    th_.join();
+  }
+
   void Push(const std::shared_ptr<nf7::Context>&,
             std::function<void(lua_State*)>&& f) noexcept override {
     q_.Push(std::move(f));
   }
 
-  void UpdateTooltip() noexcept override;
+  std::shared_ptr<Queue> self() noexcept override { return shared_from_this(); }
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::luajit::Queue>(t).Select(this);
-  }
+  size_t tasksDone() const noexcept { return tasks_done_; }
+  bool alive() const noexcept { return alive_; }
 
  private:
+  std::thread th_;
   std::atomic<bool> alive_ = true;
-  std::thread       th_;
 
   std::atomic<size_t> tasks_done_;
 
   nf7::WaitQueue<std::function<void(lua_State*)>> q_;
+
 
   void Main() noexcept {
     lua_State* L = luaL_newstate();
@@ -80,8 +99,8 @@ class LuaContext final : public nf7::File,
 };
 
 void LuaContext::UpdateTooltip() noexcept {
-  ImGui::Text("tasks done: %zu", static_cast<size_t>(tasks_done_));
-  if (alive_) {
+  ImGui::Text("tasks done: %zu", static_cast<size_t>(th_->tasksDone()));
+  if (th_->alive()) {
     ImGui::TextDisabled("LuaJIT thread is running normally");
   } else {
     ImGui::TextUnformatted("LuaJIT thread is **ABORTED**");

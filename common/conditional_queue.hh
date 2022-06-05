@@ -22,7 +22,7 @@ class ConditionalQueue final :
       if (fu_ptr->wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return false;
       }
-      f(std::move(*fu_ptr));
+      f(*fu_ptr);
       return true;
     };
     Queue<std::function<bool(void)>>::Push(std::move(task));
@@ -33,12 +33,12 @@ class ConditionalQueue final :
       if (fu.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return false;
       }
-      f(std::move(fu));
+      f(fu);
       return true;
     };
     Queue<std::function<bool(void)>>::Push(std::move(task));
   }
-  void Push(const std::shared_ptr<nf7::Lock>& k, std::function<void(const std::shared_ptr<nf7::Lock>&)>&& f) {
+  void Push(const std::shared_ptr<nf7::Lock>& k, auto&& f) {
     auto task = [k, f = std::move(f)]() {
       if (!k->acquired() && !k->cancelled()) {
         return false;
