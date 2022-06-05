@@ -165,13 +165,31 @@ void Dir::Update() noexcept {
       submit = true;
     }
 
-    if (ImGui::Button("ok")) {
-      submit = true;
+    bool err = false;
+    if (!Find(rename_target_)) {
+      ImGui::Bullet(); ImGui::TextUnformatted("before is invalid: missing target");
+      err = true;
     }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip(
-          "rename '%s' to '%s' on '%s'",
-          rename_target_.c_str(), new_name.c_str(), abspath().Stringify().c_str());
+    if (Find(new_name)) {
+      ImGui::Bullet(); ImGui::TextUnformatted("after is invalid: duplicated name");
+      err = true;
+    }
+    try {
+      Path::ValidateTerm(new_name);
+    } catch (Exception& e) {
+      ImGui::Bullet(); ImGui::Text("after is invalid: %s", e.msg().c_str());
+      err = true;
+    }
+
+    if (!err) {
+      if (ImGui::Button("ok")) {
+        submit = true;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "rename '%s' to '%s' on '%s'",
+            rename_target_.c_str(), new_name.c_str(), abspath().Stringify().c_str());
+      }
     }
 
     if (submit) {
