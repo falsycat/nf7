@@ -51,8 +51,8 @@ class Lock::Resource {
   Resource& operator=(const Resource&) = delete;
   Resource& operator=(Resource&&) = delete;
 
-  std::shared_ptr<Lock> Acquire(bool ex) noexcept {
-    if (auto ret = TryAcquire(ex)) return ret;
+  std::shared_ptr<Lock> AcquireLock(bool ex) noexcept {
+    if (auto ret = TryAcquireLock(ex)) return ret;
 
     if (!ex && !plocks_.empty() && !plocks_.back()->ex_) {
       return plocks_.back();
@@ -60,7 +60,7 @@ class Lock::Resource {
     plocks_.push_back(std::make_shared<Lock>(*this, ex));
     return plocks_.back();
   }
-  std::shared_ptr<Lock> TryAcquire(bool ex) noexcept {
+  std::shared_ptr<Lock> TryAcquireLock(bool ex) noexcept {
     if (!lock_.expired()) return nullptr;
 
     auto ret = std::make_shared<Lock>(*this, ex);
