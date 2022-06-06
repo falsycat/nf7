@@ -19,9 +19,10 @@
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/lock.hh"
-#include "common/logger_ref.hh"
+#include "common/luajit.hh"
 #include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
+#include "common/logger_ref.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_nf7.hh"
 
@@ -248,7 +249,7 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
         Error(lua_tostring(L, -1));
         return;
       }
-      if (0 != lua_pcall(L, 0, 1, 0)) {
+      if (0 != nf7::luajit::SandboxCall(L, 0, 1)) {
         Error(lua_tostring(L, -1));
         return;
       }

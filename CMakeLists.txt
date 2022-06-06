@@ -64,7 +64,10 @@ target_sources(nf7
     common/lock.hh
     common/logger.hh
     common/logger_ref.hh
+    common/luajit.hh
+    common/luajit_obj.hh
     common/luajit_queue.hh
+    common/luajit_ref.hh
     common/memento.hh
     common/native_file.hh
     common/node.hh
