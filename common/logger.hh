@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -22,7 +23,11 @@ class Logger : public File::Interface {
 
   Logger() = default;
 
+  // thread-safe
   virtual void Write(Item&&) noexcept = 0;
+
+  // The parameter is to avoid problems with multi-inheritance and nothing more than.
+  virtual std::shared_ptr<Logger> self(Logger* = nullptr) noexcept = 0;
 };
 struct Logger::Item final {
  public:

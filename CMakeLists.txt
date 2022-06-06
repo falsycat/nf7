@@ -63,7 +63,7 @@ target_sources(nf7
     common/lambda.hh
     common/lock.hh
     common/logger.hh
-    common/logger_pool.hh
+    common/logger_ref.hh
     common/luajit_queue.hh
     common/memento.hh
     common/native_file.hh
