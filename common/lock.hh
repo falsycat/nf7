@@ -1,19 +1,27 @@
 #pragma once
 
-#include <algorithm>
+#include <cassert>
+#include <coroutine>
 #include <deque>
+#include <exception>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "nf7.hh"
 
+#include "common/future.hh"
+
 
 namespace nf7 {
 
-class Lock {
+class Lock final {
  public:
   class Resource;
+  class Exception : public nf7::Exception {
+   public:
+    using nf7::Exception::Exception;
+  };
 
   Lock() = default;
   Lock(Resource& res, bool ex) noexcept : res_(&res), ex_(ex) {
@@ -24,13 +32,13 @@ class Lock {
   Lock& operator=(const Lock&) = delete;
   Lock& operator=(Lock&&) = delete;
 
-  bool cancelled() const noexcept { return !res_; }
-  bool acquired() const noexcept { return acquired_; }
+  void Validate() const {
+    if (!res_) throw Lock::Exception("target expired");
+  }
 
  private:
   Resource* res_ = nullptr;
   bool      ex_  = false;
-  bool acquired_ = false;
 };
 
 class Lock::Resource {
@@ -42,8 +50,8 @@ class Lock::Resource {
     if (auto lock = lock_.lock()) {
       lock->res_ = nullptr;
     }
-    for (auto lock : plocks_) {
-      lock->res_ = nullptr;
+    for (auto pend : pends_) {
+      pend.pro.Throw(std::make_exception_ptr<Lock::Exception>({"lock cancelled"}));
     }
   }
   Resource(const Resource&) = delete;
@@ -51,23 +59,22 @@ class Lock::Resource {
   Resource& operator=(const Resource&) = delete;
   Resource& operator=(Resource&&) = delete;
 
-  std::shared_ptr<Lock> AcquireLock(bool ex) noexcept {
+  nf7::Future<std::shared_ptr<Lock>> AcquireLock(bool ex) noexcept {
     if (auto ret = TryAcquireLock(ex)) return ret;
 
-    if (!ex && !plocks_.empty() && !plocks_.back()->ex_) {
-      return plocks_.back();
+    if (ex || pends_.empty() || pends_.back().ex) {
+      pends_.push_back(ex);
     }
-    plocks_.push_back(std::make_shared<Lock>(*this, ex));
-    return plocks_.back();
+    return pends_.back().pro.future();
   }
   std::shared_ptr<Lock> TryAcquireLock(bool ex) noexcept {
-    if (!lock_.expired()) return nullptr;
-
-    auto ret = std::make_shared<Lock>(*this, ex);
-    ret->acquired_ = true;
-    lock_ = ret;
+    if (auto k = lock_.lock()) {
+      return !ex && !k->ex_ && pends_.empty()? k: nullptr;
+    }
+    auto k = std::make_shared<Lock>(*this, ex);
+    lock_ = k;
     OnLock();
-    return ret;
+    return k;
   }
 
  protected:
@@ -75,22 +82,31 @@ class Lock::Resource {
   virtual void OnUnlock() noexcept { }
 
  private:
+  struct Pending final {
+   public:
+    Pending(bool ex_) noexcept : ex(ex_) { }
+
+    bool ex;
+    nf7::Future<std::shared_ptr<Lock>>::Promise pro;
+  };
   std::weak_ptr<Lock> lock_;
-  std::deque<std::shared_ptr<Lock>> plocks_;
+  std::deque<Pending> pends_;
 };
+
 
 Lock::~Lock() noexcept {
   if (!res_) return;
-
-  if (res_->plocks_.empty()) {
+  if (res_->pends_.empty()) {
     res_->OnUnlock();
     return;
   }
-  auto next = std::move(res_->plocks_.front());
-  res_->plocks_.pop_front();
 
-  res_->lock_     = next;
-  next->acquired_ = true;
+  auto next = std::move(res_->pends_.front());
+  res_->pends_.pop_front();
+
+  auto lock = std::make_shared<Lock>(*res_, next.ex);
+  res_->lock_ = lock;
+  next.pro.Return(std::move(lock));
 }
 
 }  // namespace nf7

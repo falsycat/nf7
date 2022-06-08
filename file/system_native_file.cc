@@ -63,7 +63,7 @@ class NativeFile final : public File,
       Reset();
       return;
     case Event::kRemove:
-      buf_ = std::nullopt;
+      buf_ = nullptr;
       return;
     default:
       return;
@@ -71,11 +71,11 @@ class NativeFile final : public File,
   }
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::AsyncBuffer, nf7::DirItem>(t).Select(this, &*buf_);
+    return InterfaceSelector<nf7::AsyncBuffer, nf7::DirItem>(t).Select(this, buf_.get());
   }
 
  private:
-  std::optional<nf7::AsyncBufferAdaptor> buf_;
+  std::shared_ptr<nf7::AsyncBufferAdaptor> buf_;
 
   const char* popup_ = nullptr;
 
@@ -96,7 +96,7 @@ class NativeFile final : public File,
     }
     auto buf = std::make_shared<
         nf7::NativeFile>(*this, env().npath()/npath_, flags, exlock);
-    buf_.emplace(buf, buf);
+    buf_ = std::make_shared<nf7::AsyncBufferAdaptor>(buf, buf);
   }
   void Touch() noexcept {
     env().Handle({.id = id(), .type = Event::kUpdate,});

@@ -48,10 +48,10 @@ target_sources(nf7
     common/async_buffer.hh
     common/async_buffer_adaptor.hh
     common/buffer.hh
-    common/conditional_queue.hh
     common/dir.hh
     common/dir_item.hh
     common/file_ref.hh
+    common/future.hh
     common/generic_context.hh
     common/generic_history.hh
     common/generic_memento.hh

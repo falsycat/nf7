@@ -27,6 +27,7 @@ class Ref final {
   Ref& operator=(Ref&&) = delete;
 
   int index() const noexcept { return idx_; }
+  const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return q_; }
 
  private:
   std::shared_ptr<nf7::Context> ctx_;

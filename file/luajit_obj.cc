@@ -1,6 +1,5 @@
 #include <atomic>
 #include <exception>
-#include <future>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -13,9 +12,9 @@
 #include "nf7.hh"
 
 #include "common/async_buffer.hh"
-#include "common/conditional_queue.hh"
 #include "common/dir_item.hh"
 #include "common/file_ref.hh"
+#include "common/future.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/lock.hh"
@@ -65,15 +64,14 @@ class Obj final : public nf7::File,
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
-  std::shared_future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept override;
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::luajit::Queue>(t).Select(this);
   }
 
  private:
-  std::shared_ptr<nf7::LoggerRef>     log_;
-  std::shared_ptr<nf7::luajit::Queue> ljq_;
+  std::shared_ptr<nf7::LoggerRef> log_;
 
   std::unique_ptr<SrcWatcher> srcwatcher_;
   std::shared_ptr<nf7::luajit::Ref> cache_;
@@ -121,193 +119,119 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
 
   ExecTask(Obj& target) :
       Context(target.env(), target.id()),
-      target_(&target), log_(target_->log_), ljq_(target_->ljq_),
-      fu_(pro_.get_future().share()),
-      chunk_name_(target_->abspath().Stringify()),
-      src_(&(*target.src_).interfaceOrThrow<nf7::AsyncBuffer>()),
-      src_lock_(src_->AcquireLock(false)){
+      target_(&target), log_(target_->log_),
+      coro_(Proc()) {
   }
 
   void Start() noexcept {
-    Proc();
-  }
-  void Update() noexcept {
-    while (cq_.PopAndExec());
+    fu_ = coro_.Start(shared_from_this());
   }
   void Abort() noexcept override {
-    abort_ = true;
+    coro_.Abort(shared_from_this());
   }
   size_t GetMemoryUsage() const noexcept override {
     return buf_size_;
   }
 
-  std::shared_future<std::shared_ptr<nf7::luajit::Ref>>& fu() noexcept { return fu_; }
+  auto fu() noexcept { return *fu_; }
 
  private:
   Obj* target_;
-  bool abort_ = false;
+  std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::shared_ptr<nf7::LoggerRef>     log_;
-  std::shared_ptr<nf7::luajit::Queue> ljq_;
-  nf7::ConditionalQueue cq_;
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro          coro_;
+  std::optional<nf7::Future<std::shared_ptr<nf7::luajit::Ref>>> fu_;
 
-  std::promise<std::shared_ptr<nf7::luajit::Ref>>       pro_;
-  std::shared_future<std::shared_ptr<nf7::luajit::Ref>> fu_;
-
-  std::string                chunk_name_;
-  nf7::AsyncBuffer*          src_;
-  std::shared_ptr<nf7::Lock> src_lock_;
-
-  enum Step { kInitial, kSrcLock, kSrcSize, kSrcRead, kExec, kFinish };
-  Step step_ = kInitial;
-
+  std::string chunkname_;
   std::atomic<size_t> buf_size_ = 0;
   std::vector<uint8_t> buf_;
   bool buf_consumed_ = false;
 
-  int reg_idx_;
 
-
-  void Error(std::string_view msg) noexcept {
-    pro_.set_exception(std::make_exception_ptr<Exception>({msg}));
-    log_->Error(msg);
-  }
-
-  void Proc(std::future<size_t>& fu) noexcept
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept
   try {
-    return Proc(fu.get());
+    auto self = shared_from_this();
+
+    auto& srcf = *target_->src_;
+    chunkname_ = srcf.abspath().Stringify();
+
+    auto src     = srcf.interfaceOrThrow<nf7::AsyncBuffer>().self();
+    auto srclock = co_await src->AcquireLock(false).awaiter(self);
+    log_->Trace("source file lock acquired");
+
+    buf_size_ = co_await src->size().awaiter(self);
+    if (buf_size_ == 0) {
+      throw nf7::Exception("source is empty");
+    }
+    if (buf_size_ > kMaxSize) {
+      throw nf7::Exception("source is too huge");
+    }
+
+    buf_.resize(buf_size_);
+    const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self);
+    if (read != buf_size_) {
+      throw nf7::Exception("failed to read all bytes from source");
+    }
+
+    nf7::Future<int>::Promise lua_pro;
+    auto ljq = target_->
+        ResolveUpwardOrThrow("_luajit").
+        interfaceOrThrow<nf7::luajit::Queue>().self();
+    ljq->Push(self, [&](auto L) { lua_pro.Wrap([&]() { return ExecLua(L); }); });
+    const int idx = co_await lua_pro.future().awaiter(self);
+    log_->Trace("task finished");
+
+    auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
+    ctx->description() = "luajit object cache";
+    target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
+    co_yield target_->cache_;
+
   } catch (Exception& e) {
     log_->Error(e.msg());
-    pro_.set_exception(std::current_exception());
-    return;
+    throw;
   }
-  void Proc(size_t param = 0, lua_State* L = nullptr) noexcept {
-    if (abort_) {
-      Error("task aborted");
-      return;
+
+  int ExecLua(lua_State* L) {
+    static const auto kReader = [](lua_State*, void* selfptr, size_t* size) -> const char* {
+      auto self = reinterpret_cast<ExecTask*>(selfptr);
+      if (std::exchange(self->buf_consumed_, true)) {
+        *size = 0;
+        return nullptr;
+      } else {
+        *size = self->buf_.size();
+        return reinterpret_cast<const char*>(self->buf_.data());
+      }
+    };
+    if (0 != lua_load(L, kReader, this, chunkname_.c_str())) {
+      throw nf7::Exception(lua_tostring(L, -1));
     }
-
-    switch (step_) {
-    case kInitial:
-      step_ = kSrcLock;
-      cq_.Push(src_lock_, [self = shared_from_this()](auto) { self->Proc(); });
-      return;
-
-    case kSrcLock:
-      if (!src_lock_->acquired()) {
-        Error("failed to lock source file");
-        return;
-      }
-      log_->Trace("source file lock acquired");
-      step_ = kSrcSize;
-      cq_.Push(src_->size(), [self = shared_from_this()](auto& v) { self->Proc(v); });
-      return;
-
-    case kSrcSize:
-      if (src_lock_->cancelled()) {  // ensure src_ is alive
-        Error("source is expired");
-        return;
-      }
-      if (param == 0) {
-        Error("source is empty");
-        return;
-      }
-      if (param > kMaxSize) {
-        Error("source is too huge");
-        return;
-      }
-      log_->Trace("source file size is "+std::to_string(param)+" bytes");
-      buf_size_ = param;
-      buf_.resize(param);
-      step_ = kSrcRead;
-      cq_.Push(src_->Read(0, buf_.data(), param),
-               [self = shared_from_this()](auto& v) { self->Proc(v); });
-      return;
-
-    case kSrcRead:
-      if (buf_.size() != param) {
-        Error("cannot read whole bytes");
-        return;
-      }
-      log_->Trace("read "+std::to_string(buf_size_)+" bytes from source file");
-      step_ = kExec;
-      ljq_->Push(shared_from_this(), [self = shared_from_this()](auto L) { self->Proc(0, L); });
-      return;
-
-    case kExec:  // runs on LuaJIT thread
-      static const auto kReader = [](lua_State*, void* selfptr, size_t* size) -> const char* {
-        auto self = reinterpret_cast<ExecTask*>(selfptr);
-        if (std::exchange(self->buf_consumed_, true)) {
-          *size = 0;
-          return nullptr;
-        } else {
-          *size = self->buf_.size();
-          return reinterpret_cast<const char*>(self->buf_.data());
-        }
-      };
-      if (0 != lua_load(L, kReader, this, chunk_name_.c_str())) {
-        Error(lua_tostring(L, -1));
-        return;
-      }
-      if (0 != nf7::luajit::SandboxCall(L, 0, 1)) {
-        Error(lua_tostring(L, -1));
-        return;
-      }
-      log_->Trace("executed lua script and got "s+lua_typename(L, lua_type(L, -1)));
-      reg_idx_ = luaL_ref(L, LUA_REGISTRYINDEX);
-      if (reg_idx_ == LUA_REFNIL) {
-        Error("got nil object");
-        return;
-      }
-      step_ = kFinish;
-      env().ExecSub(shared_from_this(),
-                    [self = shared_from_this()]() { self->Proc(); });
-      return;
-
-    case kFinish:
-      log_->Trace("task finished"s);
-      {
-        auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
-        ctx->description() = "luajit object cache";
-        target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq_, reg_idx_);
-      }
-      pro_.set_value(target_->cache_);
-      return;
-
-    default:
-      assert(false);
+    if (0 != nf7::luajit::SandboxCall(L, 0, 1)) {
+      throw nf7::Exception(lua_tostring(L, -1));
     }
+    log_->Trace("executed lua script and got "s+lua_typename(L, lua_type(L, -1)));
+    const auto ret = luaL_ref(L, LUA_REGISTRYINDEX);
+    if (ret == LUA_REFNIL) {
+      throw nf7::Exception("got nil object");
+    }
+    return ret;
   }
 };
 
 
-std::shared_future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept
-try {
-  if (!ljq_) throw Exception("luajit context not found");
-  auto exec = exec_.lock();
-  if (!exec) {
-    if (cache_) {
-      std::promise<std::shared_ptr<nf7::luajit::Ref>> pro;
-      pro.set_value(cache_);
-      return pro.get_future().share();
-    }
-    exec_ = exec = std::make_shared<ExecTask>(*this);
-    exec->Start();
-  }
+nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept {
+  if (auto exec = exec_.lock()) return exec->fu();
+  if (cache_) return std::shared_ptr<nf7::luajit::Ref>{cache_};
+
+  auto exec = std::make_shared<ExecTask>(*this);
+  exec->Start();
+  exec_ = exec;
   return exec->fu();
-} catch (Exception& e) {
-  log_->Error(e.msg());
-  std::promise<std::shared_ptr<nf7::luajit::Ref>> pro;
-  pro.set_exception(std::current_exception());
-  return pro.get_future().share();
 }
 void Obj::Handle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
     try {
       log_->SetUp(*this);
-      ljq_ = ResolveUpwardOrThrow("_luajit").
-          interfaceOrThrow<nf7::luajit::Queue>().self();
       auto ctx = std::make_shared<nf7::GenericContext>(env(), id());
       ctx->description() = "resetting state";
       env().ExecMain(ctx, [this]() { Reset(); });
@@ -318,7 +242,6 @@ void Obj::Handle(const Event& ev) noexcept {
     if (auto exec = exec_.lock()) exec->Abort();
     exec_ = {};
     cache_      = nullptr;
-    ljq_        = nullptr;
     srcwatcher_ = nullptr;
     log_->TearDown();
     break;
@@ -339,8 +262,6 @@ void Obj::Reset() noexcept {
 }
 
 void Obj::Update() noexcept {
-  if (auto exec = exec_.lock()) exec->Update();
-
   if (const auto popup = std::exchange(popup_, nullptr)) {
     ImGui::OpenPopup(popup);
   }

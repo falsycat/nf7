@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -10,96 +9,91 @@
 
 #include "common/async_buffer.hh"
 #include "common/buffer.hh"
+#include "common/future.hh"
 #include "common/queue.hh"
 
 
 namespace nf7 {
 
-class AsyncBufferAdaptor : public nf7::AsyncBuffer {
+class AsyncBufferAdaptor final :
+    public nf7::AsyncBuffer, public std::enable_shared_from_this<AsyncBufferAdaptor> {
  public:
   AsyncBufferAdaptor(const std::shared_ptr<nf7::Context>& ctx,
                      const std::shared_ptr<nf7::Buffer>& buf) noexcept :
-      data_(std::make_shared<Data>()) {
-    data_->ctx = ctx;
-    data_->buf = buf;
+      ctx_(ctx), buf_(buf) {
   }
 
-  std::future<size_t> Read(size_t offset, uint8_t* ptr, size_t size) noexcept override {
-    return ExecWithPromise<size_t>(
-        [buf = data_->buf, offset, ptr, size]() {
-          return buf->Read(offset, ptr, size);
-        });
+  nf7::Future<size_t> Read(size_t offset, uint8_t* ptr, size_t size) noexcept override {
+    nf7::Future<size_t>::Promise pro;
+    Exec([pro, buf = buf_, offset, ptr, size]() mutable {
+      pro.Wrap([&]() { return buf->Read(offset, ptr, size); });
+    });
+    return pro.future();
   }
-  std::future<size_t> Write(size_t offset, const uint8_t* ptr, size_t size) noexcept override {
-    return ExecWithPromise<size_t>(
-        [buf = data_->buf, offset, ptr, size]() {
-          return buf->Write(offset, ptr, size);
-        });
+  nf7::Future<size_t> Write(size_t offset, const uint8_t* ptr, size_t size) noexcept override {
+    nf7::Future<size_t>::Promise pro;
+    Exec([pro, buf = buf_, offset, ptr, size]() mutable {
+      pro.Wrap([&]() { return buf->Write(offset, ptr, size); });
+    });
+    return pro.future();
   }
-  std::future<size_t> Truncate(size_t size) noexcept override {
-    return ExecWithPromise<size_t>(
-        [buf = data_->buf, size]() { return buf->Truncate(size); });
+  nf7::Future<size_t> Truncate(size_t size) noexcept override {
+    nf7::Future<size_t>::Promise pro;
+    Exec([pro, buf = buf_, size]() mutable {
+      pro.Wrap([&]() { return buf->Truncate(size); });
+    });
+    return pro.future();
   }
 
-  std::future<size_t> size() const noexcept override {
-    return const_cast<AsyncBufferAdaptor&>(*this).
-        ExecWithPromise<size_t>(
-            [buf = data_->buf]() { return buf->size(); });
+  nf7::Future<size_t> size() const noexcept override {
+    nf7::Future<size_t>::Promise pro;
+    const_cast<AsyncBufferAdaptor&>(*this).Exec([pro, buf = buf_]() mutable {
+      pro.Wrap([&]() { return buf->size(); });
+    });
+    return pro.future();
   }
   Buffer::Flags flags() const noexcept override {
-    return data_->buf->flags();
+    return buf_->flags();
+  }
+
+  std::shared_ptr<AsyncBuffer> self(AsyncBuffer*) noexcept override {
+    return shared_from_this();
   }
 
  protected:
   void OnLock() noexcept override {
-    Exec([buf = data_->buf]() { return buf->Lock(); });
+    Exec([buf = buf_]() { return buf->Lock(); });
   }
   void OnUnlock() noexcept override {
-    Exec([buf = data_->buf]() { return buf->Unlock(); });
+    Exec([buf = buf_]() { return buf->Unlock(); });
   }
 
  private:
-  struct Data {
-    std::shared_ptr<nf7::Context> ctx;
-    std::shared_ptr<nf7::Buffer>  buf;
+  std::shared_ptr<nf7::Context> ctx_;
+  std::shared_ptr<nf7::Buffer>  buf_;
 
-    std::mutex mtx;
-    bool       working = false;
-    nf7::Queue<std::function<void()>> q;
-  };
-  std::shared_ptr<Data> data_;
+  std::mutex mtx_;
+  bool working_ = false;
+  nf7::Queue<std::function<void()>> q_;
 
-
-  template <typename R>
-  std::future<R> ExecWithPromise(std::function<R()>&& f) noexcept {
-    auto pro  = std::make_shared<std::promise<R>>();
-    auto task = [pro, f = std::move(f)]() {
-      try {
-        pro->set_value(f());
-      } catch (...) {
-        pro->set_exception(std::current_exception());
-      }
-    };
-    Exec(std::move(task));
-    return pro->get_future();
-  }
   void Exec(std::function<void()>&& f) noexcept {
-    data_->q.Push(std::move(f));
+    q_.Push(std::move(f));
 
-    std::unique_lock<std::mutex> k(data_->mtx);
-    if (!std::exchange(data_->working, true)) {
-      data_->ctx->env().ExecAsync(
-          data_->ctx, [data = data_]() { Handle(data); });
+    std::unique_lock<std::mutex> k(mtx_);
+    if (!std::exchange(working_, true)) {
+      ctx_->env().ExecAsync(
+          ctx_, [self = shared_from_this()]() { self->Handle(); });
     }
   }
-  static void Handle(const std::shared_ptr<Data>& data) noexcept {
-    std::unique_lock<std::mutex> k(data->mtx);
-    if (auto task = data->q.Pop()) {
+  void Handle() noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
+    if (auto task = q_.Pop()) {
       k.unlock();
       (*task)();
-      data->ctx->env().ExecAsync(data->ctx, [data]() { Handle(data); });
+      ctx_->env().ExecAsync(
+          ctx_, [self = shared_from_this()]() { self->Handle(); });
     } else {
-      data->working = false;
+      working_ = false;
     }
   }
 };

@@ -5,6 +5,7 @@
 
 #include "nf7.hh"
 
+#include "common/future.hh"
 #include "common/luajit_queue.hh"
 #include "common/luajit_ref.hh"
 
@@ -20,7 +21,7 @@ class Obj : public nf7::File::Interface {
   Obj& operator=(Obj&&) = delete;
 
   // result is registered to LUA_REGISTRY
-  virtual std::shared_future<std::shared_ptr<Ref>> Build() noexcept = 0;
+  virtual nf7::Future<std::shared_ptr<Ref>> Build() noexcept = 0;
 };
 
 }  // namespace nf7::luajit
