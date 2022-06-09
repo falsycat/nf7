@@ -76,14 +76,14 @@ class Env final : public nf7::Env {
     ::Env::Pop();
   }
 
-  void ExecMain(const std::shared_ptr<Context>&, Task&& task) noexcept override {
-    main_.Push(std::move(task));
+  void ExecMain(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
+    main_.Push({ctx, std::move(task)});
   }
-  void ExecSub(const std::shared_ptr<Context>&, Task&& task) noexcept override {
-    sub_.Push(std::move(task));
+  void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
+    sub_.Push({ctx, std::move(task)});
   }
-  void ExecAsync(const std::shared_ptr<Context>&, Task&& task) noexcept override {
-    async_.Push(std::move(task));
+  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
+    async_.Push({ctx, std::move(task)});
   }
 
   void Handle(const File::Event& e) noexcept override
@@ -177,9 +177,10 @@ class Env final : public nf7::Env {
   std::unordered_map<File::Id, std::vector<Watcher*>> watchers_map_;
   std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;
 
-  Queue<Task>     main_;
-  Queue<Task>     sub_;
-  WaitQueue<Task> async_;
+  using TaskItem = std::pair<std::shared_ptr<nf7::Context>, Task>;
+  Queue<TaskItem>     main_;
+  Queue<TaskItem>     sub_;
+  WaitQueue<TaskItem> async_;
 
   std::mutex               mtx_;
   std::condition_variable  cv_;
@@ -241,7 +242,7 @@ class Env final : public nf7::Env {
       // exec main tasks
       while (auto task = main_.Pop())
       try {
-        (*task)();
+        task->second();
       } catch (Exception&) {
         Panic();
       }
@@ -252,7 +253,7 @@ class Env final : public nf7::Env {
           const auto task = sub_.Pop();
           if (!task) break;
           try {
-            (*task)();
+            task->second();
           } catch (Exception&) {
             Panic();
           }
@@ -266,7 +267,7 @@ class Env final : public nf7::Env {
     while (alive_) {
       while (auto task = async_.Pop())
       try {
-        (*task)();
+        task->second();
       } catch (Exception&) {
         // TODO: how to handle?
       }
