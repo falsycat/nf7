@@ -21,6 +21,7 @@
 #include "common/luajit.hh"
 #include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
+#include "common/luajit_thread.hh"
 #include "common/logger_ref.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_nf7.hh"
@@ -148,50 +149,86 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
   bool buf_consumed_ = false;
 
 
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept
-  try {
-    auto self = shared_from_this();
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
+    try {
+      auto self = shared_from_this();
 
-    auto& srcf = *target_->src_;
-    chunkname_ = srcf.abspath().Stringify();
+      auto& srcf = *target_->src_;
+      chunkname_ = srcf.abspath().Stringify();
 
-    auto src     = srcf.interfaceOrThrow<nf7::AsyncBuffer>().self();
-    auto srclock = co_await src->AcquireLock(false).awaiter(self);
-    log_->Trace("source file lock acquired");
+      // acquire lock of source
+      auto src     = srcf.interfaceOrThrow<nf7::AsyncBuffer>().self();
+      auto srclock = co_await src->AcquireLock(false).awaiter(self);
+      log_->Trace("source file lock acquired");
 
-    buf_size_ = co_await src->size().awaiter(self);
-    if (buf_size_ == 0) {
-      throw nf7::Exception("source is empty");
+      // get size of source
+      buf_size_ = co_await src->size().awaiter(self);
+      if (buf_size_ == 0) {
+        throw nf7::Exception("source is empty");
+      }
+      if (buf_size_ > kMaxSize) {
+        throw nf7::Exception("source is too huge");
+      }
+
+      // read source
+      buf_.resize(buf_size_);
+      const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self);
+      if (read != buf_size_) {
+        throw nf7::Exception("failed to read all bytes from source");
+      }
+
+      // create thread to compile lua script
+      nf7::Future<int>::Promise lua_pro;
+      auto th = nf7::luajit::Thread::CreateForPromise<int>(lua_pro, [&](auto L) {
+        if (lua_gettop(L) != 1) {
+          throw nf7::Exception("expected one object to be returned");
+        }
+        if (auto str = lua_tostring(L, -1)) {
+          log_->Info("got '"s+str+"'");
+        } else {
+          log_->Info("got ["s+lua_typename(L, lua_type(L, -1))+"]");
+        }
+        return luaL_ref(L, LUA_REGISTRYINDEX);
+      });
+
+      // context for luajit script running
+      auto lua_ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
+      lua_ctx->description() = "luajit object build script runner";
+
+      // queue task to trigger the thread
+      auto ljq = target_->
+          ResolveUpwardOrThrow("_luajit").
+          interfaceOrThrow<nf7::luajit::Queue>().self();
+      ljq->Push(self, [&](auto L) {
+        try {
+          auto thL = th.Init(lua_ctx, ljq, L);
+          Compile(thL);
+          th.Resume(thL, 0);
+        } catch (Exception&) {
+          lua_pro.Throw(std::current_exception());
+        }
+      });
+
+      // wait for end of execution and return built object's index
+      const int idx = co_await lua_pro.future().awaiter(self);
+      log_->Trace("task finished");
+
+      // context for object cache
+      // TODO use specific Context type
+      auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
+      ctx->description() = "luajit object cache";
+
+      // return the object and cache it
+      target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
+      co_yield target_->cache_;
+
+    } catch (Exception& e) {
+      log_->Error(e.msg());
+      throw;
     }
-    if (buf_size_ > kMaxSize) {
-      throw nf7::Exception("source is too huge");
-    }
-
-    buf_.resize(buf_size_);
-    const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self);
-    if (read != buf_size_) {
-      throw nf7::Exception("failed to read all bytes from source");
-    }
-
-    nf7::Future<int>::Promise lua_pro;
-    auto ljq = target_->
-        ResolveUpwardOrThrow("_luajit").
-        interfaceOrThrow<nf7::luajit::Queue>().self();
-    ljq->Push(self, [&](auto L) { lua_pro.Wrap([&]() { return ExecLua(L); }); });
-    const int idx = co_await lua_pro.future().awaiter(self);
-    log_->Trace("task finished");
-
-    auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
-    ctx->description() = "luajit object cache";
-    target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
-    co_yield target_->cache_;
-
-  } catch (Exception& e) {
-    log_->Error(e.msg());
-    throw;
   }
 
-  int ExecLua(lua_State* L) {
+  void Compile(lua_State* L) {
     static const auto kReader = [](lua_State*, void* selfptr, size_t* size) -> const char* {
       auto self = reinterpret_cast<ExecTask*>(selfptr);
       if (std::exchange(self->buf_consumed_, true)) {
@@ -205,15 +242,6 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
     if (0 != lua_load(L, kReader, this, chunkname_.c_str())) {
       throw nf7::Exception(lua_tostring(L, -1));
     }
-    if (0 != nf7::luajit::SandboxCall(L, 0, 1)) {
-      throw nf7::Exception(lua_tostring(L, -1));
-    }
-    log_->Trace("executed lua script and got "s+lua_typename(L, lua_type(L, -1)));
-    const auto ret = luaL_ref(L, LUA_REGISTRYINDEX);
-    if (ret == LUA_REFNIL) {
-      throw nf7::Exception("got nil object");
-    }
-    return ret;
   }
 };
 

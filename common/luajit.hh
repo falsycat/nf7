@@ -5,7 +5,7 @@
 
 namespace nf7::luajit {
 
-void PushImmEnv(lua_State* L) noexcept {
+static inline void PushImmEnv(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushImmEnv")) {
     lua_createtable(L, 0, 0);
       lua_pushvalue(L, LUA_GLOBALSINDEX);
@@ -17,7 +17,7 @@ void PushImmEnv(lua_State* L) noexcept {
   }
 }
 
-int SandboxCall(lua_State* L, int narg, int nret) noexcept {
+static inline int SandboxCall(lua_State* L, int narg, int nret) noexcept {
   constexpr size_t kSandboxInstructionLimit = 10000000;
 
   static const auto kHook = [](auto L, auto) {
