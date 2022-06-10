@@ -17,6 +17,7 @@
 #include "common/future.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/generic_watcher.hh"
 #include "common/lock.hh"
 #include "common/luajit.hh"
 #include "common/luajit_obj.hh"
@@ -42,7 +43,6 @@ class Obj final : public nf7::File,
 
   static constexpr size_t kMaxSize = 1024*1024*16;  /* = 16 MiB */
 
-  class SrcWatcher;
   class ExecTask;
 
   Obj(Env& env, Path&& path = {}) noexcept :
@@ -75,8 +75,8 @@ class Obj final : public nf7::File,
  private:
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::unique_ptr<SrcWatcher> srcwatcher_;
-  std::shared_ptr<nf7::luajit::Ref> cache_;
+  std::optional<nf7::GenericWatcher> watcher_;
+  std::shared_ptr<nf7::luajit::Ref>  cache_;
 
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder exec_;
 
@@ -92,27 +92,6 @@ class Obj final : public nf7::File,
   }
 
   void Reset() noexcept;
-};
-
-class Obj::SrcWatcher final : public nf7::Env::Watcher {
- public:
-  SrcWatcher(Obj& owner, File::Id id) :
-      Watcher(owner.env()), owner_(&owner) {
-    if (owner.id() == id) throw Exception("self watch");
-    if (id == 0) throw Exception("invalid id");
-    Watch(id);
-  }
-
-  void Handle(const File::Event& ev) noexcept override {
-    if (ev.type == File::Event::kUpdate) {
-      owner_->log_->Info("detected update of source file, drops cache automatically");
-      owner_->cache_ = nullptr;
-      owner_->Touch();
-    }
-  }
-
- private:
-  Obj* const owner_;
 };
 
 class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> {
@@ -175,9 +154,28 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
         return luaL_ref(L, LUA_REGISTRYINDEX);
       });
 
-      // context for luajit script running
-      auto lua_ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
-      lua_ctx->description() = "luajit object build script runner";
+      // setup watcher
+      try {
+        *target_->src_;  // check if the src is alive
+
+        auto& w = target_->watcher_;
+        w.emplace(env());
+        w->Watch(srcf.id());
+
+        std::weak_ptr<Task> wself = self();
+        w->AddHandler(Event::kUpdate, [t = target_, wself](auto&) {
+          if (auto self = wself.lock()) {
+            t->log_->Info("detected update of source file, aborts building");
+            t->exec_ = {};
+          } else if (t->cache_) {
+            t->log_->Info("detected update of source file, drops cache automatically");
+            t->cache_ = nullptr;
+            t->Touch();
+          }
+        });
+      } catch (Exception& e) {
+        log_->Warn("watcher setup error: "+e.msg());
+      }
 
       // queue task to trigger the thread
       auto ljq = target_->
@@ -242,18 +240,12 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept {
 void Obj::Handle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
-    try {
-      log_->SetUp(*this);
-      auto ctx = std::make_shared<nf7::GenericContext>(env(), id());
-      ctx->description() = "resetting state";
-      env().ExecMain(ctx, [this]() { Reset(); });
-    } catch (Exception&) {
-    }
+    log_->SetUp(*this);
     break;
   case Event::kRemove:
-    exec_       = {};
-    cache_      = nullptr;
-    srcwatcher_ = nullptr;
+    exec_    = {};
+    cache_   = nullptr;
+    watcher_ = std::nullopt;
     log_->TearDown();
     break;
  
@@ -262,13 +254,9 @@ void Obj::Handle(const Event& ev) noexcept {
   }
 }
 void Obj::Reset() noexcept {
-  exec_  = {};
-  cache_ = nullptr;
-  try {
-    srcwatcher_ = std::make_unique<SrcWatcher>(*this, src_.id());
-  } catch (Exception&) {
-    srcwatcher_ = nullptr;
-  }
+  exec_    = {};
+  cache_   = nullptr;
+  watcher_ = std::nullopt;
 }
 
 void Obj::Update() noexcept {

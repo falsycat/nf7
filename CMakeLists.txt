@@ -56,6 +56,7 @@ target_sources(nf7
     common/generic_history.hh
     common/generic_memento.hh
     common/generic_type_info.hh
+    common/generic_watcher.hh
     common/gui_file.hh
     common/gui_node.hh
     common/gui_window.hh
