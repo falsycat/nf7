@@ -89,7 +89,7 @@ class Env final : public nf7::Env {
   void Handle(const File::Event& e) noexcept override
   try {
     // trigger File::Handle()
-    GetFile(e.id).Handle(e);
+    GetFileOrThrow(e.id).Handle(e);
 
     // trigger file watcher
     auto itr = watchers_map_.find(e.id);
@@ -128,12 +128,9 @@ class Env final : public nf7::Env {
   }
 
  protected:
-  File& GetFile(File::Id id) const override {
+  File* GetFile(File::Id id) const noexcept override {
     auto itr = files_.find(id);
-    if (itr == files_.end()) {
-      throw ExpiredException("file ("+std::to_string(id)+") is expired");
-    }
-    return *itr->second;
+    return itr != files_.end()? itr->second: nullptr;
   }
   File::Id AddFile(File& f) noexcept override {
     auto [itr, ok] = files_.emplace(file_next_++, &f);

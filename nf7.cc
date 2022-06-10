@@ -229,6 +229,11 @@ void Env::Pop() noexcept {
   env_stack_.pop_back();
 }
 
+File& Env::GetFileOrThrow(File::Id id) const {
+  if (auto ret = GetFile(id)) return *ret;
+  throw ExpiredException("file ("+std::to_string(id)+") is expired");
+}
+
 Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {
 }
 Env::Watcher::~Watcher() noexcept {

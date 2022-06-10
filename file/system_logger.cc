@@ -106,7 +106,7 @@ class Logger final : public nf7::File,
 
   std::string GetPathString(File::Id id) const noexcept
   try {
-    return env().GetFile(id).abspath().Stringify();
+    return env().GetFileOrThrow(id).abspath().Stringify();
   } catch (ExpiredException&) {
     return "[EXPIRED]";
   }

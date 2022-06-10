@@ -306,7 +306,7 @@ void Obj::Update() noexcept {
         if (path != src_.path()) {
           auto ctx  = std::make_shared<nf7::GenericContext>(env(), id());
           auto task = [this, p = std::move(path)]() mutable {
-            src_.path() = std::move(p);
+            src_ = std::move(p);
             Reset();
           };
           ctx->description() = "changing source path";

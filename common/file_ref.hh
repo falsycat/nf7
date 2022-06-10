@@ -28,18 +28,28 @@ class FileRef {
   FileRef& operator=(const FileRef&) = delete;
   FileRef& operator=(FileRef&&) = delete;
 
-  File& operator*() const
+  File& operator*()
   try {
-    return owner_->env().GetFile(id_);
+    return owner_->env().GetFileOrThrow(id_);
   } catch (ExpiredException&) {
     auto& ret = owner_->ResolveOrThrow(path_);
-    const_cast<File::Id&>(id_) = ret.id();
+    id_ = ret.id();
     return ret;
   }
 
+  FileRef& operator=(const File::Path& path) noexcept {
+    return operator=(File::Path{path});
+  }
+  FileRef& operator=(File::Path&& path) noexcept {
+    if (path_ != path) {
+      path_ = std::move(path);
+      id_   = 0;
+    }
+    return *this;
+  }
+
   const File::Path& path() const noexcept { return path_; }
-  File::Path& path() noexcept { id_ = 0; return path_; }
-  File::Id id() const { **this; return id_; }
+  File::Id id() { **this; return id_; }
 
  private:
   File* owner_;
@@ -63,13 +73,15 @@ struct serializer<
     nf7::FileRef> {
  public:
   template <typename Archive>
-  static Archive& save(Archive& ar, const nf7::FileRef& p) {
-    ar(p.path());
+  static Archive& save(Archive& ar, const nf7::FileRef& ref) {
+    ar(ref.path());
     return ar;
   }
   template <typename Archive>
-  static Archive& load(Archive& ar, nf7::FileRef& p) {
-    ar(p.path());
+  static Archive& load(Archive& ar, nf7::FileRef& ref) {
+    nf7::File::Path path;
+    ar(path);
+    ref = path;
     return ar;
   }
 };

@@ -20,7 +20,7 @@ class LoggerRef final {
   LoggerRef& operator=(const LoggerRef&) = default;
   LoggerRef& operator=(LoggerRef&&) = default;
 
-  void SetUp(nf7::File& f, std::string_view name = "_logger") {
+  void SetUp(nf7::File& f, std::string_view name = "_logger") noexcept {
     try {
       id_ = f.id();
       logger_ = f.ResolveUpwardOrThrow(name).
@@ -29,7 +29,7 @@ class LoggerRef final {
       id_ = 0;
     }
   }
-  void TearDown() {
+  void TearDown() noexcept {
     id_     = 0;
     logger_ = nullptr;
   }

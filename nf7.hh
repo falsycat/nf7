@@ -253,7 +253,8 @@ class Env {
   Env& operator=(const Env&) = delete;
   Env& operator=(Env&&) = delete;
 
-  virtual File& GetFile(File::Id) const = 0;
+  virtual File* GetFile(File::Id) const noexcept = 0;
+  File& GetFileOrThrow(File::Id) const;
 
   // all Exec*() methods are thread-safe
   using Task = std::function<void()>;
