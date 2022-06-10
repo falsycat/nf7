@@ -74,6 +74,7 @@ target_sources(nf7
     common/node_link_store.hh
     common/ptr_selector.hh
     common/queue.hh
+    common/task.hh
     common/value.hh
     common/wait_queue.hh
     common/yas_imgui.hh

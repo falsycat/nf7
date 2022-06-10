@@ -18,28 +18,28 @@
 
 namespace nf7 {
 
+// T must not be void, use std::monostate instead
 template <typename T>
 class Future final {
  public:
-  static constexpr bool kVoid = std::is_same<T, void>::value;
-
   class Promise;
   class Coro;
   class Awaiter;
 
   using Handle = std::coroutine_handle<Promise>;
-  using Return = typename std::conditional<kVoid, int, T>::type;
 
   enum State { kYet, kDone, kError, };
 
   struct Data final {
    public:
+    std::weak_ptr<nf7::Context> ctx;
+
     std::atomic<bool>   aborted = false;
     std::atomic<size_t> pros    = 0;
     std::atomic<State>  state   = kYet;
 
     std::mutex mtx;
-    std::optional<Return> value;
+    std::optional<T> value;
     std::exception_ptr exception;
     std::vector<std::function<void()>> recv;
   };
@@ -52,6 +52,9 @@ class Future final {
 
     Promise() noexcept : data_(std::make_shared<Data>()) {
       ++data_->pros;
+    }
+    Promise(const std::shared_ptr<nf7::Context>& ctx) noexcept : Promise() {
+      data_->ctx = ctx;
     }
     Promise(const Promise& src) noexcept : data_(src.data_) {
       ++data_->pros;
@@ -69,27 +72,19 @@ class Future final {
     }
 
     // thread-safe
-    auto Wrap(const std::function<T()>& f) noexcept requires(!kVoid)
+    auto Wrap(const std::function<T()>& f) noexcept
     try {
       Return(f());
     } catch (Exception&) {
       Throw(std::current_exception());
     }
     // thread-safe
-    auto Return(T&& v) requires(!kVoid) {
+    auto Return(T&& v) {
       std::unique_lock<std::mutex> k(data_->mtx);
       if (data_->state == kYet) {
         data_->state = kDone;
         data_->value = std::move(v);
-        for (auto recv : data_->recv) recv();
-      }
-    }
-    // thread-safe
-    auto Return(int = 0) requires(kVoid) {
-      std::unique_lock<std::mutex> k(data_->mtx);
-      if (data_->state == kYet) {
-        data_->state = kDone;
-        for (auto recv : data_->recv) recv();
+        CallReceivers();
       }
     }
     // thread-safe
@@ -98,7 +93,7 @@ class Future final {
       if (data_->state == kYet) {
         data_->exception = e;
         data_->state     = kError;
-        for (auto recv : data_->recv) recv();
+        CallReceivers();
       }
     }
 
@@ -116,17 +111,19 @@ class Future final {
     auto final_suspend() const noexcept {
       return std::suspend_always();
     }
-    auto yield_value(const T& v) requires(!kVoid) {
+    auto yield_value(const T& v) {
       Return(T(v));
       return std::suspend_never();
     }
-    auto yield_value(T&& v) requires(!kVoid) {
+    auto yield_value(T&& v) {
       Return(std::move(v));
       return std::suspend_never();
     }
-    auto return_void() {
-      if constexpr (kVoid) Return();
-      return std::suspend_never();
+    auto return_value(const T& v) {
+      Return(T(v));
+    }
+    auto return_value(T&& v) {
+      Return(std::move(v));
     }
     auto unhandled_exception() noexcept {
       Throw(std::current_exception());
@@ -134,6 +131,11 @@ class Future final {
 
    private:
     std::shared_ptr<Data> data_;
+
+    void CallReceivers() noexcept {
+      for (auto recv : data_->recv) recv();
+      data_->recv.clear();
+    }
   };
   class Coro final {
    public:
@@ -156,12 +158,15 @@ class Future final {
     }
     Future Start(const std::shared_ptr<nf7::Context>& ctx) noexcept {
       ctx->env().ExecSub(ctx, [ctx, h = h_]() { h.resume(); });
+      data_->ctx = ctx;
       return Future(data_);
     }
-    void Abort(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    void Abort() noexcept {
       h_.promise().Throw(
           std::make_exception_ptr<nf7::Exception>({"coroutine aborted"}));
       data_->aborted = true;
+
+      auto ctx = data_->ctx.lock();
       ctx->env().ExecSub(ctx, [h = h_]() { h.destroy(); });
     }
 
@@ -187,10 +192,13 @@ class Future final {
     void await_suspend(std::coroutine_handle<U> caller) const noexcept {
       static_assert(U::kThisIsNf7FuturePromise, "illegal coroutine");
       assert(fu_->data_);
+      auto& data = *fu_->data_;
 
-      std::unique_lock<std::mutex> k(fu_->data_->mtx);
+      std::unique_lock<std::mutex> k(data.mtx);
       if (fu_->yet()) {
-        fu_->data_->recv.push_back([caller, ctx = ctx_]() {
+        auto ctx = data.ctx.lock();
+        assert(ctx);
+        data.recv.push_back([caller, ctx]() {
           ctx->env().ExecSub(ctx, [caller]() {
             if (!caller.promise().data_->aborted) caller.resume();
           });
@@ -201,29 +209,7 @@ class Future final {
       }
     }
     auto await_resume() const {
-      if constexpr (!kVoid) {
-        if (std::holds_alternative<Return>(fu_->imm_)) {
-          return std::move(std::get<Return>(fu_->imm_));
-        }
-      }
-      if (std::holds_alternative<std::exception_ptr>(fu_->imm_)) {
-        std::rethrow_exception(std::get<std::exception_ptr>(fu_->imm_));
-      }
-
-      assert(fu_->data_);
-      switch (fu_->data_->state) {
-      case kDone:
-        if constexpr (kVoid) {
-          return;
-        } else {
-          return std::move(*fu_->data_->value);
-        }
-      case kError:
-        std::rethrow_exception(fu_->data_->exception);
-      default:
-        assert(false);
-        throw 0;
-      }
+      return fu_->value();
     }
 
    private:
@@ -231,25 +217,72 @@ class Future final {
     std::shared_ptr<nf7::Context> ctx_;
   };
 
-  Future() = delete;
-  template <typename U=T> requires (!kVoid)
-  Future(T&& v) noexcept : imm_(std::move(v)) {
+  Future(const T& v) noexcept : imm_({v}) {
   }
-  Future(std::exception_ptr e) noexcept : imm_(e) {
+  Future(T&& v) noexcept : imm_({std::move(v)}) {
+  }
+  Future(std::exception_ptr e) noexcept : imm_({e}) {
   }
   Future(const Future&) = default;
   Future(Future&&) = default;
   Future& operator=(const Future&) = default;
   Future& operator=(Future&&) = default;
 
+  Future& Then(std::function<void(Future)>&& f) noexcept {
+    if (data_) {
+      std::unique_lock<std::mutex> k(data_->mtx);
+      if (yet()) {
+        data_->recv.push_back(
+            [d = data_, f = std::move(f)]() { f(Future(d)); });
+        return *this;
+      }
+    }
+    f(*this);
+    return *this;
+  }
+  Future& ThenSub(const std::shared_ptr<nf7::Context>& ctx,
+                  std::function<void(Future)>&&        f) noexcept {
+    if (data_) {
+      std::unique_lock<std::mutex> k(data_->mtx);
+      if (yet()) {
+        data_->recv.push_back([d = data_, ctx, f = std::move(f)]() {
+          ctx->env().ExecSub(ctx, std::bind(f, Future(d)));
+        });
+        return *this;
+      }
+    }
+    ctx->env().ExecSub(ctx, std::bind(f, Future(data_)));
+    return *this;
+  }
+
+  auto& value() {
+    if (imm_) {
+      if (std::holds_alternative<T>(*imm_)) return std::get<T>(*imm_);
+      std::rethrow_exception(std::get<std::exception_ptr>(*imm_));
+    }
+
+    assert(data_);
+    switch (data_->state) {
+    case kYet:
+      assert(false);
+      break;
+    case kDone:
+      return *data_->value;
+    case kError:
+      std::rethrow_exception(data_->exception);
+    }
+    throw 0;
+  }
+
   bool yet() const noexcept {
-    return std::holds_alternative<std::monostate>(imm_) && data_->state == kYet;
+    return !imm_ && data_->state == kYet;
   }
   bool done() const noexcept {
-    return std::holds_alternative<Return>(imm_) || data_->state == kDone;
+    return (imm_ && std::holds_alternative<T>(*imm_)) || data_->state == kDone;
   }
   bool error() const noexcept {
-    return std::holds_alternative<std::exception_ptr>(imm_) || data_->state == kError;
+    return (imm_ && std::holds_alternative<std::exception_ptr>(*imm_)) ||
+        data_->state == kError;
   }
 
   Awaiter awaiter(const std::shared_ptr<nf7::Context>& ctx) noexcept {
@@ -257,7 +290,7 @@ class Future final {
   }
 
  private:
-  std::variant<std::monostate, Return, std::exception_ptr> imm_;
+  std::optional<std::variant<T, std::exception_ptr>> imm_;
   std::shared_ptr<Data> data_;
 
   Future(const std::shared_ptr<Data>& data) noexcept : data_(data) { }

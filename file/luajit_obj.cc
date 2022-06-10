@@ -24,6 +24,7 @@
 #include "common/luajit_thread.hh"
 #include "common/logger_ref.hh"
 #include "common/ptr_selector.hh"
+#include "common/task.hh"
 #include "common/yas_nf7.hh"
 
 
@@ -68,7 +69,7 @@ class Obj final : public nf7::File,
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::luajit::Queue>(t).Select(this);
+    return nf7::InterfaceSelector<nf7::DirItem, nf7::luajit::Obj>(t).Select(this);
   }
 
  private:
@@ -77,7 +78,7 @@ class Obj final : public nf7::File,
   std::unique_ptr<SrcWatcher> srcwatcher_;
   std::shared_ptr<nf7::luajit::Ref> cache_;
 
-  std::weak_ptr<ExecTask> exec_;
+  nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder exec_;
 
   const char* popup_ = nullptr;
 
@@ -114,34 +115,19 @@ class Obj::SrcWatcher final : public nf7::Env::Watcher {
   Obj* const owner_;
 };
 
-class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_this<ExecTask> {
+class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> {
  public:
-  using Context::Context;
-
-  ExecTask(Obj& target) :
-      Context(target.env(), target.id()),
-      target_(&target), log_(target_->log_),
-      coro_(Proc()) {
+  ExecTask(Obj& target) noexcept :
+      Task(target.env(), target.id()), target_(&target), log_(target_->log_) {
   }
 
-  void Start() noexcept {
-    fu_ = coro_.Start(shared_from_this());
-  }
-  void Abort() noexcept override {
-    coro_.Abort(shared_from_this());
-  }
   size_t GetMemoryUsage() const noexcept override {
     return buf_size_;
   }
 
-  auto fu() noexcept { return *fu_; }
-
  private:
   Obj* target_;
   std::shared_ptr<nf7::LoggerRef> log_;
-
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro          coro_;
-  std::optional<nf7::Future<std::shared_ptr<nf7::luajit::Ref>>> fu_;
 
   std::string chunkname_;
   std::atomic<size_t> buf_size_ = 0;
@@ -149,20 +135,18 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
   bool buf_consumed_ = false;
 
 
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept override {
     try {
-      auto self = shared_from_this();
-
       auto& srcf = *target_->src_;
       chunkname_ = srcf.abspath().Stringify();
 
       // acquire lock of source
       auto src     = srcf.interfaceOrThrow<nf7::AsyncBuffer>().self();
-      auto srclock = co_await src->AcquireLock(false).awaiter(self);
+      auto srclock = co_await src->AcquireLock(false).awaiter(self());
       log_->Trace("source file lock acquired");
 
       // get size of source
-      buf_size_ = co_await src->size().awaiter(self);
+      buf_size_ = co_await src->size().awaiter(self());
       if (buf_size_ == 0) {
         throw nf7::Exception("source is empty");
       }
@@ -172,13 +156,13 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
 
       // read source
       buf_.resize(buf_size_);
-      const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self);
+      const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self());
       if (read != buf_size_) {
         throw nf7::Exception("failed to read all bytes from source");
       }
 
       // create thread to compile lua script
-      nf7::Future<int>::Promise lua_pro;
+      nf7::Future<int>::Promise lua_pro(self());
       auto th = nf7::luajit::Thread::CreateForPromise<int>(lua_pro, [&](auto L) {
         if (lua_gettop(L) != 1) {
           throw nf7::Exception("expected one object to be returned");
@@ -199,9 +183,9 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
       auto ljq = target_->
           ResolveUpwardOrThrow("_luajit").
           interfaceOrThrow<nf7::luajit::Queue>().self();
-      ljq->Push(self, [&](auto L) {
+      ljq->Push(self(), [&](auto L) {
         try {
-          auto thL = th.Init(lua_ctx, ljq, L);
+          auto thL = th.Init(self(), ljq, L);
           Compile(thL);
           th.Resume(thL, 0);
         } catch (Exception&) {
@@ -210,7 +194,7 @@ class Obj::ExecTask final : public nf7::Context, public std::enable_shared_from_
       });
 
       // wait for end of execution and return built object's index
-      const int idx = co_await lua_pro.future().awaiter(self);
+      const int idx = co_await lua_pro.future().awaiter(self());
       log_->Trace("task finished");
 
       // context for object cache
@@ -252,7 +236,7 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept {
 
   auto exec = std::make_shared<ExecTask>(*this);
   exec->Start();
-  exec_ = exec;
+  exec_ = {exec};
   return exec->fu();
 }
 void Obj::Handle(const Event& ev) noexcept {
@@ -267,8 +251,7 @@ void Obj::Handle(const Event& ev) noexcept {
     }
     break;
   case Event::kRemove:
-    if (auto exec = exec_.lock()) exec->Abort();
-    exec_ = {};
+    exec_       = {};
     cache_      = nullptr;
     srcwatcher_ = nullptr;
     log_->TearDown();
@@ -279,7 +262,6 @@ void Obj::Handle(const Event& ev) noexcept {
   }
 }
 void Obj::Reset() noexcept {
-  if (auto exec = exec_.lock()) exec->Abort();
   exec_  = {};
   cache_ = nullptr;
   try {
@@ -344,7 +326,7 @@ void Obj::UpdateMenu() noexcept {
     Build();
   }
   if (ImGui::MenuItem("drop cache", nullptr, nullptr, !!cache_)) {
-    cache_ = nullptr;
+    Reset();
   }
 }
 void Obj::UpdateTooltip() noexcept {
