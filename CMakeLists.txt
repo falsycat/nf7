@@ -86,6 +86,7 @@ target_sources(nf7
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 
     file/luajit_context.cc
+    file/luajit_node.cc
     file/luajit_obj.cc
     file/node_network.cc
     file/system_dir.cc

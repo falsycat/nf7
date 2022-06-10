@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <typeinfo>
+#include <variant>
 #include <vector>
 
 #include <imgui.h>
@@ -16,12 +18,19 @@
 #include "common/file_ref.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/generic_watcher.hh"
+#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
 #include "common/luajit_ref.hh"
+#include "common/luajit_thread.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
+#include "common/task.hh"
+
+
+using namespace std::literals;
 
 
 namespace nf7 {
@@ -31,6 +40,9 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Node> kType =
       {"LuaJIT/Node", {"DirItem",}};
+
+  class FetchTask;
+  class Lambda;
 
   Node(Env& env, File::Path&& path = {}, std::string_view desc = "",
        std::vector<std::string>&& in  = {},
@@ -65,9 +77,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
         std::vector<std::string>(input_), std::vector<std::string>(output_));
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override {
-    return nullptr;  // TODO
-  }
+  std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -82,8 +92,10 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
  private:
   std::shared_ptr<nf7::LoggerRef> log_;
+  std::optional<nf7::GenericWatcher> watcher_;
 
   std::shared_ptr<nf7::luajit::Ref> handler_;
+  nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
 
   const char* popup_ = nullptr;
 
@@ -92,27 +104,12 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   std::string  desc_;
 
 
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept
-  try {
-    if (handler_) return {handler_};
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept;
 
-    auto ctx = std::make_shared<nf7::GenericContext>(*this, "fetching handler");
-    return (*obj_).interfaceOrThrow<nf7::luajit::Obj>().Build().
-        ThenSub(ctx, [this, &env = env(), id = id(), log = log_](auto fu) {
-          try {
-            if (!env.GetFile(id)) return;
-            handler_ = fu.value();
-          } catch (nf7::Exception& e) {
-            log->Error(e.msg());
-          }
-        });
-  } catch (nf7::Exception& e) {
-    log_->Error(e.msg());
-    return std::current_exception();
-  }
-  void Touch() noexcept {
-    if (!id()) return;
-    env().Handle({.id = id(), .type = Event::kUpdate});
+  void DropHandler() noexcept {
+    watcher_ = std::nullopt;
+    handler_ = nullptr;
+    fetch_   = {};
   }
 
   static void Join(std::string& str, const std::vector<std::string>& vec) noexcept {
@@ -132,6 +129,140 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 };
 
+class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> {
+ public:
+  FetchTask(Node& target) noexcept :
+      Task(target.env(), target.id()), target_(&target), log_(target_->log_) {
+  }
+
+ private:
+  Node* const target_;
+  std::shared_ptr<nf7::LoggerRef> log_;
+
+
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
+    auto& objf    = *target_->obj_;
+    auto& obj     = objf.interfaceOrThrow<nf7::luajit::Obj>();
+    auto  handler = co_await obj.Build().awaiter(self());
+    co_yield handler;
+
+    try {
+      *target_->obj_;  // checks if objf is alive
+
+      target_->handler_ = handler;
+
+      auto& w = target_->watcher_;
+      w.emplace(env());
+      w->Watch(objf.id());
+      w->AddHandler(Event::kUpdate, [t = target_](auto&) {
+        if (t->handler_) {
+          t->log_->Info("detected update of handler object, drops cache");
+          t->handler_ = nullptr;
+        }
+      });
+    } catch (Exception& e) {
+      log_->Error("watcher setup failure: "+e.msg());
+    }
+  }
+};
+
+class Node::Lambda final : public nf7::Lambda,
+    public std::enable_shared_from_this<Node::Lambda> {
+ public:
+  Lambda(Node& owner) noexcept : nf7::Lambda(owner),
+      log_(owner.log_), handler_(owner.FetchHandler()) {
+  }
+
+  void Init(const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
+    auto self = shared_from_this();
+    handler_.ThenSub(self, [self, parent](auto) {
+      self->CallHandler(std::nullopt, parent);
+    });
+  }
+  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept {
+    auto self = shared_from_this();
+    handler_.ThenSub(self, [self, idx, v = std::move(v), caller](auto) mutable {
+      self->CallHandler({{idx, std::move(v)}}, caller);
+    });
+  }
+  void Abort() noexcept override {
+    for (auto& wth : th_) {
+      if (auto th = wth.lock()) th->Abort();
+    }
+  }
+
+ private:
+  std::shared_ptr<nf7::LoggerRef> log_;
+
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> handler_;
+  std::shared_ptr<nf7::luajit::Queue>            ljq_;
+
+  std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
+
+
+  using Param = std::pair<size_t, nf7::Value>;
+  void CallHandler(std::optional<Param>&& p, const std::shared_ptr<nf7::Lambda>& caller) noexcept
+  try {
+    auto self = shared_from_this();
+    th_.erase(
+        std::remove_if(th_.begin(), th_.end(), [](auto& x) { return x.expired(); }),
+        th_.end());
+
+    auto handler = handler_.value();
+    ljq_ = handler->ljq();
+
+    auto th = std::make_shared<nf7::luajit::Thread>(
+        [self](auto& th, auto L) { self->HandleThread(th, L); });
+    th_.emplace_back(th);
+
+    ljq_->Push(self, [self, p = std::move(p), caller, handler, ljq = ljq_, th](auto L) mutable {
+      auto thL = th->Init(self, ljq, L);
+      lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
+      if (p) {
+        lua_pushinteger(thL, static_cast<lua_Integer>(p->first));
+        (void) p->second; lua_pushnil(thL);  // TODO
+      } else {
+        lua_pushnil(thL);
+        lua_pushnil(thL);
+      }
+      (void) caller; lua_pushnil(thL);  // TODO
+      th->Resume(thL, 3);
+    });
+  } catch (nf7::Exception& e) {
+    log_->Error("failed to call handler: "+e.msg());
+  }
+
+  void HandleThread(nf7::luajit::Thread& th, lua_State* L) noexcept {
+    switch (th.state()) {
+    case nf7::luajit::Thread::kFinished:
+      return;
+
+    case nf7::luajit::Thread::kPaused:
+      log_->Warn("unexpected yield");
+      ljq_->Push(shared_from_this(),
+                [th = th.shared_from_this(), L](auto) { th->Resume(L, 0); });
+      return;
+
+    default:
+      log_->Warn("luajit execution error: "s+lua_tostring(L, -1));
+      return;
+    }
+  }
+};
+
+
+std::shared_ptr<nf7::Lambda> Node::CreateLambda() noexcept {
+  return std::make_shared<Node::Lambda>(*this);
+}
+nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
+  if (handler_) return handler_;
+  if (auto fetch = fetch_.lock()) return fetch->fu();
+
+  auto fetch = std::make_shared<FetchTask>(*this);
+  fetch->Start();
+  fetch_ = {fetch};
+  return fetch->fu();
+}
 
 void Node::Handle(const Event& ev) noexcept {
   switch (ev.type) {
@@ -232,6 +363,9 @@ void Node::UpdateMenu() noexcept {
   ImGui::Separator();
   if (ImGui::MenuItem("try fetch handler")) {
     FetchHandler();
+  }
+  if (ImGui::MenuItem("drop cached handler")) {
+    DropHandler();
   }
 }
 void Node::UpdateTooltip() noexcept {
