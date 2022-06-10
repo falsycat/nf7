@@ -86,11 +86,6 @@ class Obj final : public nf7::File,
   nf7::FileRef src_;
 
 
-  void Touch() noexcept {
-    if (!id()) return;
-    env().Handle({.id = id(), .type = Event::kUpdate});
-  }
-
   void Reset() noexcept;
 };
 

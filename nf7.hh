@@ -117,6 +117,9 @@ class File {
   File* parent() const noexcept { return parent_; }
   const std::string& name() const noexcept { return name_; }
 
+ protected:
+  void Touch() noexcept;
+
  private:
   const TypeInfo* const type_;
   Env* const env_;

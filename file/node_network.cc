@@ -153,9 +153,6 @@ class Network final : public nf7::File,
         std::make_shared<nf7::GenericContext>(*this, "applying command to redo"),
         [this]() { history_.ReDo(); });
   }
-  void Touch() {
-    env().Handle({ .id = id(), .type = Event::kUpdate, });
-  }
 
   void QueueCommand(const std::shared_ptr<nf7::Context>& ctx,
                     std::unique_ptr<History::Command>&&  cmd) noexcept {

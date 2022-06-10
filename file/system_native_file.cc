@@ -98,9 +98,6 @@ class NativeFile final : public File,
         nf7::NativeFile>(*this, env().npath()/npath_, flags, exlock);
     buf_ = std::make_shared<nf7::AsyncBufferAdaptor>(buf, buf);
   }
-  void Touch() noexcept {
-    env().Handle({.id = id(), .type = Event::kUpdate,});
-  }
 };
 
 void NativeFile::Update() noexcept {

@@ -142,6 +142,10 @@ File& File::ancestorOrThrow(size_t dist) const {
   if (!f) throw NotFoundException("cannot go up over the root");
   return const_cast<File&>(*f);
 }
+void File::Touch() noexcept {
+  if (!id()) return;
+  env().Handle({.id = id(), .type = Event::kUpdate});
+}
 
 File::TypeInfo::TypeInfo(const std::string& name,
                          std::unordered_set<std::string>&& flags) noexcept :
