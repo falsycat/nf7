@@ -208,6 +208,8 @@ void File::Path::Validate() const {
   for (const auto& term : terms_) ValidateTerm(term);
 }
 
+Context::Context(File& f) noexcept : Context(f.env(), f.id()) {
+}
 Context::Context(Env& env, File::Id initiator) noexcept :
     env_(&env), initiator_(initiator) {
   env_->AddContext(*this);

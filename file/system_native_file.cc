@@ -149,8 +149,7 @@ void NativeFile::Update() noexcept {
       if (flag_readable)  mode_ += 'r';
       if (flag_writeable) mode_ += 'w';
 
-      auto ctx = std::make_shared<nf7::GenericContext>(env(), id());
-      ctx->description() = "resetting native file handle";
+      auto ctx = std::make_shared<nf7::GenericContext>(*this, "resetting native file handle");
       env().ExecMain(ctx, [this]() { Reset(); Touch(); });
     }
 

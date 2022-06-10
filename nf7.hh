@@ -212,6 +212,7 @@ class File::NotImplementedException : public Exception {
 class Context {
  public:
   Context() = delete;
+  Context(File&) noexcept;
   Context(Env&, File::Id) noexcept;
   virtual ~Context() noexcept;
 

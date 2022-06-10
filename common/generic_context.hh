@@ -12,7 +12,12 @@ namespace nf7 {
 
 class GenericContext : public Context {
  public:
-  using Context::Context;
+  GenericContext(Env& env, File::Id id, std::string_view desc = "") noexcept :
+      Context(env, id), desc_(desc) {
+  }
+  GenericContext(File& f, std::string_view desc = "") noexcept :
+      GenericContext(f.env(), f.id(), desc) {
+  }
 
   void CleanUp() noexcept override {
   }

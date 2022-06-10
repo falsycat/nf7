@@ -197,8 +197,7 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
 
       // context for object cache
       // TODO use specific Context type
-      auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
-      ctx->description() = "luajit object cache";
+      auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator(), "luajit object cache");
 
       // return the object and cache it
       target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
@@ -292,12 +291,12 @@ void Obj::Update() noexcept {
         ImGui::CloseCurrentPopup();
 
         if (path != src_.path()) {
-          auto ctx  = std::make_shared<nf7::GenericContext>(env(), id());
           auto task = [this, p = std::move(path)]() mutable {
             src_ = std::move(p);
             Reset();
           };
-          ctx->description() = "changing source path";
+          auto ctx = std::make_shared<
+              nf7::GenericContext>(*this, "changing source path");
           env().ExecMain(ctx, std::move(task));
         }
       }

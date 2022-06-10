@@ -142,9 +142,7 @@ void Dir::Update() noexcept {
             {"File_Factory", "DirItem"});
     ImGui::TextUnformatted("System/Dir: adding new file...");
     if (p.Update(*this)) {
-      auto ctx = std::make_shared<GenericContext>(env(), id());
-      ctx->description() = "adding new file on "+abspath().Stringify();
-
+      auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new item");
       auto task = [this, name = p.name(), &type = p.type()]() {
         Add(name, type.Create(env()));
       };
@@ -195,9 +193,7 @@ void Dir::Update() noexcept {
     if (submit) {
       ImGui::CloseCurrentPopup();
 
-      auto ctx = std::make_shared<GenericContext>(env(), id());
-      ctx->description() = "renaming an item on "+abspath().Stringify();
-
+      auto ctx  = std::make_shared<nf7::GenericContext>(*this, "renaming item");
       auto task = [this, before = std::move(rename_target_), after = std::move(new_name)]() {
         auto f = Remove(before);
         if (!f) throw Exception("missing target");
@@ -264,8 +260,7 @@ void Dir::UpdateTree() noexcept {
       }
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
-        auto ctx = std::make_shared<GenericContext>(env(), id());
-        ctx->description() = "removing file on "+abspath().Stringify();
+        auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing item");
         env().ExecMain(ctx, [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {

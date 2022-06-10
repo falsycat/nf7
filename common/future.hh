@@ -151,11 +151,6 @@ class Future final {
     Coro& operator=(const Coro&) = delete;
     Coro& operator=(Coro&&) = default;
 
-    Future Start(File& f, std::string_view desc) noexcept {
-      auto ctx = std::make_shared<nf7::GenericContext>(f.env(), f.id());
-      ctx->description() = desc;
-      return Start(ctx);
-    }
     Future Start(const std::shared_ptr<nf7::Context>& ctx) noexcept {
       ctx->env().ExecSub(ctx, [ctx, h = h_]() { h.resume(); });
       data_->ctx = ctx;
