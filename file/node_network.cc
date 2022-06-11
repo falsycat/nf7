@@ -278,10 +278,11 @@ class Network::Item::Watcher final : public nf7::Env::Watcher {
   void Handle(const nf7::File::Event&) noexcept override;
 };
 
-class Network::ExecutionLambda : public nf7::Lambda {
+class Network::ExecutionLambda : public nf7::Lambda,
+    public std::enable_shared_from_this<ExecutionLambda> {
  public:
   ExecutionLambda(Network& owner, const std::shared_ptr<nf7::Lambda>& outer = nullptr) noexcept :
-      Lambda(owner.env(), owner.id()), outer_(outer) {
+      Lambda(owner), outer_(outer) {
     // create sub lambdas
     std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> lmap;
     subs_.reserve(owner.items_.size());
@@ -314,19 +315,17 @@ class Network::ExecutionLambda : public nf7::Lambda {
     }
   }
 
-  void Initialize(const std::shared_ptr<nf7::Lambda>& self) override {
-    nf7::Lambda::Initialize(self);
-
+  void Init(const std::shared_ptr<nf7::Lambda>&) noexcept override {
     for (const auto& lambda : input_handlers_) {
-      lambda->Initialize(lambda);
+      lambda->Init(shared_from_this());
     }
     for (auto& sub : subs_) {
-      sub.second.lambda->Initialize(sub.second.lambda);
+      sub.second.lambda->Init(shared_from_this());
     }
   }
-  void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& sender) override {
+  void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& sender) noexcept override {
     if(abort_) return;
-    auto task = [this, self = self(), idx, v = std::move(v), sender]() {
+    auto task = [this, self = shared_from_this(), idx, v = std::move(v), sender]() {
       if (sender == outer_) {
         for (const auto& sub_lambda : input_handlers_) {
           Send(sub_lambda, idx, Value(v));
@@ -342,7 +341,7 @@ class Network::ExecutionLambda : public nf7::Lambda {
         }
       }
     };
-    env().ExecSub(self(), std::move(task));
+    env().ExecSub(shared_from_this(), std::move(task));
   }
 
   void CleanUp() noexcept override {
@@ -369,7 +368,7 @@ class Network::ExecutionLambda : public nf7::Lambda {
  protected:
   virtual void Send(const std::shared_ptr<nf7::Lambda>& target,
                     size_t idx, Value&& v) noexcept {
-    target->Handle(idx, std::move(v), self());
+    target->Handle(idx, std::move(v), shared_from_this());
     // TODO: use task queue
   }
 
@@ -700,14 +699,15 @@ class Network::Input final : public Network::InputOrOutput,
 
   std::shared_ptr<nf7::Lambda> CreateLambdaForOuterInput() noexcept override
   try {
-    class Emitter final : public nf7::Lambda {
+    class Emitter final : public nf7::Lambda,
+        public std::enable_shared_from_this<Emitter> {
      public:
       Emitter(Input& owner, size_t idx) noexcept :
           Lambda(owner.env(), owner.id()), idx_(idx) {
       }
       void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& recv) noexcept override {
         if (idx != idx_) return;
-        recv->Handle(0, std::move(v), self());
+        recv->Handle(0, std::move(v), shared_from_this());
       }
       std::string GetDescription() const noexcept override {
         return "initiates other nodes on Node/Network";
@@ -764,7 +764,7 @@ class Network::Output final : public Network::InputOrOutput,
       Emitter(Output& owner, size_t idx) noexcept :
           Lambda(owner.env(), owner.id()), idx_(idx) {
       }
-      void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& recv) {
+      void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& recv) noexcept override {
         if (idx != 0) return;
 
         auto exec = std::dynamic_pointer_cast<Network::ExecutionLambda>(recv);
