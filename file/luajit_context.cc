@@ -12,7 +12,7 @@
 #include "common/generic_type_info.hh"
 #include "common/luajit_queue.hh"
 #include "common/ptr_selector.hh"
-#include "common/wait_queue.hh"
+#include "common/queue.hh"
 
 
 namespace nf7 {
@@ -25,9 +25,12 @@ class LuaContext final : public nf7::File,
 
   class Thread;
 
-  LuaContext(Env& env) noexcept :
+  LuaContext(Env& env) noexcept
+  try :
       File(kType, env), DirItem(DirItem::kTooltip),
-      th_(std::make_shared<Thread>()) {
+      th_(std::make_shared<Thread>(env)) {
+  } catch (nf7::Exception&) {
+    // Thread construction failure (ignore it)
   }
 
   LuaContext(Env& env, Deserializer&) noexcept : LuaContext(env) {
@@ -52,55 +55,61 @@ class LuaContext final : public nf7::File,
 class LuaContext::Thread final : public nf7::luajit::Queue,
     public std::enable_shared_from_this<Thread> {
  public:
-  Thread() noexcept : th_([this]() { Main(); }) {
+  Thread() = delete;
+  Thread(Env& env) : L(luaL_newstate()), env_(&env) {
+    if (!L) throw nf7::Exception("failed to create new Lua state");
   }
   ~Thread() noexcept {
-    alive_ = false;
-    q_.Notify();
-    th_.join();
+    lua_close(L);
   }
+  Thread(const Thread&) = delete;
+  Thread(Thread&&) = delete;
+  Thread& operator=(const Thread&) = delete;
+  Thread& operator=(Thread&&) = delete;
 
-  void Push(const std::shared_ptr<nf7::Context>&,
+  void Push(const std::shared_ptr<nf7::Context>& ctx,
             std::function<void(lua_State*)>&& f) noexcept override {
-    q_.Push(std::move(f));
+    q_.Push({ctx, std::move(f)});
+    Handle();
   }
 
   std::shared_ptr<Queue> self() noexcept override { return shared_from_this(); }
 
   size_t tasksDone() const noexcept { return tasks_done_; }
-  bool alive() const noexcept { return alive_; }
 
  private:
-  std::thread th_;
-  std::atomic<bool> alive_ = true;
+  lua_State* L;
+  Env* const env_;
 
-  std::atomic<size_t> tasks_done_;
+  using Pair = std::pair<std::shared_ptr<nf7::Context>, std::function<void(lua_State*)>>;
+  nf7::Queue<Pair> q_;
 
-  nf7::WaitQueue<std::function<void(lua_State*)>> q_;
+  std::mutex mtx_;
+  bool working_ = false;
+
+  std::atomic<size_t> tasks_done_ = 0;
 
 
-  void Main() noexcept {
-    lua_State* L = luaL_newstate();
-    if (!L) {
-      alive_ = false;
-      return;
-    }
-    bool alive = true;
-    while (std::exchange(alive, alive_)) {
-      while (auto task = q_.Pop()) {
-        lua_settop(L, 0);
-        (*task)(L);
+  void Handle() {
+    std::unique_lock<std::mutex> k(mtx_);
+    working_ = true;
+
+    if (auto p = q_.Pop()) {
+      k.unlock();
+      env_->ExecAsync(p->first, [this, self = self(), f = std::move(p->second)]() {
+        f(L);
         ++tasks_done_;
-      }
-      if (alive_) q_.Wait();
+        Handle();
+      });
+    } else {
+      working_ = false;
     }
-    lua_close(L);
   }
 };
 
 void LuaContext::UpdateTooltip() noexcept {
   ImGui::Text("tasks done: %zu", static_cast<size_t>(th_->tasksDone()));
-  if (th_->alive()) {
+  if (th_) {
     ImGui::TextDisabled("LuaJIT thread is running normally");
   } else {
     ImGui::TextUnformatted("LuaJIT thread is **ABORTED**");
