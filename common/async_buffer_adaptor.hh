@@ -24,21 +24,21 @@ class AsyncBufferAdaptor final :
   }
 
   nf7::Future<size_t> Read(size_t offset, uint8_t* ptr, size_t size) noexcept override {
-    nf7::Future<size_t>::Promise pro;
+    nf7::Future<size_t>::Promise pro(ctx_);
     Exec([pro, buf = buf_, offset, ptr, size]() mutable {
       pro.Wrap([&]() { return buf->Read(offset, ptr, size); });
     });
     return pro.future();
   }
   nf7::Future<size_t> Write(size_t offset, const uint8_t* ptr, size_t size) noexcept override {
-    nf7::Future<size_t>::Promise pro;
+    nf7::Future<size_t>::Promise pro(ctx_);
     Exec([pro, buf = buf_, offset, ptr, size]() mutable {
       pro.Wrap([&]() { return buf->Write(offset, ptr, size); });
     });
     return pro.future();
   }
   nf7::Future<size_t> Truncate(size_t size) noexcept override {
-    nf7::Future<size_t>::Promise pro;
+    nf7::Future<size_t>::Promise pro(ctx_);
     Exec([pro, buf = buf_, size]() mutable {
       pro.Wrap([&]() { return buf->Truncate(size); });
     });
@@ -46,7 +46,7 @@ class AsyncBufferAdaptor final :
   }
 
   nf7::Future<size_t> size() const noexcept override {
-    nf7::Future<size_t>::Promise pro;
+    nf7::Future<size_t>::Promise pro(ctx_);
     const_cast<AsyncBufferAdaptor&>(*this).Exec([pro, buf = buf_]() mutable {
       pro.Wrap([&]() { return buf->size(); });
     });

@@ -140,10 +140,11 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
   std::shared_ptr<nf7::LoggerRef> log_;
 
 
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept
+  try {
     auto& objf    = *target_->obj_;
     auto& obj     = objf.interfaceOrThrow<nf7::luajit::Obj>();
-    auto  handler = co_await obj.Build().awaiter(self());
+    auto  handler = co_await obj.Build();
     co_yield handler;
 
     try {
@@ -163,6 +164,8 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
     } catch (Exception& e) {
       log_->Error("watcher setup failure: "+e.msg());
     }
+  } catch (Exception& e) {
+    log_->Error("fetch failure: "+e.msg());
   }
 };
 

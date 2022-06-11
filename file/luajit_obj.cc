@@ -116,11 +116,11 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
 
       // acquire lock of source
       auto src     = srcf.interfaceOrThrow<nf7::AsyncBuffer>().self();
-      auto srclock = co_await src->AcquireLock(false).awaiter(self());
+      auto srclock = co_await src->AcquireLock(false);
       log_->Trace("source file lock acquired");
 
       // get size of source
-      buf_size_ = co_await src->size().awaiter(self());
+      buf_size_ = co_await src->size();
       if (buf_size_ == 0) {
         throw nf7::Exception("source is empty");
       }
@@ -130,7 +130,7 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
 
       // read source
       buf_.resize(buf_size_);
-      const size_t read = co_await src->Read(0, buf_.data(), buf_size_).awaiter(self());
+      const size_t read = co_await src->Read(0, buf_.data(), buf_size_);
       if (read != buf_size_) {
         throw nf7::Exception("failed to read all bytes from source");
       }
@@ -187,7 +187,7 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
       });
 
       // wait for end of execution and return built object's index
-      const int idx = co_await lua_pro.future().awaiter(self());
+      const int idx = co_await lua_pro.future();
       log_->Trace("task finished");
 
       // context for object cache
@@ -196,7 +196,7 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
 
       // return the object and cache it
       target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
-      co_yield target_->cache_;
+      co_return target_->cache_;
 
     } catch (Exception& e) {
       log_->Error(e.msg());

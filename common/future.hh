@@ -24,7 +24,6 @@ class Future final {
  public:
   class Promise;
   class Coro;
-  class Awaiter;
 
   using Handle = std::coroutine_handle<Promise>;
 
@@ -152,7 +151,7 @@ class Future final {
     Coro& operator=(Coro&&) = default;
 
     Future Start(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-      ctx->env().ExecSub(ctx, [ctx, h = h_]() { h.resume(); });
+      ctx->env().ExecSub(ctx, [h = h_]() { h.resume(); });
       data_->ctx = ctx;
       return Future(data_);
     }
@@ -170,46 +169,6 @@ class Future final {
     std::shared_ptr<Data> data_;
 
     Coro(Handle h, const std::shared_ptr<Data>& data) noexcept : h_(h), data_(data) { }
-  };
-  class Awaiter final {
-   public:
-    Awaiter() = delete;
-    Awaiter(Future& fu, const std::shared_ptr<nf7::Context>& ctx) noexcept :
-        fu_(&fu), ctx_(ctx) {
-    }
-    Awaiter(const Awaiter&) = delete;
-    Awaiter(Awaiter&&) = delete;
-    Awaiter& operator=(const Awaiter&) = delete;
-    Awaiter& operator=(Awaiter&&) = delete;
-
-    bool await_ready() const noexcept { return !fu_->yet(); }
-    template <typename U>
-    void await_suspend(std::coroutine_handle<U> caller) const noexcept {
-      static_assert(U::kThisIsNf7FuturePromise, "illegal coroutine");
-      assert(fu_->data_);
-      auto& data = *fu_->data_;
-
-      std::unique_lock<std::mutex> k(data.mtx);
-      if (fu_->yet()) {
-        auto ctx = data.ctx.lock();
-        assert(ctx);
-        data.recv.push_back([caller, ctx]() {
-          ctx->env().ExecSub(ctx, [caller]() {
-            if (!caller.promise().data_->aborted) caller.resume();
-          });
-        });
-      } else {
-        // promise has ended after await_ready() is called
-        caller.resume();
-      }
-    }
-    auto await_resume() const {
-      return fu_->value();
-    }
-
-   private:
-    Future* const fu_;
-    std::shared_ptr<nf7::Context> ctx_;
   };
 
   Future(const T& v) noexcept : imm_({v}) {
@@ -280,9 +239,33 @@ class Future final {
         data_->state == kError;
   }
 
-  Awaiter awaiter(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return Awaiter(*this, ctx);
+  bool await_ready() const noexcept { return !yet(); }
+  template <typename U>
+  void await_suspend(std::coroutine_handle<U> caller) const noexcept {
+    static_assert(U::kThisIsNf7FuturePromise, "illegal coroutine");
+    assert(data_);
+    auto& data = *data_;
+
+    std::unique_lock<std::mutex> k(data.mtx);
+    auto callee_ctx = data.ctx.lock();
+    assert(callee_ctx);
+
+    auto caller_data = caller.promise().data_;
+    auto caller_ctx  = caller_data->ctx.lock();
+    assert(caller_ctx);
+
+    if (yet()) {
+      data.recv.push_back([caller, caller_data, caller_ctx, callee_ctx]() {
+        caller_ctx->env().ExecSub(caller_ctx, [caller, caller_data, caller_ctx]() {
+          if (!caller_data->aborted) caller.resume();
+        });
+      });
+    } else {
+      // promise has ended after await_ready() is called
+      caller.resume();
+    }
   }
+  auto await_resume() { return value(); }
 
  private:
   std::optional<std::variant<T, std::exception_ptr>> imm_;
