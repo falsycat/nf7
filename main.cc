@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -65,6 +66,13 @@ class Env final : public nf7::Env {
     }
   }
   ~Env() noexcept {
+    if (root_) root_->Isolate();
+    root_ = nullptr;
+
+    while (main_.size() || sub_.size() || async_.size()) {
+      std::this_thread::sleep_for(100ms);
+    }
+
     alive_ = false;
     cv_.notify_one();
     async_.Notify();
@@ -72,7 +80,6 @@ class Env final : public nf7::Env {
     main_thread_.join();
     for (auto& th : async_threads_) th.join();
 
-    if (root_) root_->Isolate();
     ::Env::Pop();
   }
 

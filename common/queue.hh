@@ -40,6 +40,11 @@ class Queue {
     tasks_.clear();
   }
 
+  bool size() const noexcept {
+    std::unique_lock<std::mutex> k(const_cast<std::mutex&>(mtx_));
+    return tasks_.size();
+  }
+
  protected:
   std::mutex mtx_;
 

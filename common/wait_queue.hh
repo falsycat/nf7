@@ -39,6 +39,8 @@ class WaitQueue : private Queue<T> {
     cv_.wait_until(k, time);
   }
 
+  using Queue<T>::size;
+
  private:
   using Queue<T>::mtx_;
 
