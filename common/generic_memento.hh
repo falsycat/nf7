@@ -16,10 +16,11 @@ class GenericMemento : public Memento {
   class CustomTag;
 
   GenericMemento(File& owner, T&& data) noexcept :
-      owner_(&owner), data_(std::move(data)) {
+      owner_(&owner), initial_(T(data)), data_(std::move(data)) {
   }
   ~GenericMemento() noexcept {
-    tag_ = nullptr;
+    tag_  = nullptr;
+    last_ = nullptr;
     assert(map_.empty());
   }
 
@@ -27,7 +28,7 @@ class GenericMemento : public Memento {
     if (tag_) return tag_;
     auto [itr, emplaced] = map_.emplace(next_++, data_);
     assert(emplaced);
-    return tag_ = std::make_shared<CustomTag>(*this, itr->first);
+    return last_ = tag_ = std::make_shared<CustomTag>(*this, itr->first);
   }
   void Restore(const std::shared_ptr<Tag>& tag) override {
     assert(tag);
@@ -35,7 +36,7 @@ class GenericMemento : public Memento {
     assert(itr != map_.end());
     data_ = itr->second;
     tag_  = tag;
-    assert(tag_);
+    last_ = tag;
 
     if (owner_->id()) {
       owner_->env().Handle(
@@ -57,15 +58,25 @@ class GenericMemento : public Memento {
   T& data() noexcept { return data_; }
   const T& data() const noexcept { return data_; }
 
+  const T& last() const noexcept {
+    if (!last_) return initial_;
+
+    auto itr = map_.find(last_->id());
+    assert(itr != map_.end());
+    return itr->second;
+  }
+
  private:
   File* const owner_;
 
+  const T initial_;
   T data_;
 
   Tag::Id next_ = 0;
   std::unordered_map<Tag::Id, T> map_;
 
   std::shared_ptr<nf7::Memento::Tag> tag_;
+  std::shared_ptr<nf7::Memento::Tag> last_;
 
   void NotifyUpdate() noexcept {
     if (owner_->id()) {

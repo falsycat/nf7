@@ -59,6 +59,7 @@ target_sources(nf7
     common/generic_watcher.hh
     common/gui_file.hh
     common/gui_node.hh
+    common/gui_resizer.hh
     common/gui_window.hh
     common/history.hh
     common/lambda.hh
@@ -88,6 +89,7 @@ target_sources(nf7
     file/luajit_context.cc
     file/luajit_node.cc
     file/luajit_obj.cc
+    file/node_imm.cc
     file/node_network.cc
     file/system_dir.cc
     file/system_imgui_config.cc

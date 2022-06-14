@@ -9,6 +9,7 @@
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
 #include <yas/types/std/string_view.hpp>
+#include <yas/types/std/variant.hpp>
 #include <yas/types/utility/usertype.hpp>
 
 #include "nf7.hh"
@@ -18,11 +19,14 @@
 
 namespace nf7 {
 
-class Value final {
+class Value {
  public:
-  using IncompatibleException = std::bad_variant_access;
+  class IncompatibleException : public nf7::Exception {
+   public:
+    using nf7::Exception::Exception;
+  };
 
-  class Pulse final { };
+  class Pulse { };
   class Data;
 
   using Boolean = bool;
@@ -38,6 +42,23 @@ class Value final {
   Value& operator=(const Value&) = default;
   Value& operator=(Value&&) = default;
 
+  Value(Pulse v) noexcept : value_(v) { }
+  Value& operator=(Pulse v) noexcept { value_ = v; return *this; }
+  Value(Integer v) noexcept : value_(v) { }
+  Value& operator=(Integer v) noexcept { value_ = v; return *this; }
+  Value(Scalar v) noexcept : value_(v) { }
+  Value& operator=(Scalar v) noexcept { value_ = v; return *this; }
+  Value(Boolean v) noexcept : value_(v) { }
+  Value& operator=(Boolean v) noexcept { value_ = v; return *this; }
+  Value(std::string_view v) noexcept : value_(std::string(v)) { }
+  Value& operator=(std::string_view v) noexcept { value_ = std::string(v); return *this; }
+  Value(String&& v) noexcept : value_(std::move(v)) { }
+  Value& operator=(String&& v) noexcept { value_ = std::move(v); return *this; }
+  Value(const DataPtr& v) noexcept : value_(v) { }
+  Value& operator=(const DataPtr& v) noexcept { value_ = v; return *this; }
+  Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
+  Value& operator=(DataPtr&& v) noexcept { value_ = std::move(v); return *this; }
+
   bool isPulse() const noexcept { return std::holds_alternative<Pulse>(value_); }
   bool isBoolean() const noexcept { return std::holds_alternative<Boolean>(value_); }
   bool isInteger() const noexcept { return std::holds_alternative<Integer>(value_); }
@@ -50,6 +71,12 @@ class Value final {
   Scalar scalar() const { return std::get<Scalar>(value_); }
   const String& string() const { return std::get<String>(value_); }
   const DataPtr& data() const { return std::get<DataPtr>(value_); }
+
+  Integer& integer() { return std::get<Integer>(value_); }
+  Boolean& boolean() { return std::get<Boolean>(value_); }
+  Scalar& scalar() { return std::get<Scalar>(value_); }
+  String& string() { return std::get<String>(value_); }
+  DataPtr& data() { return std::get<DataPtr>(value_); }
 
   const char* typeName() const noexcept {
     struct Visitor final {
@@ -114,11 +141,11 @@ struct serializer<
     nf7::Value::DataPtr> {
  public:
   template <typename Archive>
-  static Archive& save(Archive& ar, const nf7::Value::DataPtr&) {
+  static Archive& save(Archive&, const nf7::Value::DataPtr&) {
     throw nf7::Exception("cannot serialize Value::DataPtr");
   }
   template <typename Archive>
-  static Archive& load(Archive& ar, nf7::Value::DataPtr&) {
+  static Archive& load(Archive&, nf7::Value::DataPtr&) {
     throw nf7::DeserializeException("cannot deserialize Value::DataPtr");
   }
 };
