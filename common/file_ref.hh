@@ -23,17 +23,17 @@ class FileRef {
   FileRef(File& owner, File::Path&& p, File::Id id = 0) noexcept :
       owner_(&owner), path_(std::move(p)), id_(id) {
   }
-  FileRef(const FileRef&) = delete;
-  FileRef(FileRef&&) = delete;
-  FileRef& operator=(const FileRef&) = delete;
-  FileRef& operator=(FileRef&&) = delete;
+  FileRef(const FileRef&) = default;
+  FileRef(FileRef&&) = default;
+  FileRef& operator=(const FileRef&) = default;
+  FileRef& operator=(FileRef&&) = default;
 
-  File& operator*()
+  File& operator*() const
   try {
     return owner_->env().GetFileOrThrow(id_);
   } catch (ExpiredException&) {
     auto& ret = owner_->ResolveOrThrow(path_);
-    id_ = ret.id();
+    const_cast<File::Id&>(id_) = ret.id();
     return ret;
   }
 
@@ -49,7 +49,7 @@ class FileRef {
   }
 
   const File::Path& path() const noexcept { return path_; }
-  File::Id id() { **this; return id_; }
+  File::Id id() const { **this; return id_; }
 
  private:
   File* owner_;

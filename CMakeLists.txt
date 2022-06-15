@@ -91,6 +91,7 @@ target_sources(nf7
     file/luajit_obj.cc
     file/node_imm.cc
     file/node_network.cc
+    file/node_ref.cc
     file/system_dir.cc
     file/system_imgui_config.cc
     file/system_logger.cc

@@ -116,7 +116,7 @@ class Network final : public nf7::File,
   std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::DirItem>(t).Select(this);
+    return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:
