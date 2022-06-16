@@ -10,10 +10,11 @@ namespace nf7 {
 class DirItem : public File::Interface {
  public:
   enum Flag : uint8_t {
-    kNone    = 0,
-    kTree    = 1 << 0,
-    kMenu    = 1 << 1,
-    kTooltip = 1 << 2,
+    kNone           = 0,
+    kTree           = 1 << 0,
+    kMenu           = 1 << 1,
+    kTooltip        = 1 << 2,
+    kDragDropTarget = 1 << 3,
   };
   using Flags = uint8_t;
 
@@ -28,6 +29,7 @@ class DirItem : public File::Interface {
   virtual void UpdateTree() noexcept { }
   virtual void UpdateMenu() noexcept { }
   virtual void UpdateTooltip() noexcept { }
+  virtual void UpdateDragDropTarget() noexcept { }
 
   Flags flags() const noexcept { return flags_; }
 

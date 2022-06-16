@@ -18,6 +18,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_dnd.hh"
 #include "common/gui_node.hh"
 #include "common/lambda.hh"
 #include "common/logger_ref.hh"
@@ -41,16 +42,11 @@ class Ref final : public nf7::File, public nf7::Node {
       std::vector<std::string>&& out = {}) noexcept :
       File(kType, env),
       mem_(*this, {*this, std::move(path), std::move(in), std::move(out)}) {
-    auto& d = mem_.data();
-    d.input  = std::move(in);
-    d.output = std::move(out);
-    CopySock();
   }
 
   Ref(Env& env, Deserializer& ar) : Ref(env) {
     auto& d = mem_.data();
     ar(d.target, d.input, d.output);
-    CopySock();
   }
   void Serialize(Serializer& ar) const noexcept override {
     const auto& d = mem_.data();
@@ -60,15 +56,21 @@ class Ref final : public nf7::File, public nf7::Node {
     const auto& d = mem_.data();
     return std::make_unique<Ref>(
         env, Path{d.target.path()},
-        std::vector<std::string>{d.input}, std::vector<std::string>{d.output});
+        std::vector<std::string>{input_}, std::vector<std::string>{output_});
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override;
 
   void Handle(const Event& ev) noexcept {
+    const auto& d = mem_.data();
+
     switch (ev.type) {
     case Event::kAdd:
       log_.SetUp(*this);
+      /* fallthrough */
+    case Event::kUpdate:
+      input_  = d.input;
+      output_ = d.output;
       return;
     case Event::kRemove:
       log_.TearDown();
@@ -106,33 +108,40 @@ class Ref final : public nf7::File, public nf7::Node {
   nf7::GenericMemento<Data> mem_;
 
 
-  void Sync(bool quiet = true) noexcept
-  try {
-    auto& n = target();
+  void SyncQuiet() noexcept {
     auto& d = mem_.data();
+    try {
+      auto& n = target();
 
-    const auto i = n.input();
-    d.input = std::vector<std::string>{i.begin(), i.end()};
+      const auto i = n.input();
+      d.input = std::vector<std::string>{i.begin(), i.end()};
 
-    const auto o = n.output();
-    d.output = std::vector<std::string>{o.begin(), o.end()};
-
-    CopySock(quiet);
-  } catch (nf7::Exception& e) {
-    log_.Error("failed to sync: "+e.msg());
+      const auto o = n.output();
+      d.output = std::vector<std::string>{o.begin(), o.end()};
+    } catch (nf7::Exception& e) {
+      d.input  = {};
+      d.output = {};
+      log_.Error("failed to sync: "+e.msg());
+    }
   }
-  void CopySock(bool quiet = true) noexcept {
-    std::vector<std::string> in, out;
-    if (!quiet) {
-      in  = std::move(input_);
-      out = std::move(output_);
-    }
+  void Sync() noexcept {
+    SyncQuiet();
     const auto& d = mem_.data();
-    input_  = d.input;
-    output_ = d.output;
-    if (!quiet) {
-      if (in != input_ || out != output_) Touch();
+    if (input_ != d.input || output_ != d.output) {
+      mem_.Commit();
     }
+  }
+
+  void ExecChangePath(Path&& p) noexcept {
+    auto& target = mem_.data().target;
+    if (p == target.path()) return;
+    env().ExecMain(
+        std::make_shared<nf7::GenericContext>(*this, "change path"),
+        [this, &target, p = std::move(p)]() mutable {
+          target = std::move(p);
+          SyncQuiet();
+          mem_.Commit();
+        });
   }
 
   nf7::Node& target() const {
@@ -242,15 +251,7 @@ void Ref::Update() noexcept {
 
     if (!err && (ImGui::Button("ok") || submit)) {
       ImGui::CloseCurrentPopup();
-      if (path != d.target.path()) {
-        env().ExecMain(
-            std::make_shared<nf7::GenericContext>(*this, "change path"),
-            [this, path = std::move(path)]() {
-              mem_.data().target = std::move(path);
-              Sync(true  /* = quiet */);
-              mem_.Commit();
-            });
-      }
+      ExecChangePath(std::move(path));
     }
     ImGui::EndPopup();
   }
@@ -264,7 +265,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
   if (ImGui::SmallButton("sync")) {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "synchornizing with target node"),
-        [this]() { Sync(false  /* = quiet */); });
+        [this]() { Sync(); });
   }
 
   const auto pathstr = mem_.data().target.path().Stringify();
@@ -287,6 +288,12 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
 
   if (ImGui::Button(pathstr.c_str(), {w, 0})) {
     popup_ = "ConfigPopup";
+  }
+  if (ImGui::BeginDragDropTarget()) {
+    if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
+      ExecChangePath(std::move(*p));
+    }
+    ImGui::EndDragDropTarget();
   }
 
   const auto right = ImGui::GetCursorPosX() + w;

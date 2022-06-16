@@ -18,6 +18,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
+#include "common/gui_dnd.hh"
 #include "common/lock.hh"
 #include "common/luajit.hh"
 #include "common/luajit_obj.hh"
@@ -46,7 +47,8 @@ class Obj final : public nf7::File,
   class ExecTask;
 
   Obj(Env& env, Path&& path = {}) noexcept :
-      File(kType, env), DirItem(DirItem::kTooltip | DirItem::kMenu),
+      File(kType, env),
+      DirItem(DirItem::kTooltip | DirItem::kMenu | DirItem::kDragDropTarget),
       log_(std::make_shared<nf7::LoggerRef>()),
       src_(*this, std::move(path)) {
   }
@@ -65,6 +67,7 @@ class Obj final : public nf7::File,
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateDragDropTarget() noexcept override;
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept override;
 
@@ -314,6 +317,12 @@ void Obj::UpdateMenu() noexcept {
 void Obj::UpdateTooltip() noexcept {
   ImGui::Text("source: %s", src_.path().Stringify().c_str());
   ImGui::Text("cache : %d", cache_? cache_->index(): -1);
+  ImGui::TextDisabled("drop a file here to set it as source");
+}
+void Obj::UpdateDragDropTarget() noexcept {
+  if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
+    src_ = std::move(*p);
+  }
 }
 
 }

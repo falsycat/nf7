@@ -15,6 +15,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_dnd.hh"
 #include "common/gui_file.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
@@ -236,8 +237,7 @@ void Dir::UpdateTree() noexcept {
       flags |= ImGuiTreeNodeFlags_Leaf;
     }
 
-    const bool open = ImGui::TreeNodeEx(
-        item.second.get(), flags, "%s", name.c_str());
+    const bool open = ImGui::TreeNodeEx(item.second.get(), flags, "%s", name.c_str());
 
     // tooltip
     if (ImGui::IsItemHovered()) {
@@ -272,6 +272,23 @@ void Dir::UpdateTree() noexcept {
         ditem->UpdateMenu();
       }
       ImGui::EndPopup();
+    }
+
+    // dnd source
+    if (ImGui::BeginDragDropSource()) {
+      gui::dnd::Send(gui::dnd::kFilePath, item.second->abspath());
+      ImGui::TextUnformatted(file.type().name().c_str());
+      ImGui::SameLine();
+      ImGui::TextDisabled(file.abspath().Stringify().c_str());
+      ImGui::EndDragDropSource();
+    }
+
+    // dnd target
+    if (ditem && (ditem->flags() & DirItem::kDragDropTarget)) {
+      if (ImGui::BeginDragDropTarget()) {
+        ditem->UpdateDragDropTarget();
+        ImGui::EndDragDropTarget();
+      }
     }
 
     // displayed contents

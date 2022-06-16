@@ -7,6 +7,8 @@
 
 #include "nf7.hh"
 
+#include "common/gui_dnd.hh"
+
 
 namespace nf7::gui {
 
@@ -128,4 +130,18 @@ struct FileCreatePopup final {
   std::string type_filter_;
 };
 
-}  // namespace nf7
+
+inline bool InputFilePath(const char* id, std::string* path) noexcept {
+  bool ret = ImGui::InputText(id, path, ImGuiInputTextFlags_EnterReturnsTrue);
+
+  if (ImGui::BeginDragDropTarget()) {
+    if (auto str = gui::dnd::Accept<std::string>(gui::dnd::kFilePath)) {
+      *path = *str;
+      ret   = true;
+    }
+    ImGui::EndDragDropTarget();
+  }
+  return ret;
+}
+
+}  // namespace nf7::gui

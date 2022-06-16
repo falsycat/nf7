@@ -19,6 +19,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
+#include "common/gui_dnd.hh"
 #include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_obj.hh"
@@ -47,7 +48,8 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   Node(Env& env, File::Path&& path = {}, std::string_view desc = "",
        std::vector<std::string>&& in  = {},
        std::vector<std::string>&& out = {}) noexcept :
-      File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
+      File(kType, env),
+      DirItem(DirItem::kMenu | DirItem::kTooltip | DirItem::kDragDropTarget),
       log_(std::make_shared<nf7::LoggerRef>()),
       obj_(*this, std::move(path)), desc_(desc) {
     input_  = std::move(in);
@@ -84,6 +86,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   static void UpdateList(std::vector<std::string>&) noexcept;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateDragDropTarget() noexcept override;
   void UpdateNode(Node::Editor&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -404,6 +407,13 @@ void Node::UpdateTooltip() noexcept {
     ImGui::TextUnformatted(desc_.c_str());
   }
   ImGui::Unindent();
+
+  ImGui::TextDisabled("drop a file here to set it as source");
+}
+void Node::UpdateDragDropTarget() noexcept {
+  if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
+    obj_ = std::move(*p);
+  }
 }
 void Node::UpdateNode(Node::Editor&) noexcept {
 }
