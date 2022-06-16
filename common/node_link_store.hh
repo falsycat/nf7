@@ -109,8 +109,8 @@ std::unique_ptr<History::Command> NodeLinkStore::CreateCommandToRemoveExpired(
   std::vector<std::unique_ptr<History::Command>> cmds;
   for (const auto& lk : links_) {
     const bool rm =
-        (lk.src_id == id && std::find(in .begin(), in .end(), lk.src_name) < in .end()) ||
-        (lk.dst_id == id && std::find(out.begin(), out.end(), lk.dst_name) < out.end());
+        (lk.src_id == id && std::find(out.begin(), out.end(), lk.src_name) == out.end()) ||
+        (lk.dst_id == id && std::find(in .begin(), in .end(), lk.dst_name) == in .end());
     if (rm) cmds.push_back(SwapCommand::CreateToRemove(*this, Link(lk)));
   }
   if (cmds.empty()) return nullptr;
