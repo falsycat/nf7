@@ -217,7 +217,7 @@ class Node::Lambda final : public nf7::Lambda,
     auto handler = handler_.value();
     ljq_ = handler->ljq();
 
-    auto th = std::make_shared<nf7::luajit::Thread>(
+    auto th = nf7::luajit::Thread::Create(
         [self](auto& th, auto L) { self->HandleThread(th, L); });
     th_.emplace_back(th);
 

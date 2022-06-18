@@ -1,34 +1,38 @@
 #pragma once
 
+#include <memory>
+
 #include <lua.hpp>
 
 
 namespace nf7::luajit {
 
-static inline void PushImmEnv(lua_State* L) noexcept {
-  if (luaL_newmetatable(L, "nf7::luajit::PushImmEnv")) {
-    lua_createtable(L, 0, 0);
-      lua_pushvalue(L, LUA_GLOBALSINDEX);
-      lua_setfield(L, -2, "__index");
+void PushGlobalTable(lua_State*) noexcept;
+void PushImmEnv(lua_State*) noexcept;
 
-      lua_pushcfunction(L, [](auto L) { return luaL_error(L, "global is immutable"); });
-      lua_setfield(L, -2, "__newindex");
-    lua_setmetatable(L, -2);
-  }
+template <typename T>
+inline void PushWeakPtr(lua_State* L, const std::weak_ptr<T>& wptr) noexcept {
+  new (lua_newuserdata(L, sizeof(wptr))) std::weak_ptr<T>(wptr);
 }
-
-static inline int SandboxCall(lua_State* L, int narg, int nret) noexcept {
-  constexpr size_t kSandboxInstructionLimit = 10000000;
-
-  static const auto kHook = [](auto L, auto) {
-    luaL_error(L, "reached instruction limit (<=1e7)");
-  };
-  lua_sethook(L, kHook, LUA_MASKCOUNT, kSandboxInstructionLimit);
-
-  PushImmEnv(L);
-  lua_setfenv(L, -narg-2);
-
-  return lua_pcall(L, narg, nret, 0);
+template <typename T>
+inline std::weak_ptr<T>& ToWeakPtr(lua_State* L, int idx) noexcept {
+  std::weak_ptr<T>* wptr = reinterpret_cast<decltype(wptr)>(lua_touserdata(L, idx));
+  return *wptr;
+}
+template <typename T>
+inline std::shared_ptr<T> ToSharedPtr(lua_State* L, int idx) {
+  if (auto ret = ToWeakPtr<T>(L, idx).lock()) {
+    return ret;
+  }
+  luaL_error(L, "object expired: %s", typeid(T).name());
+  return nullptr;
+}
+template <typename T>
+inline void PushWeakPtrDeleter(lua_State* L, const std::weak_ptr<T>& = {}) noexcept {
+  lua_pushcfunction(L, [](auto L) {
+    ToWeakPtr<T>(L, 1).~weak_ptr();
+    return 0;
+  });
 }
 
 }  // namespace nf7

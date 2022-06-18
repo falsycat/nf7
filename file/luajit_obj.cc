@@ -181,9 +181,9 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
           interfaceOrThrow<nf7::luajit::Queue>().self();
       ljq->Push(self(), [&](auto L) {
         try {
-          auto thL = th.Init(self(), ljq, L);
+          auto thL = th->Init(self(), ljq, L);
           Compile(thL);
-          th.Resume(thL, 0);
+          th->Resume(thL, 0);
         } catch (Exception&) {
           lua_pro.Throw(std::current_exception());
         }
