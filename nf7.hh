@@ -242,6 +242,8 @@ class Context {
 
 class Env {
  public:
+  friend class ProxyEnv;
+
   class Watcher;
 
   static void Push(Env&) noexcept;
@@ -273,15 +275,14 @@ class Env {
   const std::filesystem::path& npath() const noexcept { return npath_; }
 
  protected:
-  friend class File;
+  friend class nf7::File;
   virtual File::Id AddFile(File&) noexcept = 0;
   virtual void RemoveFile(File::Id) noexcept = 0;
 
-  friend class Context;
+  friend class nf7::Context;
   virtual void AddContext(Context&) noexcept = 0;
   virtual void RemoveContext(Context&) noexcept = 0;
 
-  friend class Watcher;
   virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
   virtual void RemoveWatcher(Watcher&) noexcept = 0;
 

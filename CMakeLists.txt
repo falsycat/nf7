@@ -78,6 +78,7 @@ target_sources(nf7
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh
+    common/proxy_env.hh
     common/ptr_selector.hh
     common/queue.hh
     common/task.hh

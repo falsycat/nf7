@@ -217,12 +217,13 @@ class Node::Lambda final : public nf7::Lambda,
     auto handler = handler_.value();
     ljq_ = handler->ljq();
 
-    auto th = nf7::luajit::Thread::Create(
-        [self](auto& th, auto L) { self->HandleThread(th, L); });
+    auto th = std::make_shared<nf7::luajit::Thread>(
+        self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
     th_.emplace_back(th);
+    // TODO: use holder
 
-    ljq_->Push(self, [self, p = std::move(p), caller, handler, ljq = ljq_, th](auto L) mutable {
-      auto thL = th->Init(self, ljq, L);
+    ljq_->Push(self, [p = std::move(p), caller, handler, th](auto L) mutable {
+      auto thL = th->Init(L);
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
       if (p) {
         lua_pushinteger(thL, static_cast<lua_Integer>(p->first));

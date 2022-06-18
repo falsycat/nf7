@@ -6,6 +6,10 @@ namespace nf7::luajit {
 constexpr size_t kInstructionLimit = 10000000;
 
 
+Thread::~Thread() noexcept {
+  if (holder_) *holder_ = nullptr;
+}
+
 void Thread::PushMeta(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::Thread")) {
     PushWeakPtrDeleter<Thread>(L);
@@ -16,7 +20,7 @@ void Thread::PushMeta(lua_State* L) noexcept {
       lua_pushcfunction(L, [](auto L) {
         auto th = ToSharedPtr<Thread>(L, 1);
         th->ExpectYield();
-        th->ljq()->Push(th->ctx(), [th, L](auto) { th->Resume(L, 0); });
+        th->ExecResume(L);
         return lua_yield(L, lua_gettop(L)-1);
       });
       lua_setfield(L, -2, "yield");
@@ -29,6 +33,7 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   std::unique_lock<std::mutex> k(mtx_);
 
   if (state_ == kAborted) return;
+  assert(holder_);
   assert(L      == th_);
   assert(state_ == kPaused);
   (void) L;
@@ -53,15 +58,82 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   switch (ret) {
   case 0:
     state_ = kFinished;
+    if (holder_) *holder_ = nullptr;
     break;
   case LUA_YIELD:
     state_ = kPaused;
     break;
   default:
     state_ = kAborted;
+    if (holder_) *holder_ = nullptr;
   }
   if (!std::exchange(skip_handle_, false)) {
     handler_(*this, th_);
+  }
+}
+void Thread::Abort() noexcept {
+  std::unique_lock<std::mutex> k(mtx_);
+  state_ = kAborted;
+  if (holder_) *holder_ = nullptr;
+}
+
+
+Thread::Holder& Thread::Holder::operator=(const std::shared_ptr<Thread>& th) noexcept {
+  std::unique_lock<std::mutex> k(mtx_);
+
+  if (th_ != th) {
+    if (th_) {
+      th_->holder_ = nullptr;
+      if (!isolated_) {
+        if (auto& f = th_->file_) {
+          assert(f->parent());
+          f->Isolate();
+        }
+      }
+    }
+    th_ = th;
+    if (th_) {
+      th_->holder_ = this;
+      if (!isolated_) {
+        if (auto& f = th_->file_) {
+          assert(!f->parent());
+          f->MoveUnder(*owner_, "file");
+        }
+      }
+    }
+  }
+  return *this;
+}
+void Thread::Holder::Handle(const nf7::File::Event& ev) noexcept {
+  std::unique_lock<std::mutex> k(mtx_);
+
+  switch (ev.type) {
+  case nf7::File::Event::kAdd:
+    assert(isolated_);
+    isolated_ = false;
+
+    if (th_) {
+      th_->file_parent_ = owner_;
+      if (auto& f = th_->file_) {
+        assert(!f->parent());
+        f->MoveUnder(*owner_, "file");
+      }
+    }
+    return;
+  case nf7::File::Event::kRemove:
+    assert(!isolated_);
+    isolated_ = true;
+
+    if (th_) {
+      th_->file_parent_ = nullptr;
+      if (auto& f = th_->file_) {
+        assert(f->parent());
+        f->Isolate();
+      }
+    }
+    return;
+  default:
+    return;
   }
 }
 

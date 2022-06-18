@@ -49,7 +49,7 @@ class Obj final : public nf7::File,
   Obj(Env& env, Path&& path = {}) noexcept :
       File(kType, env),
       DirItem(DirItem::kTooltip | DirItem::kMenu | DirItem::kDragDropTarget),
-      log_(std::make_shared<nf7::LoggerRef>()),
+      log_(std::make_shared<nf7::LoggerRef>()), th_(*this),
       src_(*this, std::move(path)) {
   }
 
@@ -81,6 +81,7 @@ class Obj final : public nf7::File,
   std::optional<nf7::GenericWatcher> watcher_;
   std::shared_ptr<nf7::luajit::Ref>  cache_;
 
+  nf7::luajit::Thread::Holder th_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder exec_;
 
   const char* popup_ = nullptr;
@@ -139,8 +140,11 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
       }
 
       // create thread to compile lua script
+      auto ljq = target_->
+          ResolveUpwardOrThrow("_luajit").
+          interfaceOrThrow<nf7::luajit::Queue>().self();
       nf7::Future<int>::Promise lua_pro(self());
-      auto th = nf7::luajit::Thread::CreateForPromise<int>(lua_pro, [&](auto L) {
+      auto handler = [&](auto L) {
         if (lua_gettop(L) != 1) {
           throw nf7::Exception("expected one object to be returned");
         }
@@ -150,7 +154,9 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
           log_->Info("got ["s+lua_typename(L, lua_type(L, -1))+"]");
         }
         return luaL_ref(L, LUA_REGISTRYINDEX);
-      });
+      };
+      auto th = target_->th_.
+          EmplaceForPromise<int>(self(), ljq, lua_pro, std::move(handler));
 
       // setup watcher
       try {
@@ -176,12 +182,9 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
       }
 
       // queue task to trigger the thread
-      auto ljq = target_->
-          ResolveUpwardOrThrow("_luajit").
-          interfaceOrThrow<nf7::luajit::Queue>().self();
       ljq->Push(self(), [&](auto L) {
         try {
-          auto thL = th->Init(self(), ljq, L);
+          auto thL = th->Init(L);
           Compile(thL);
           th->Resume(thL, 0);
         } catch (Exception&) {
@@ -235,6 +238,8 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept {
   return exec->fu();
 }
 void Obj::Handle(const Event& ev) noexcept {
+  th_.Handle(ev);
+
   switch (ev.type) {
   case Event::kAdd:
     log_->SetUp(*this);
