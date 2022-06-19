@@ -66,17 +66,17 @@ class Value {
   bool isString() const noexcept { return std::holds_alternative<String>(value_); }
   bool isData() const noexcept { return std::holds_alternative<DataPtr>(value_); }
 
-  Integer integer() const { return std::get<Integer>(value_); }
-  Boolean boolean() const { return std::get<Boolean>(value_); }
-  Scalar scalar() const { return std::get<Scalar>(value_); }
-  const String& string() const { return std::get<String>(value_); }
-  const DataPtr& data() const { return std::get<DataPtr>(value_); }
+  Integer integer() const { return get<Integer>(); }
+  Boolean boolean() const { return get<Boolean>(); }
+  Scalar scalar() const { return get<Scalar>(); }
+  const String& string() const { return get<String>(); }
+  const DataPtr& data() const { return get<DataPtr>(); }
 
-  Integer& integer() { return std::get<Integer>(value_); }
-  Boolean& boolean() { return std::get<Boolean>(value_); }
-  Scalar& scalar() { return std::get<Scalar>(value_); }
-  String& string() { return std::get<String>(value_); }
-  DataPtr& data() { return std::get<DataPtr>(value_); }
+  Integer& integer() { return get<Integer>(); }
+  Boolean& boolean() { return get<Boolean>(); }
+  Scalar& scalar() { return get<Scalar>(); }
+  String& string() { return get<String>(); }
+  DataPtr& data() { return get<DataPtr>(); }
 
   const char* typeName() const noexcept {
     struct Visitor final {
@@ -99,6 +99,24 @@ class Value {
 
  private:
   std::variant<Pulse, Boolean, Integer, Scalar, String, DataPtr> value_;
+
+
+  template <typename T>
+  const T& get() const
+  try {
+    return std::get<T>(value_);
+  } catch (std::bad_variant_access&) {
+    throw IncompatibleException(
+        std::string{"expected "}+typeid(T).name()+" but it's "+typeName());
+  }
+  template <typename T>
+  T& get()
+  try {
+    return std::get<T>(value_);
+  } catch (std::bad_variant_access&) {
+    throw IncompatibleException(
+        std::string{"expected "}+typeid(T).name()+" but it's "+typeName());
+  }
 };
 
 class Value::Data {
