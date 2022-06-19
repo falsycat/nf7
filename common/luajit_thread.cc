@@ -78,32 +78,6 @@ void Thread::Abort() noexcept {
 }
 
 
-Thread::Holder& Thread::Holder::operator=(const std::shared_ptr<Thread>& th) noexcept {
-  std::unique_lock<std::mutex> k(mtx_);
-
-  if (th_ != th) {
-    if (th_) {
-      th_->holder_ = nullptr;
-      if (!isolated_) {
-        if (auto& f = th_->file_) {
-          assert(f->parent());
-          f->Isolate();
-        }
-      }
-    }
-    th_ = th;
-    if (th_) {
-      th_->holder_ = this;
-      if (!isolated_) {
-        if (auto& f = th_->file_) {
-          assert(!f->parent());
-          f->MoveUnder(*owner_, "file");
-        }
-      }
-    }
-  }
-  return *this;
-}
 void Thread::Holder::Handle(const nf7::File::Event& ev) noexcept {
   std::unique_lock<std::mutex> k(mtx_);
 
@@ -134,6 +108,29 @@ void Thread::Holder::Handle(const nf7::File::Event& ev) noexcept {
     return;
   default:
     return;
+  }
+}
+
+void Thread::Holder::Assign(const std::shared_ptr<Thread>& th) noexcept {
+  if (th_ == th) return;
+  if (th_) {
+    th_->holder_ = nullptr;
+    if (!isolated_) {
+      if (auto& f = th_->file_) {
+        assert(f->parent());
+        f->Isolate();
+      }
+    }
+  }
+  th_ = th;
+  if (th_) {
+    th_->holder_ = this;
+    if (!isolated_) {
+      if (auto& f = th_->file_) {
+        assert(!f->parent());
+        f->MoveUnder(*owner_, "file");
+      }
+    }
   }
 }
 

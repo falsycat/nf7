@@ -20,9 +20,11 @@
 
 namespace nf7::luajit {
 
+// use with Thread::Holder or Thread::HolderSet to handle child files properly
 class Thread final : public std::enable_shared_from_this<Thread> {
  public:
   class Holder;
+  template <size_t kMax> class HolderSet;
 
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
@@ -31,6 +33,9 @@ class Thread final : public std::enable_shared_from_this<Thread> {
    public:
     using nf7::Exception::Exception;
   };
+
+  template <typename T>
+  static Handler CreatePromiseHandler(nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
 
   static void PushMeta(lua_State*) noexcept;
 
@@ -116,7 +121,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 // Holder handles events for files dynamically created in lua thread
 class Thread::Holder final {
  public:
-  Holder() = default;
+  Holder() = delete;
   Holder(File& owner) noexcept : owner_(&owner) {
   }
   ~Holder() noexcept {
@@ -129,37 +134,28 @@ class Thread::Holder final {
   Holder& operator=(Holder&&) = delete;
 
   // thread-safe
-  Holder& operator=(const std::shared_ptr<Thread>& th) noexcept;
+  Holder& operator=(const std::shared_ptr<Thread>& th) noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
+    Assign(th);
+    return *this;
+  }
 
+  std::shared_ptr<Thread> EmplaceIf(
+      const std::shared_ptr<nf7::Context>&       ctx,
+      const std::shared_ptr<nf7::luajit::Queue>& ljq,
+      Handler&& handler) noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
+    if (th_) return nullptr;
+    Assign(std::make_shared<Thread>(ctx, ljq, std::move(handler)));
+    return th_;
+  }
   std::shared_ptr<Thread> Emplace(
       const std::shared_ptr<nf7::Context>&       ctx,
       const std::shared_ptr<nf7::luajit::Queue>& ljq,
       Handler&& handler) noexcept {
-    *this = std::make_shared<Thread>(ctx, ljq, std::move(handler));
+    std::unique_lock<std::mutex> k(mtx_);
+    Assign(std::make_shared<Thread>(ctx, ljq, std::move(handler)));
     return th_;
-  }
-  template <typename T>
-  std::shared_ptr<Thread> EmplaceForPromise(
-      const std::shared_ptr<nf7::Context>&       ctx,
-      const std::shared_ptr<nf7::luajit::Queue>& ljq,
-      nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&& f) noexcept {
-    auto handler = [&pro, f = std::move(f)](auto& self, auto L) {
-      switch (self.state()) {
-      case kPaused:
-        pro.Throw(std::make_exception_ptr<nf7::Exception>({"unexpected yield"}));
-        break;
-      case kFinished:
-        pro.Wrap([&]() { return f(L); });
-        break;
-      case kAborted:
-        pro.Throw(std::make_exception_ptr<nf7::Exception>({lua_tostring(L, -1)}));
-        break;
-      default:
-        assert(false);
-        throw 0;
-      }
-    };
-    return Emplace(ctx, ljq, std::move(handler));
   }
 
   void Handle(const nf7::File::Event& ev) noexcept;
@@ -180,6 +176,66 @@ class Thread::Holder final {
 
   bool isolated_ = true;
   std::shared_ptr<Thread> th_;
+
+
+  void Assign(const std::shared_ptr<Thread>&) noexcept;
 };
+
+template <size_t kMax>
+class Thread::HolderSet final {
+ public:
+  HolderSet() = delete;
+  HolderSet(nf7::File& owner) noexcept {
+    for (auto& h : items_) {
+      h.emplace(owner);
+    }
+  }
+  HolderSet(const HolderSet&) = delete;
+  HolderSet(HolderSet&&) = delete;
+  HolderSet& operator=(const HolderSet&) = delete;
+  HolderSet& operator=(HolderSet&&) = delete;
+
+  std::shared_ptr<Thread> Add(
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::shared_ptr<nf7::luajit::Queue>& ljq,
+      Handler&& handler) {
+    for (auto& h : items_) {
+      if (auto th = h->EmplaceIf(ctx, ljq, std::move(handler))) {
+        return th;
+      }
+    }
+    throw nf7::Exception("luajit thread overflow");
+  }
+  void Handle(const nf7::File::Event& ev) noexcept {
+    for (auto& h : items_) {
+      h->Handle(ev);
+    }
+  }
+
+ private:
+  std::array<std::optional<Holder>, kMax> items_;
+};
+
+
+template <typename T>
+Thread::Handler Thread::CreatePromiseHandler(
+    nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&& f) noexcept {
+  return [&pro, f = std::move(f)](auto& self, auto L) {
+    switch (self.state()) {
+    case kPaused:
+      pro.Throw(std::make_exception_ptr<nf7::Exception>({"unexpected yield"}));
+      break;
+    case kFinished:
+      pro.Wrap([&]() { return f(L); });
+      break;
+    case kAborted:
+      pro.Throw(std::make_exception_ptr<nf7::Exception>({lua_tostring(L, -1)}));
+      break;
+    default:
+      assert(false);
+      throw 0;
+    }
+  };
+}
 
 }  // namespace nf7::luajit

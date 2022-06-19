@@ -50,7 +50,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
        std::vector<std::string>&& out = {}) noexcept :
       File(kType, env),
       DirItem(DirItem::kMenu | DirItem::kTooltip | DirItem::kDragDropTarget),
-      log_(std::make_shared<nf7::LoggerRef>()),
+      log_(std::make_shared<nf7::LoggerRef>()), th_(*this),
       obj_(*this, std::move(path)), desc_(desc) {
     input_  = std::move(in);
     output_ = std::move(out);
@@ -99,6 +99,8 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<nf7::luajit::Ref> handler_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
+
+  nf7::luajit::Thread::HolderSet<32> th_;
 
   const char* popup_ = nullptr;
 
@@ -176,6 +178,7 @@ class Node::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
   Lambda(Node& owner) noexcept : nf7::Lambda(owner),
+      owner_(&owner), owner_id_(owner.id()),
       log_(owner.log_), handler_(owner.FetchHandler()) {
   }
 
@@ -198,6 +201,9 @@ class Node::Lambda final : public nf7::Lambda,
   }
 
  private:
+  Node* const owner_;
+  File::Id owner_id_;
+
   std::shared_ptr<nf7::LoggerRef> log_;
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> handler_;
@@ -217,10 +223,10 @@ class Node::Lambda final : public nf7::Lambda,
     auto handler = handler_.value();
     ljq_ = handler->ljq();
 
-    auto th = std::make_shared<nf7::luajit::Thread>(
+    env().GetFileOrThrow(owner_id_);  // check if the owner is alive
+    auto th = owner_->th_.Add(
         self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
     th_.emplace_back(th);
-    // TODO: use holder
 
     ljq_->Push(self, [p = std::move(p), caller, handler, th](auto L) mutable {
       auto thL = th->Init(L);
@@ -272,6 +278,7 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
 }
 
 void Node::Handle(const Event& ev) noexcept {
+  th_.Handle(ev);
   switch (ev.type) {
   case Event::kAdd:
     log_->SetUp(*this);

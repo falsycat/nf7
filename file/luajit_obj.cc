@@ -144,19 +144,19 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
           ResolveUpwardOrThrow("_luajit").
           interfaceOrThrow<nf7::luajit::Queue>().self();
       nf7::Future<int>::Promise lua_pro(self());
-      auto handler = [&](auto L) {
-        if (lua_gettop(L) != 1) {
-          throw nf7::Exception("expected one object to be returned");
-        }
-        if (auto str = lua_tostring(L, -1)) {
-          log_->Info("got '"s+str+"'");
-        } else {
-          log_->Info("got ["s+lua_typename(L, lua_type(L, -1))+"]");
-        }
-        return luaL_ref(L, LUA_REGISTRYINDEX);
-      };
-      auto th = target_->th_.
-          EmplaceForPromise<int>(self(), ljq, lua_pro, std::move(handler));
+      auto handler = nf7::luajit::Thread::CreatePromiseHandler<int>(
+          lua_pro, [&](auto L) {
+            if (lua_gettop(L) != 1) {
+              throw nf7::Exception("expected one object to be returned");
+            }
+            if (auto str = lua_tostring(L, -1)) {
+              log_->Info("got '"s+str+"'");
+            } else {
+              log_->Info("got ["s+lua_typename(L, lua_type(L, -1))+"]");
+            }
+            return luaL_ref(L, LUA_REGISTRYINDEX);
+          });
+      auto th = target_->th_.Emplace(self(), ljq, std::move(handler));
 
       // setup watcher
       try {
