@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
@@ -33,6 +34,7 @@ class Value {
   using Integer = int64_t;
   using Scalar  = double;
   using String  = std::string;
+  using Vector  = std::shared_ptr<const std::vector<uint8_t>>;
   using DataPtr = std::shared_ptr<Data>;
 
   Value() noexcept {
@@ -54,6 +56,10 @@ class Value {
   Value& operator=(std::string_view v) noexcept { value_ = std::string(v); return *this; }
   Value(String&& v) noexcept : value_(std::move(v)) { }
   Value& operator=(String&& v) noexcept { value_ = std::move(v); return *this; }
+  Value(const Vector& v) noexcept { value_ = v; }
+  Value& operator=(const Vector& v) noexcept { value_ = v; return *this; }
+  Value(Vector&& v) noexcept { value_ = std::move(v); }
+  Value& operator=(Vector&& v) noexcept { value_ = std::move(v); return *this; }
   Value(const DataPtr& v) noexcept : value_(v) { }
   Value& operator=(const DataPtr& v) noexcept { value_ = v; return *this; }
   Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
@@ -64,19 +70,26 @@ class Value {
   bool isInteger() const noexcept { return std::holds_alternative<Integer>(value_); }
   bool isScalar() const noexcept { return std::holds_alternative<Scalar>(value_); }
   bool isString() const noexcept { return std::holds_alternative<String>(value_); }
+  bool isVector() const noexcept { return std::holds_alternative<Vector>(value_); }
   bool isData() const noexcept { return std::holds_alternative<DataPtr>(value_); }
 
   Integer integer() const { return get<Integer>(); }
   Boolean boolean() const { return get<Boolean>(); }
   Scalar scalar() const { return get<Scalar>(); }
   const String& string() const { return get<String>(); }
+  const Vector& vector() const { return get<Vector>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
+
+  template <typename T>
+  std::shared_ptr<T> data() const {
+    if (auto ptr = std::dynamic_pointer_cast<T>(data())) return ptr;
+    throw IncompatibleException("data pointer downcast failure");
+  }
 
   Integer& integer() { return get<Integer>(); }
   Boolean& boolean() { return get<Boolean>(); }
   Scalar& scalar() { return get<Scalar>(); }
   String& string() { return get<String>(); }
-  DataPtr& data() { return get<DataPtr>(); }
 
   const char* typeName() const noexcept {
     struct Visitor final {
@@ -86,6 +99,7 @@ class Value {
       auto operator()(Integer) noexcept { return "integer"; }
       auto operator()(Scalar)  noexcept { return "scalar"; }
       auto operator()(String)  noexcept { return "string"; }
+      auto operator()(Vector)  noexcept { return "vector"; }
       auto operator()(DataPtr) noexcept { return "data"; }
     };
     return std::visit(Visitor{}, value_);
@@ -98,7 +112,7 @@ class Value {
   }
 
  private:
-  std::variant<Pulse, Boolean, Integer, Scalar, String, DataPtr> value_;
+  std::variant<Pulse, Boolean, Integer, Scalar, String, Vector, DataPtr> value_;
 
 
   template <typename T>
@@ -148,6 +162,23 @@ struct serializer<
   template <typename Archive>
   static Archive& load(Archive& ar, nf7::Value::Pulse&) {
     return ar;
+  }
+};
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
+    nf7::Value::Vector> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive&, const nf7::Value::Vector&) {
+    throw nf7::Exception("cannot serialize Value::Vector");
+  }
+  template <typename Archive>
+  static Archive& load(Archive&, nf7::Value::Vector&) {
+    throw nf7::DeserializeException("cannot deserialize Value::Vector");
   }
 };
 
