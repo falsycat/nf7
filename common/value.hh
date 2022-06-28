@@ -65,6 +65,10 @@ class Value {
   Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
   Value& operator=(DataPtr&& v) noexcept { value_ = std::move(v); return *this; }
 
+  auto Visit(auto visitor) const noexcept {
+    return std::visit(visitor, value_);
+  }
+
   bool isPulse() const noexcept { return std::holds_alternative<Pulse>(value_); }
   bool isBoolean() const noexcept { return std::holds_alternative<Boolean>(value_); }
   bool isInteger() const noexcept { return std::holds_alternative<Integer>(value_); }
@@ -102,7 +106,7 @@ class Value {
       auto operator()(Vector)  noexcept { return "vector"; }
       auto operator()(DataPtr) noexcept { return "data"; }
     };
-    return std::visit(Visitor{}, value_);
+    return Visit(Visitor{});
   }
 
   template <typename Ar>

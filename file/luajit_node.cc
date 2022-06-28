@@ -233,7 +233,7 @@ class Node::Lambda final : public nf7::Lambda,
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
       if (p) {
         lua_pushinteger(thL, static_cast<lua_Integer>(p->first));
-        (void) p->second; lua_pushnil(thL);  // TODO
+        nf7::luajit::PushValue(thL, p->second);
       } else {
         lua_pushnil(thL);
         lua_pushnil(thL);
