@@ -34,7 +34,7 @@ class Value {
   using Integer = int64_t;
   using Scalar  = double;
   using String  = std::string;
-  using Vector  = std::shared_ptr<const std::vector<uint8_t>>;
+  using Vector  = std::shared_ptr<std::vector<uint8_t>>;
   using DataPtr = std::shared_ptr<Data>;
 
   Value() noexcept {
@@ -60,6 +60,8 @@ class Value {
   Value& operator=(const Vector& v) noexcept { value_ = v; return *this; }
   Value(Vector&& v) noexcept { value_ = std::move(v); }
   Value& operator=(Vector&& v) noexcept { value_ = std::move(v); return *this; }
+  Value(std::vector<uint8_t>&& v) noexcept { value_ = std::make_shared<std::vector<uint8_t>>(std::move(v)); }
+  Value& operator=(std::vector<uint8_t>&& v) noexcept { value_ = std::make_shared<std::vector<uint8_t>>(std::move(v)); return *this; }
   Value(const DataPtr& v) noexcept : value_(v) { }
   Value& operator=(const DataPtr& v) noexcept { value_ = v; return *this; }
   Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
@@ -83,6 +85,12 @@ class Value {
   const String& string() const { return get<String>(); }
   const Vector& vector() const { return get<Vector>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
+
+  std::vector<uint8_t> vectorUniq() {
+    auto ret = std::move(*vector());
+    *this = Pulse {};
+    return ret;
+  }
 
   template <typename T>
   std::shared_ptr<T> data() const {
