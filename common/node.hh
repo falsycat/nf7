@@ -64,6 +64,8 @@ class Node::Editor {
   Editor& operator=(const Editor&) = delete;
   Editor& operator=(Editor&&) = delete;
 
+  virtual void Emit(Node&, size_t, nf7::Value&&) noexcept = 0;
+
   virtual void AddLink(Node& src_node, std::string_view src_name,
                        Node& dst_node, std::string_view dst_name) noexcept = 0;
   virtual void RemoveLink(Node& src_node, std::string_view src_name,
