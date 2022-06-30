@@ -154,8 +154,7 @@ class Ref final : public nf7::File, public nf7::Node {
 class Ref::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
-  Lambda(Ref& owner, std::shared_ptr<nf7::Lambda>&& base) :
-      nf7::Lambda(owner), base_(std::move(base)) {
+  Lambda(Ref& owner, std::shared_ptr<nf7::Lambda>&& base) : base_(std::move(base)) {
     auto& n = owner.target();
 
     // ref input index -> target input index
@@ -179,10 +178,6 @@ class Ref::Lambda final : public nf7::Lambda,
     }
   }
 
-  void Init(const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
-    parent_ = parent;
-    base_->Init(shared_from_this());
-  }
   void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
     auto parent = parent_.lock();
     if (caller == parent) {

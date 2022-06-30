@@ -2,23 +2,22 @@
 
 #include <memory>
 
-#include "nf7.hh"
-
 #include "common/value.hh"
 
 
 namespace nf7 {
 
-class Lambda : public nf7::Context {
+class Lambda {
  public:
-  using nf7::Context::Context;
-
-  virtual void Init(const std::shared_ptr<Lambda>& parent) noexcept {
-    (void) parent;
-  }
+  Lambda() = default;
+  virtual ~Lambda() = default;
+  Lambda(const Lambda&) = delete;
+  Lambda(Lambda&&) = delete;
+  Lambda& operator=(const Lambda&) = delete;
+  Lambda& operator=(Lambda&&) = delete;
 
   virtual void Handle(
-      size_t idx, Value&&, const std::shared_ptr<Lambda>& sender) noexcept = 0;
+      size_t idx, Value&&, const std::shared_ptr<Lambda>& recv) noexcept = 0;
 };
 
 }  // namespace nf7

@@ -110,20 +110,16 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
 class Imm::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Imm::Lambda> {
  public:
-  Lambda(Imm& owner) noexcept :
-      nf7::Lambda(owner), value_(owner.mem_.data().value) {
+  Lambda(Imm& owner) noexcept : value_(owner.mem_.data().value) {
   }
 
-  void Init(const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
-    parent->Handle(0, nf7::Value{value_}, shared_from_this());
-  }
-  void Handle(size_t, nf7::Value&&, const std::shared_ptr<nf7::Lambda>&) noexcept override {
+  void Handle(size_t, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& recv) noexcept override {
+    recv->Handle(0, nf7::Value {value_}, shared_from_this());
   }
 
  private:
   nf7::Value value_;
 };
-
 std::shared_ptr<nf7::Lambda> Imm::CreateLambda() noexcept {
   return std::make_shared<Imm::Lambda>(*this);
 }

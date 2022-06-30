@@ -174,21 +174,16 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
   }
 };
 
-class Node::Lambda final : public nf7::Lambda,
+class Node::Lambda final : public nf7::Context, public nf7::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
-  Lambda(Node& owner) noexcept : nf7::Lambda(owner),
+  Lambda(Node& owner) noexcept :
+      Context(owner),
       owner_(&owner), owner_id_(owner.id()),
       log_(owner.log_), handler_(owner.FetchHandler()) {
   }
 
-  void Init(const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
-    auto self = shared_from_this();
-    handler_.ThenSub(self, [self, parent](auto) {
-      self->CallHandler(std::nullopt, parent);
-    });
-  }
-  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept {
+  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
     auto self = shared_from_this();
     handler_.ThenSub(self, [self, idx, v = std::move(v), caller](auto) mutable {
       self->CallHandler({{idx, std::move(v)}}, caller);

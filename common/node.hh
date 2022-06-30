@@ -20,8 +20,6 @@ class Node : public File::Interface {
  public:
   class Editor;
 
-  using Id = uint64_t;
-
   Node() = default;
   Node(const Node&) = default;
   Node(Node&&) = default;
@@ -73,8 +71,6 @@ class Node::Editor {
 
   virtual std::vector<std::pair<Node*, std::string>> GetSrcOf(Node&, std::string_view) const noexcept = 0;
   virtual std::vector<std::pair<Node*, std::string>> GetDstOf(Node&, std::string_view) const noexcept = 0;
-
-  virtual std::shared_ptr<nf7::Lambda> lambda() noexcept = 0;
 };
 
 }  // namespace nf7
