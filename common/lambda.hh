@@ -16,8 +16,7 @@ class Lambda {
   Lambda& operator=(const Lambda&) = delete;
   Lambda& operator=(Lambda&&) = delete;
 
-  virtual void Handle(
-      size_t idx, Value&&, const std::shared_ptr<Lambda>& recv) noexcept = 0;
+  virtual void Handle(size_t, Value&&, const std::shared_ptr<Lambda>&) noexcept { }
 };
 
 }  // namespace nf7
