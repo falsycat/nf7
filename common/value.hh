@@ -86,12 +86,6 @@ class Value {
   const Vector& vector() const { return get<Vector>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
 
-  std::vector<uint8_t> vectorUniq() {
-    auto ret = std::move(*vector());
-    *this = Pulse {};
-    return ret;
-  }
-
   template <typename T>
   std::shared_ptr<T> data() const {
     if (auto ptr = std::dynamic_pointer_cast<T>(data())) return ptr;

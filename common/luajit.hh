@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include <lua.hpp>
 
@@ -14,6 +17,11 @@ void PushImmEnv(lua_State*) noexcept;
 void PushValue(lua_State*, const nf7::Value&) noexcept;
 void PushVector(lua_State*, const nf7::Value::Vector&) noexcept;
 void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
+
+std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
+std::optional<nf7::Value::Vector> ToVector(lua_State*, int) noexcept;
+std::optional<std::vector<uint8_t>> ToMutableVector(lua_State*, int) noexcept;
+
 
 template <typename T>
 inline void PushWeakPtr(lua_State* L, const std::weak_ptr<T>& wptr) noexcept {
@@ -40,9 +48,27 @@ inline void PushWeakPtrDeleter(lua_State* L, const std::weak_ptr<T>& = {}) {
   });
 }
 
+inline bool MatchMetaName(lua_State* L, int idx, const char* type) noexcept {
+  lua_getmetatable(L, idx);
+  luaL_getmetatable(L, type);
+  const bool ret = lua_rawequal(L, -1, -2);
+  lua_pop(L, 2);
+  return ret;
+}
+
 template <typename T>
-inline T& ToRef(lua_State* L, int idx, const char* type) {
+inline T* ToRef(lua_State* L, int idx, const char* type) noexcept {
+  return MatchMetaName(L, idx, type)? reinterpret_cast<T*>(lua_touserdata(L, idx)): nullptr;
+}
+
+template <typename T>
+inline T& CheckRef(lua_State* L, int idx, const char* type) {
   return *reinterpret_cast<T*>(luaL_checkudata(L, idx, type));
+}
+inline nf7::Value CheckValue(lua_State* L, int idx) {
+  auto v = ToValue(L, idx);
+  if (!v) luaL_error(L, "expected nf7::Value");
+  return std::move(*v);
 }
 
 }  // namespace nf7
