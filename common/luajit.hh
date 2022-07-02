@@ -28,22 +28,9 @@ inline void PushWeakPtr(lua_State* L, const std::weak_ptr<T>& wptr) noexcept {
   new (lua_newuserdata(L, sizeof(wptr))) std::weak_ptr<T>(wptr);
 }
 template <typename T>
-inline std::weak_ptr<T>& ToWeakPtr(lua_State* L, int idx) {
-  std::weak_ptr<T>* wptr = reinterpret_cast<decltype(wptr)>(lua_touserdata(L, idx));
-  return *wptr;
-}
-template <typename T>
-inline std::shared_ptr<T> ToSharedPtr(lua_State* L, int idx) {
-  if (auto ret = ToWeakPtr<T>(L, idx).lock()) {
-    return ret;
-  }
-  luaL_error(L, "object expired: %s", typeid(T).name());
-  return nullptr;
-}
-template <typename T>
-inline void PushWeakPtrDeleter(lua_State* L, const std::weak_ptr<T>& = {}) {
+inline void PushWeakPtrDeleter(lua_State* L, const std::weak_ptr<T>& = {}) noexcept {
   lua_pushcfunction(L, [](auto L) {
-    ToWeakPtr<T>(L, 1).~weak_ptr();
+    reinterpret_cast<std::weak_ptr<T>*>(lua_touserdata(L, 1))->~weak_ptr();
     return 0;
   });
 }
@@ -55,12 +42,21 @@ inline bool MatchMetaName(lua_State* L, int idx, const char* type) noexcept {
   lua_pop(L, 2);
   return ret;
 }
-
 template <typename T>
 inline T* ToRef(lua_State* L, int idx, const char* type) noexcept {
   return MatchMetaName(L, idx, type)? reinterpret_cast<T*>(lua_touserdata(L, idx)): nullptr;
 }
 
+template <typename T>
+inline std::shared_ptr<T> CheckWeakPtr(lua_State* L, int idx, const char* type) {
+  auto ptr = reinterpret_cast<std::weak_ptr<T>*>(luaL_checkudata(L, idx, type));
+  if (auto ret = ptr->lock()) {
+    return ret;
+  } else {
+    luaL_error(L, "object expired: %s", typeid(T).name());
+    return nullptr;
+  }
+}
 template <typename T>
 inline T& CheckRef(lua_State* L, int idx, const char* type) {
   return *reinterpret_cast<T*>(luaL_checkudata(L, idx, type));

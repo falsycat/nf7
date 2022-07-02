@@ -1,9 +1,12 @@
 #include "common/luajit_thread.hh"
 
+#include <sstream>
+
 
 namespace nf7::luajit {
 
-constexpr size_t kInstructionLimit = 10000000;
+constexpr const char* kTypeName         = "nf7::luajit::Thread";
+constexpr size_t      kInstructionLimit = 10000000;
 
 
 Thread::~Thread() noexcept {
@@ -11,19 +14,41 @@ Thread::~Thread() noexcept {
 }
 
 void Thread::PushMeta(lua_State* L) noexcept {
-  if (luaL_newmetatable(L, "nf7::luajit::Thread")) {
+  if (luaL_newmetatable(L, kTypeName)) {
     PushWeakPtrDeleter<Thread>(L);
     lua_setfield(L, -2, "__gc");
 
     lua_createtable(L, 0, 0);
     {
       lua_pushcfunction(L, [](auto L) {
-        auto th = ToSharedPtr<Thread>(L, 1);
+        auto th = CheckWeakPtr<Thread>(L, 1, kTypeName);
         th->ExpectYield();
         th->ExecResume(L);
         return lua_yield(L, lua_gettop(L)-1);
       });
       lua_setfield(L, -2, "yield");
+
+      static const auto log_write = [](lua_State* L, nf7::Logger::Level lv) {
+        auto th     = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto logger = th->logger_;
+        if (!logger) return luaL_error(L, "logger is not installed on current thread");
+
+        const int n = lua_gettop(L);
+        std::stringstream st;
+        for (int i = 2; i <= n; ++i) {
+          st << lua_tostring(L, i);
+        }
+        logger->Write({lv, st.str()});
+        return 0;
+      };
+      lua_pushcfunction(L, [](auto L) { return log_write(L, nf7::Logger::kTrace); });
+      lua_setfield(L, -2, "trace");
+      lua_pushcfunction(L, [](auto L) { return log_write(L, nf7::Logger::kInfo); });
+      lua_setfield(L, -2, "info");
+      lua_pushcfunction(L, [](auto L) { return log_write(L, nf7::Logger::kWarn); });
+      lua_setfield(L, -2, "warn");
+      lua_pushcfunction(L, [](auto L) { return log_write(L, nf7::Logger::kError); });
+      lua_setfield(L, -2, "error");
     }
     lua_setfield(L, -2, "__index");
   }

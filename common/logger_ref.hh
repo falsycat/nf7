@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <memory>
+#include <source_location>
 #include <string_view>
 
 #include "nf7.hh"
@@ -35,17 +36,17 @@ class LoggerRef final {
   }
 
   // thread-safe
-  void Trace(std::string_view msg) noexcept {
-    Write({nf7::Logger::kTrace, msg});
+  void Trace(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
+    Write({nf7::Logger::kTrace, msg, 0, s});
   }
-  void Info(std::string_view msg) noexcept {
-    Write({nf7::Logger::kInfo, msg});
+  void Info(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
+    Write({nf7::Logger::kInfo, msg, 0, s});
   }
-  void Warn(std::string_view msg) noexcept {
-    Write({nf7::Logger::kWarn, msg});
+  void Warn(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
+    Write({nf7::Logger::kWarn, msg, 0, s});
   }
-  void Error(std::string_view msg) noexcept {
-    Write({nf7::Logger::kError, msg});
+  void Error(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
+    Write({nf7::Logger::kError, msg, 0, s});
   }
   void Write(nf7::Logger::Item&& item) noexcept {
     if (!id_ || !logger_) return;

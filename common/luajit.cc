@@ -4,6 +4,10 @@
 
 #include <lua.hpp>
 
+#include "common/logger.hh"
+#include "common/logger_ref.hh"
+#include "common/luajit_thread.hh"
+
 
 namespace nf7::luajit {
 

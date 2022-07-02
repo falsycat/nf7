@@ -13,6 +13,7 @@
 #include "nf7.hh"
 
 #include "common/future.hh"
+#include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_ref.hh"
 #include "common/proxy_env.hh"
@@ -51,6 +52,11 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   Thread& operator=(const Thread&) = delete;
   Thread& operator=(Thread&&) = delete;
 
+  void Install(const std::shared_ptr<nf7::LoggerRef>& logger) noexcept {
+    assert(state_ == kInitial);
+    logger_ = logger;
+  }
+
   // must be called on luajit thread
   lua_State* Init(lua_State* L) noexcept {
     assert(state_ == kInitial);
@@ -72,6 +78,12 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
   }
 
+  // must be called on luajit thread
+  // handler_ won't be called on next yielding
+  void ExpectYield() noexcept {
+    skip_handle_ = true;
+  }
+
   // thread-safe
   void Abort() noexcept;
 
@@ -80,12 +92,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     if (file_parent_) {
       file_->MoveUnder(*file_parent_, "file");
     }
-  }
-
-  // must be called on luajit thread
-  // handler_ won't be called on next yielding
-  void ExpectYield() noexcept {
-    skip_handle_ = true;
   }
 
   nf7::Env& env() noexcept { return env_; }
@@ -107,6 +113,10 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   // initialized on Init()
   lua_State* th_ = nullptr;
   std::optional<nf7::luajit::Ref> th_ref_;
+
+
+  // installed features
+  std::shared_ptr<nf7::LoggerRef> logger_;
 
 
   // mutable params
