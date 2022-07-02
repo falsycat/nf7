@@ -180,10 +180,12 @@ class Ref::Lambda final : public nf7::Lambda,
 
   void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
     auto parent = parent_.lock();
-    if (caller == parent) {
-      base_->Handle(GetIndex(inmap_, idx), std::move(v), shared_from_this());
-    } else if (parent && caller == base_) {
+    if (parent && caller == base_) {
       parent->Handle(GetIndex(outmap_, idx), std::move(v), shared_from_this());
+    } else {
+      assert(!parent || parent == caller);
+      parent_ = caller;
+      base_->Handle(GetIndex(inmap_, idx), std::move(v), shared_from_this());
     }
   }
 

@@ -148,12 +148,12 @@ class Network final : public nf7::File,
   void UnDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting command to undo"),
-        [this]() { history_.UnDo(); exec_ = nullptr; });
+        [this]() { history_.UnDo(); });
   }
   void ReDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "applying command to redo"),
-        [this]() { history_.ReDo(); exec_ = nullptr; });
+        [this]() { history_.ReDo(); });
   }
 
   void QueueCommand(const std::shared_ptr<nf7::Context>& ctx,
@@ -308,7 +308,8 @@ class Network::Item::Watcher final : public nf7::Env::Watcher {
 class Network::Lambda : public nf7::Context, public nf7::Lambda,
     public std::enable_shared_from_this<Lambda> {
  public:
-  Lambda(Network& owner) noexcept : Context(owner) {
+  Lambda(Network& owner, bool root = false) noexcept :
+      Context(owner), root_(root) {
     // create sub lambdas
     std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> idmap;
     conns_.reserve(owner.items_.size());
@@ -347,7 +348,7 @@ class Network::Lambda : public nf7::Context, public nf7::Lambda,
     auto task = [this, self = shared_from_this(), idx, v = std::move(v), caller]() {
       if(abort_) return;
 
-      if (outer_ == nullptr) {
+      if (!root_ && outer_ == nullptr) {
         outer_ = caller;
       }
 
@@ -398,6 +399,8 @@ class Network::Lambda : public nf7::Context, public nf7::Lambda,
     size_t dst_idx;
   };
 
+  bool root_;
+
   std::shared_ptr<nf7::Lambda> outer_;
   std::atomic<bool> abort_ = false;
 
@@ -413,7 +416,7 @@ class Network::Editor final : public nf7::Node::Editor {
 
   void Emit(Node& node, size_t idx, nf7::Value&& v) noexcept override {
     if (!owner_->exec_) {
-      owner_->exec_ = std::make_shared<Network::Lambda>(*owner_);
+      owner_->exec_ = std::make_shared<Network::Lambda>(*owner_, true);
     }
 
     const auto& exec = owner_->exec_;
@@ -637,6 +640,8 @@ class Network::Initiator final : public Network::ChildNode,
  public:
   static inline const GenericTypeInfo<Initiator> kType = {"Node/Network/Initiator", {"Node"}};
 
+  static constexpr size_t kManualIndex = 777;
+
   Initiator(Env& env, bool enable_auto = false) noexcept :
       ChildNode(kType, env), enable_auto_(enable_auto) {
     output_ = {"out"};
@@ -669,7 +674,15 @@ class Network::Initiator final : public Network::ChildNode,
     return std::make_shared<Emitter>();
   }
   std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override {
-    return std::make_shared<nf7::Lambda>();
+    class Emitter final : public nf7::Lambda,
+        public std::enable_shared_from_this<Emitter> {
+     public:
+      Emitter() = default;
+      void Handle(size_t, Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+        caller->Handle(0, nf7::Value::Pulse {}, shared_from_this());
+      }
+    };
+    return std::make_shared<Emitter>();
   }
 
   void UpdateNode(Editor& ed) noexcept override {
@@ -927,6 +940,9 @@ void Network::Handle(const Event& ev) noexcept {
     break;
   case Event::kRemove:
     for (const auto& item : items_) item->Detach();
+    break;
+  case Event::kUpdate:
+    exec_ = nullptr;
     break;
   case Event::kReqFocus:
     win_.SetFocus();
