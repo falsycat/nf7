@@ -221,9 +221,10 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
     env().GetFileOrThrow(owner_id_);  // check if the owner is alive
     auto th = owner_->th_.Add(
         self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
+    th->Install(log_);
     th_.emplace_back(th);
 
-    ljq_->Push(self, [p = std::move(p), caller, handler, th](auto L) mutable {
+    ljq_->Push(self, [this, self, p = std::move(p), caller, handler, th](auto L) mutable {
       auto thL = th->Init(L);
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
       if (p) {
@@ -233,7 +234,7 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
         lua_pushnil(thL);
         lua_pushnil(thL);
       }
-      (void) caller; lua_pushnil(thL);  // TODO
+      PushCaller(thL, caller);
       th->Resume(thL, 3);
     });
   } catch (nf7::Exception& e) {
@@ -255,6 +256,37 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
       log_->Warn("luajit execution error: "s+lua_tostring(L, -1));
       return;
     }
+  }
+
+  void PushCaller(lua_State* L, const std::shared_ptr<nf7::Lambda>& caller) noexcept {
+    constexpr auto kTypeName = "nf7::File/LuaJIT/Node::Caller";
+    struct D final {
+      std::weak_ptr<nf7::Lambda>   self;
+      std::shared_ptr<nf7::Lambda> caller;
+    };
+    new (lua_newuserdata(L, sizeof(D))) D { .self = weak_from_this(), .caller = caller };
+
+    if (luaL_newmetatable(L, kTypeName)) {
+      lua_pushcfunction(L, [](auto L) {
+        const auto& d   = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
+        const auto  idx = luaL_checkint(L, 2);
+
+        auto self = d.self.lock();
+        if (!self) return luaL_error(L, "context expired");
+        if (idx < 0) return luaL_error(L, "negative index");
+
+        d.caller->Handle(static_cast<size_t>(idx), nf7::luajit::CheckValue(L, 3), self);
+        return 0;
+      });
+      lua_setfield(L, -2, "__call");
+
+      lua_pushcfunction(L, [](auto L) {
+        reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName))->~D();
+        return 0;
+      });
+      lua_setfield(L, -2, "__gc");
+    }
+    lua_setmetatable(L, -2);
   }
 };
 
