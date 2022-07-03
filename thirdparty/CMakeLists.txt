@@ -177,6 +177,26 @@ endfunction()
 include_luajit()
 
 
+# ---- miniaudio ----
+# repository: https://github.com/mackron/miniaudio
+# license   : Unlicense
+
+FetchContent_Declare(
+  miniaudio
+  URL "https://github.com/mackron/miniaudio/archive/4d813cfe23c28db165cce6785419fee9d2399766.zip"
+)
+FetchContent_Populate(miniaudio)
+
+add_library(miniaudio)
+target_include_directories(miniaudio PUBLIC SYSTEM ${miniaudio_SOURCE_DIR})
+target_sources(miniaudio
+  PUBLIC
+    "${miniaudio_SOURCE_DIR}/miniaudio.h"
+  PRIVATE
+    miniaudio.c
+)
+
+
 # ---- source_location ----
 add_library(source_location INTERFACE)
 target_include_directories(source_location SYSTEM INTERFACE .)
