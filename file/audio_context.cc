@@ -23,10 +23,7 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  AudioContext(Env& env) noexcept :
-      File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-      q_(std::make_shared<Queue>(env)) {
-  }
+  AudioContext(Env&) noexcept;
 
   AudioContext(Env& env, Deserializer&) : AudioContext(env) {
   }
@@ -88,8 +85,6 @@ class AudioContext::Queue final : public nf7::audio::Queue,
 
   Queue() = delete;
   Queue(Env& env) : env_(&env), th_(std::make_shared<Thread>(env, Runner {*this})) {
-    auto ctx = std::make_shared<nf7::GenericContext>(*env_, 0, "creating ma_context");
-    env.ExecMain(ctx, [this, ctx]() { Init(ctx); });
   }
   ~Queue() noexcept {
     th_->Push(
@@ -101,6 +96,20 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   Queue(Queue&&) = delete;
   Queue& operator=(const Queue&) = delete;
   Queue& operator=(Queue&&) = delete;
+
+  void Init(Env& env) noexcept {
+    th_->Push(
+        std::make_shared<nf7::GenericContext>(env, 0, "creating ma_context"),
+        [this, self = shared_from_this()](auto) {
+          auto ctx = std::make_shared<ma_context>();
+          if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
+            ctx_   = std::move(ctx);
+            state_ = kReady;
+          } else {
+            state_ = kBroken;
+          }
+        });
+  }
 
   void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task) noexcept override {
     th_->Push(ctx, std::move(task));
@@ -116,22 +125,12 @@ class AudioContext::Queue final : public nf7::audio::Queue,
 
   std::atomic<State> state_ = kInitializing;
   std::shared_ptr<ma_context> ctx_;
-
-
-  void Init(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    th_->Push(
-        ctx,
-        [this, self = shared_from_this()](auto) {
-          auto ctx = std::make_shared<ma_context>();
-          if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
-            ctx_   = std::move(ctx);
-            state_ = kReady;
-          } else {
-            state_ = kBroken;
-          }
-        });
-  }
 };
+AudioContext::AudioContext(Env& env) noexcept :
+    File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
+    q_(std::make_shared<Queue>(env)) {
+  q_->Init(env);
+}
 
 
 void AudioContext::Update() noexcept {

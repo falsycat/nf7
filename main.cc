@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
@@ -74,10 +75,11 @@ class Env final : public nf7::Env {
     }
 
     alive_ = false;
-    cv_.notify_one();
-    async_.Notify();
 
+    cv_.notify_one();
     main_thread_.join();
+
+    async_.Notify();
     for (auto& th : async_threads_) th.join();
 
     ::Env::Pop();
@@ -275,7 +277,8 @@ class Env final : public nf7::Env {
       } catch (Exception&) {
         // TODO: how to handle?
       }
-      async_.Wait();
+      if (!alive_) break;
+      async_.WaitFor(1s);
     }
   }
 };

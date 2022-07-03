@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 # ---- configuration ----
-project(nf7 CXX)
+project(nf7 C CXX)
 
 option(NF7_STATIC "link all libs statically" ON)
 
@@ -86,6 +86,7 @@ target_sources(nf7
     common/thread.hh
     common/value.hh
     common/wait_queue.hh
+    common/yas_audio.hh
     common/yas_imgui.hh
     common/yas_imnodes.hh
     common/yas_nf7.hh
@@ -94,6 +95,7 @@ target_sources(nf7
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 
     file/audio_context.cc
+    file/audio_io.cc
     file/luajit_context.cc
     file/luajit_node.cc
     file/luajit_obj.cc
@@ -114,6 +116,7 @@ target_link_libraries(nf7
     implot
     linalg.h
     luajit
+    miniaudio
     source_location
     yas
 )
