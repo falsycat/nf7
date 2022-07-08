@@ -82,6 +82,7 @@ target_sources(nf7
     common/ptr_selector.hh
     common/queue.hh
     common/task.hh
+    common/thread.hh
     common/value.hh
     common/wait_queue.hh
     common/yas_imgui.hh
