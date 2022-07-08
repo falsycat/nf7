@@ -47,6 +47,7 @@ target_sources(nf7
     common/aggregate_command.hh
     common/async_buffer.hh
     common/async_buffer_adaptor.hh
+    common/audio_queue.hh
     common/buffer.hh
     common/dir.hh
     common/dir_item.hh
@@ -92,6 +93,7 @@ target_sources(nf7
 
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 
+    file/audio_context.cc
     file/luajit_context.cc
     file/luajit_node.cc
     file/luajit_obj.cc
