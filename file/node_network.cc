@@ -813,6 +813,11 @@ class Network::Input final : public Network::InputOrOutput,
   } catch (Exception&) {
     return nullptr;
   }
+  std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override {
+    // returning nullptr is allowed because it's guaranteed that
+    // parent is Node/Network, which can handle nullptr safely
+    return nullptr;
+  }
 
   void UpdateNode(Editor&) noexcept override {
     ImGui::TextUnformatted("Node/Network/Input");

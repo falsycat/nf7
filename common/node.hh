@@ -20,15 +20,22 @@ class Node : public File::Interface {
  public:
   class Editor;
 
-  Node() = default;
+  enum Flag : uint8_t {
+    kUI   = 1 << 0,  // UpdateNode() is called to display node
+    kMenu = 1 << 1,
+  };
+  using Flags = uint8_t;
+
+  Node(Flags f = 0) noexcept : flags_(f) { }
   Node(const Node&) = default;
   Node(Node&&) = default;
   Node& operator=(const Node&) = default;
   Node& operator=(Node&&) = default;
 
-  virtual std::shared_ptr<nf7::Lambda> CreateLambda() noexcept { return nullptr; }
+  virtual std::shared_ptr<nf7::Lambda> CreateLambda() noexcept = 0;
 
-  virtual void UpdateNode(Editor&) noexcept = 0;
+  virtual void UpdateNode(Editor&) noexcept { }
+  virtual void UpdateMenu(Editor&) noexcept { }
 
   std::span<const std::string> input() const noexcept { return input_; }
   std::span<const std::string> output() const noexcept { return output_; }
@@ -50,7 +57,11 @@ class Node : public File::Interface {
     return static_cast<size_t>(itr - output_.begin());
   }
 
+  Flags flags() const noexcept { return flags_; }
+
  protected:
+  Flags flags_;
+
   std::vector<std::string> input_;
   std::vector<std::string> output_;
 };
