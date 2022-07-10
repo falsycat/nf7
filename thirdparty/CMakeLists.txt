@@ -167,7 +167,7 @@ target_sources(linalg.h
 
 FetchContent_Declare(
   luajit
-  URL "https://github.com/LuaJIT/LuaJIT/archive/1d7b5029c5ba36870d25c67524034d452b761d27.zip"
+  URL "https://github.com/LuaJIT/LuaJIT/archive/e3bae12fc0461cfa7e4bef3dfed2dad372e5da8d.zip"
 )
 FetchContent_Populate(luajit)
 

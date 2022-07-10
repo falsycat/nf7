@@ -36,7 +36,9 @@ inline void PushWeakPtrDeleter(lua_State* L, const std::weak_ptr<T>& = {}) noexc
 }
 
 inline bool MatchMetaName(lua_State* L, int idx, const char* type) noexcept {
-  lua_getmetatable(L, idx);
+  if (0 == lua_getmetatable(L, idx)) {
+    return false;
+  }
   luaL_getmetatable(L, type);
   const bool ret = lua_rawequal(L, -1, -2);
   lua_pop(L, 2);

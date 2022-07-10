@@ -44,7 +44,8 @@ void PushGlobalTable(lua_State* L) noexcept {
         PushMutableVector(L, std::vector<uint8_t> {*mut});
         return 1;
       }
-      return luaL_error(L, "expected nf7::Value::MutableVector or nf7::Value::Vector");
+      PushMutableVector(L, {});
+      return 1;
     });
     lua_setfield(L, -2, "nf7_MutableVector");
   }
@@ -165,6 +166,7 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
     });
     lua_setfield(L, -2, "__gc");
   }
+  lua_setmetatable(L, -2);
 }
 
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
