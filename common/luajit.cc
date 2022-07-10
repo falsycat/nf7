@@ -80,6 +80,7 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
         auto operator()(Value::Scalar)  noexcept { lua_pushnumber(L, v.scalar()); }
         auto operator()(Value::String)  noexcept { lua_pushstring(L, v.string().c_str()); }
         auto operator()(Value::Vector)  noexcept { lua_pushnil(L); }
+        auto operator()(Value::Tuple)   noexcept { lua_pushnil(L); }
         auto operator()(Value::DataPtr) noexcept { lua_pushnil(L); }
       };
       v.Visit(Visitor{.L = L, .v = v});
