@@ -33,9 +33,10 @@ class Future final {
    public:
     std::weak_ptr<nf7::Context> ctx;
 
-    std::atomic<bool>   aborted = false;
-    std::atomic<size_t> pros    = 0;
-    std::atomic<State>  state   = kYet;
+    std::atomic<bool>   destroyed = false;
+    std::atomic<bool>   aborted   = false;
+    std::atomic<size_t> pros      = 0;
+    std::atomic<State>  state     = kYet;
 
     std::mutex mtx;
     std::optional<T> value;
@@ -143,7 +144,9 @@ class Future final {
 
     Coro() = delete;
     ~Coro() noexcept {
-      if (data_) h_.destroy();
+      if (data_ && !data_->destroyed.exchange(true)) {
+        h_.destroy();
+      }
     }
     Coro(const Coro&) = delete;
     Coro(Coro&&) = default;
@@ -159,9 +162,6 @@ class Future final {
       h_.promise().Throw(
           std::make_exception_ptr<nf7::Exception>({"coroutine aborted"}));
       data_->aborted = true;
-
-      auto ctx = data_->ctx.lock();
-      ctx->env().ExecSub(ctx, [h = h_]() { h.destroy(); });
     }
 
    private:
@@ -257,7 +257,13 @@ class Future final {
     if (yet()) {
       data.recv.push_back([caller, caller_data, caller_ctx, callee_ctx]() {
         caller_ctx->env().ExecSub(caller_ctx, [caller, caller_data, caller_ctx]() {
-          if (!caller_data->aborted) caller.resume();
+          if (!caller_data->aborted) {
+            caller.resume();
+          } else {
+            if (!caller_data->destroyed.exchange(true)) {
+              caller.destroy();
+            }
+          }
         });
       });
     } else {
