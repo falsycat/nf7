@@ -145,6 +145,8 @@ class Network final : public nf7::File,
   void Initialize();
   void ApplySockets() noexcept;
 
+  void ApplyNetworkChanges() noexcept;
+
   void UnDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting command to undo"),
@@ -548,7 +550,7 @@ class Network::SocketSwapCommand final : public nf7::History::Command {
       socks.erase(socks.begin()+idx);
     }
     owner_->ApplySockets();
-    owner_->Touch();
+    owner_->ApplyNetworkChanges();
   }
 };
 class Network::Item::SwapCommand final : public nf7::History::Command {
@@ -590,7 +592,7 @@ class Network::Item::SwapCommand final : public nf7::History::Command {
       item_ = std::move(*itr);
       owner_->items_.erase(itr);
     }
-    owner_->Touch();
+    owner_->ApplyNetworkChanges();
   }
 };
 class Network::Item::MoveCommand final : public nf7::History::Command {
@@ -629,6 +631,7 @@ class Network::Item::RestoreCommand final : public nf7::History::Command {
     auto& mem = *target_->memento_;
     target_->tag_ = tag_;
     mem.Restore(std::exchange(tag_, mem.Save()));
+    target_->owner_->ApplyNetworkChanges();
   }
 };
 
@@ -918,6 +921,13 @@ void Network::ApplySockets() noexcept {
     }
   }
 }
+void Network::ApplyNetworkChanges() noexcept {
+  if (exec_) {
+    exec_->Abort();
+    exec_ = nullptr;
+  }
+  Touch();
+}
 File* Network::Find(std::string_view name) const noexcept
 try {
   size_t idx;
@@ -1002,7 +1012,7 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
         net.QueueCommandSilently(std::make_unique<Item::RestoreCommand>(*owner_, ptag));
       }
     }
-    if (item.owner_) item.owner_->Touch();
+    if (item.owner_) item.owner_->ApplyNetworkChanges();
     return;
 
   case File::Event::kReqFocus:

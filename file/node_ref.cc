@@ -41,6 +41,7 @@ class Ref final : public nf7::File, public nf7::Node {
       std::vector<std::string>&& in  = {},
       std::vector<std::string>&& out = {}) noexcept :
       File(kType, env),
+      log_(std::make_shared<nf7::LoggerRef>()),
       mem_(*this, {*this, std::move(path), std::move(in), std::move(out)}) {
   }
 
@@ -66,14 +67,14 @@ class Ref final : public nf7::File, public nf7::Node {
 
     switch (ev.type) {
     case Event::kAdd:
-      log_.SetUp(*this);
+      log_->SetUp(*this);
       /* fallthrough */
     case Event::kUpdate:
       input_  = d.input;
       output_ = d.output;
       return;
     case Event::kRemove:
-      log_.TearDown();
+      log_->TearDown();
       return;
     default:
       return;
@@ -88,7 +89,7 @@ class Ref final : public nf7::File, public nf7::Node {
   }
 
  private:
-  nf7::LoggerRef log_;
+  std::shared_ptr<nf7::LoggerRef> log_;
 
   const char* popup_ = nullptr;
 
@@ -121,7 +122,7 @@ class Ref final : public nf7::File, public nf7::Node {
     } catch (nf7::Exception& e) {
       d.input  = {};
       d.output = {};
-      log_.Error("failed to sync: "+e.msg());
+      log_->Error("failed to sync: "+e.msg());
     }
   }
   void Sync() noexcept {
@@ -154,7 +155,8 @@ class Ref final : public nf7::File, public nf7::Node {
 class Ref::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
-  Lambda(Ref& owner, std::shared_ptr<nf7::Lambda>&& base) : base_(std::move(base)) {
+  Lambda(Ref& owner, std::shared_ptr<nf7::Lambda>&& base) :
+      base_(std::move(base)), log_(owner.log_) {
     auto& n = owner.target();
 
     // ref input index -> target input index
@@ -178,7 +180,8 @@ class Ref::Lambda final : public nf7::Lambda,
     }
   }
 
-  void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+  void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
+  try {
     auto parent = parent_.lock();
     if (parent && caller == base_) {
       parent->Handle(GetIndex(outmap_, idx), std::move(v), shared_from_this());
@@ -187,10 +190,14 @@ class Ref::Lambda final : public nf7::Lambda,
       parent_ = caller;
       base_->Handle(GetIndex(inmap_, idx), std::move(v), shared_from_this());
     }
+  } catch (nf7::Exception&) {
+    log_->Warn("ignored unknown IO");
   }
 
  private:
   std::shared_ptr<nf7::Lambda> base_;
+  std::shared_ptr<nf7::LoggerRef> log_;
+
   std::weak_ptr<nf7::Lambda> parent_;
 
   std::vector<std::optional<size_t>> inmap_, outmap_;
@@ -208,7 +215,7 @@ std::shared_ptr<nf7::Lambda> Ref::CreateLambda() noexcept
 try {
   return std::make_shared<Ref::Lambda>(*this, target().CreateLambda());
 } catch (nf7::Exception& e) {
-  log_.Error("failed to create lambda: "+e.msg());
+  log_->Error("failed to create lambda: "+e.msg());
   return nullptr;
 }
 
