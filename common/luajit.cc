@@ -67,26 +67,47 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
   new (lua_newuserdata(L, sizeof(v))) nf7::Value(v);
 
   if (luaL_newmetatable(L, "nf7::Value")) {
-    lua_pushcfunction(L, [](auto L) {
-      const auto& v = CheckRef<nf7::Value>(L, 1, "nf7::Value");
-      lua_pushstring(L, v.typeName());
+    lua_createtable(L, 0, 0);
+      lua_pushcfunction(L, [](auto L) {
+        const auto& v = CheckRef<nf7::Value>(L, 1, "nf7::Value");
+        lua_pushstring(L, v.typeName());
+        return 1;
+      });
+      lua_setfield(L, -2, "type");
 
-      struct Visitor final {
-        lua_State*        L;
-        const nf7::Value& v;
-        auto operator()(Value::Pulse)   noexcept { lua_pushnil(L); }
-        auto operator()(Value::Boolean) noexcept { lua_pushboolean(L, v.boolean()); }
-        auto operator()(Value::Integer) noexcept { lua_pushinteger(L, v.integer()); }
-        auto operator()(Value::Scalar)  noexcept { lua_pushnumber(L, v.scalar()); }
-        auto operator()(Value::String)  noexcept { lua_pushstring(L, v.string().c_str()); }
-        auto operator()(Value::Vector)  noexcept { lua_pushnil(L); }
-        auto operator()(Value::Tuple)   noexcept { lua_pushnil(L); }
-        auto operator()(Value::DataPtr) noexcept { lua_pushnil(L); }
-      };
-      v.Visit(Visitor{.L = L, .v = v});
-      return 2;
-    });
-    lua_setfield(L, -2, "__len");
+      lua_pushcfunction(L, [](auto L) {
+        const auto& v = CheckRef<nf7::Value>(L, 1, "nf7::Value");
+
+        struct Visitor final {
+          lua_State*        L;
+          const nf7::Value& v;
+          auto operator()(Value::Pulse)   noexcept { lua_pushnil(L); }
+          auto operator()(Value::Boolean) noexcept { lua_pushboolean(L, v.boolean()); }
+          auto operator()(Value::Integer) noexcept { lua_pushinteger(L, v.integer()); }
+          auto operator()(Value::Scalar)  noexcept { lua_pushnumber(L, v.scalar()); }
+          auto operator()(Value::String)  noexcept { lua_pushstring(L, v.string().c_str()); }
+          auto operator()(Value::Vector)  noexcept { lua_pushnil(L); }
+          auto operator()(Value::DataPtr) noexcept { lua_pushnil(L); }
+
+          auto operator()(Value::Tuple) noexcept {
+            const auto& tup = *v.tuple();
+            lua_createtable(L, 0, 0);
+            size_t arridx = 0;
+            for (auto& p : tup) {
+              PushValue(L, p.second);
+              if (p.first.empty()) {
+                lua_rawseti(L, -2, static_cast<int>(arridx++));
+              } else {
+                lua_setfield(L, -2, p.first.c_str());
+              }
+            }
+          }
+        };
+        v.Visit(Visitor{.L = L, .v = v});
+        return 1;
+      });
+      lua_setfield(L, -2, "value");
+    lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
       CheckRef<nf7::Value>(L, 1, "nf7::Value").~Value();
@@ -192,6 +213,21 @@ std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
   }
   if (auto vec = ToMutableVector(L, idx)) {
     return nf7::Value {std::move(*vec)};
+  }
+  if (lua_istable(L, idx)) {
+    std::vector<nf7::Value::TuplePair> tup;
+    lua_pushnil(L);
+    while (lua_next(L, idx)) {
+      std::string name = "";
+      if (lua_isstring(L, -2)) {
+        name = lua_tostring(L, -2);
+      }
+      auto val = ToValue(L, -1);
+      if (!val) return std::nullopt;
+      tup.push_back({std::move(name), std::move(*val)});
+      lua_pop(L, 1);
+    }
+    return nf7::Value {std::move(tup)};
   }
   if (auto val = ToRef<nf7::Value>(L, idx, "nf7::Value")) {
     return *val;
