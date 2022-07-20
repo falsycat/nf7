@@ -73,7 +73,7 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return std::make_unique<IO>(env, DeviceSelector {selector_}, cfg_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -297,7 +297,8 @@ class IO::PlaybackLambda final : public nf7::Lambda,
   };
 
   PlaybackLambda() = delete;
-  PlaybackLambda(IO& owner) noexcept : data_(owner.data_), info_(owner.infoTuple()) {
+  PlaybackLambda(IO& f, const std::shared_ptr<Owner>& owner) noexcept :
+      Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
@@ -345,7 +346,8 @@ class IO::CaptureLambda final : public nf7::Lambda,
   };
 
   CaptureLambda() = delete;
-  CaptureLambda(IO& owner) noexcept : data_(owner.data_), info_(owner.infoTuple()) {
+  CaptureLambda(IO& f, const std::shared_ptr<Owner>& owner) noexcept :
+      Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(size_t idx, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
@@ -376,12 +378,13 @@ class IO::CaptureLambda final : public nf7::Lambda,
 
   std::optional<uint64_t> time_;
 };
-std::shared_ptr<nf7::Lambda> IO::CreateLambda() noexcept {
+std::shared_ptr<nf7::Lambda> IO::CreateLambda(
+    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
-    return std::make_shared<IO::PlaybackLambda>(*this);
+    return std::make_shared<IO::PlaybackLambda>(*this, owner);
   case ma_device_type_capture:
-    return std::make_shared<IO::CaptureLambda>(*this);
+    return std::make_shared<IO::CaptureLambda>(*this, owner);
   default:
     std::abort();
   }

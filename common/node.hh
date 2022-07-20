@@ -32,7 +32,8 @@ class Node : public File::Interface {
   Node& operator=(const Node&) = default;
   Node& operator=(Node&&) = default;
 
-  virtual std::shared_ptr<nf7::Lambda> CreateLambda() noexcept = 0;
+  virtual std::shared_ptr<nf7::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Lambda::Owner>&) noexcept = 0;
 
   virtual void UpdateNode(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }

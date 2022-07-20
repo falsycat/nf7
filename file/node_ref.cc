@@ -60,7 +60,7 @@ class Ref final : public nf7::File, public nf7::Node {
         std::vector<std::string>{input_}, std::vector<std::string>{output_});
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda() noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
 
   void Handle(const Event& ev) noexcept {
     const auto& d = mem_.data();
@@ -155,13 +155,15 @@ class Ref final : public nf7::File, public nf7::Node {
 class Ref::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
-  Lambda(Ref& owner, std::shared_ptr<nf7::Lambda>&& base) :
-      base_(std::move(base)), log_(owner.log_) {
-    auto& n = owner.target();
+  Lambda(Ref& f,
+         std::shared_ptr<nf7::Lambda>&& base,
+         const std::shared_ptr<nf7::Lambda::Owner>& owner) :
+      nf7::Lambda(owner), base_(std::move(base)), log_(f.log_) {
+    auto& n = f.target();
 
     // ref input index -> target input index
-    inmap_.reserve(owner.input_.size());
-    for (const auto& name : owner.input()) {
+    inmap_.reserve(f.input_.size());
+    for (const auto& name : f.input()) {
       try {
         inmap_.push_back(n.input(name));
       } catch (nf7::Exception&){
@@ -170,10 +172,10 @@ class Ref::Lambda final : public nf7::Lambda,
     }
 
     // target output index -> ref output index
-    outmap_.reserve(owner.output_.size());
+    outmap_.reserve(f.output_.size());
     for (const auto& name : n.output()) {
       try {
-        outmap_.push_back(owner.output(name));
+        outmap_.push_back(f.output(name));
       } catch (nf7::Exception&){
         outmap_.push_back(std::nullopt);
       }
@@ -211,9 +213,12 @@ class Ref::Lambda final : public nf7::Lambda,
   }
 };
 
-std::shared_ptr<nf7::Lambda> Ref::CreateLambda() noexcept
+std::shared_ptr<nf7::Lambda> Ref::CreateLambda(
+    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept
 try {
-  return std::make_shared<Ref::Lambda>(*this, target().CreateLambda());
+  auto self = std::make_shared<nf7::Lambda::Owner>(
+      abspath(), "call through reference", owner);
+  return std::make_shared<Ref::Lambda>(*this, target().CreateLambda(self), owner);
 } catch (nf7::Exception& e) {
   log_->Error("failed to create lambda: "+e.msg());
   return nullptr;
