@@ -180,7 +180,7 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
  public:
   Lambda(Node& f, const std::shared_ptr<Owner>& owner) noexcept :
       Context(f), nf7::Lambda(owner),
-      owner_(&f), owner_id_(f.id()),
+      file_(&f), file_id_(f.id()),
       log_(f.log_), handler_(f.FetchHandler()) {
   }
 
@@ -197,8 +197,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
   }
 
  private:
-  Node* const owner_;
-  File::Id owner_id_;
+  Node* const file_;
+  File::Id file_id_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
@@ -206,6 +206,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
   std::shared_ptr<nf7::luajit::Queue>            ljq_;
 
   std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
+
+  std::optional<nf7::luajit::Ref> ctxtable_;
 
 
   using Param = std::pair<size_t, nf7::Value>;
@@ -219,8 +221,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
     auto handler = handler_.value();
     ljq_ = handler->ljq();
 
-    env().GetFileOrThrow(owner_id_);  // check if the owner is alive
-    auto th = owner_->th_.Add(
+    env().GetFileOrThrow(file_id_);  // check if the owner is alive
+    auto th = file_->th_.Add(
         self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
     th->Install(log_);
     th_.emplace_back(th);
@@ -236,7 +238,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
         lua_pushnil(thL);
       }
       PushCaller(thL, caller);
-      th->Resume(thL, 3);
+      PushContextTable(thL);
+      th->Resume(thL, 4);
     });
   } catch (nf7::Exception& e) {
     log_->Error("failed to call handler: "+e.msg());
@@ -288,6 +291,17 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
       lua_setfield(L, -2, "__gc");
     }
     lua_setmetatable(L, -2);
+  }
+
+  void PushContextTable(lua_State* L) noexcept {
+    if (!ctxtable_) {
+      lua_createtable(L, 0, 0);
+      lua_pushvalue(L, -1);
+      const int idx = luaL_ref(L, LUA_REGISTRYINDEX);
+      ctxtable_.emplace(shared_from_this(), ljq_, idx);
+    } else {
+      lua_rawgeti(L, LUA_REGISTRYINDEX, ctxtable_->index());
+    }
   }
 };
 
