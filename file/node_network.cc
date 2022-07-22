@@ -131,7 +131,8 @@ class Network final : public nf7::File,
   std::unordered_map<ItemId,      Item*> item_map_;
   std::unordered_map<const Node*, Item*> node_map_;
 
-  std::shared_ptr<Network::Lambda> exec_;
+  std::shared_ptr<Network::Lambda> lambda_;
+  std::vector<std::weak_ptr<Network::Lambda>> lambdas_running_;
 
   const char* popup_ = nullptr;
 
@@ -144,9 +145,10 @@ class Network final : public nf7::File,
 
 
   void Initialize();
+  void DetachLambda() noexcept;
   void ApplySockets() noexcept;
-
   void ApplyNetworkChanges() noexcept;
+
 
   void UnDo() {
     env().ExecMain(
@@ -185,12 +187,15 @@ class Network final : public nf7::File,
   }
 };
 
+// InternalNode is an interface which can create an initiator lambda,
+// Network lambda passes its input to all initiator lambdas.
 class Network::InternalNode : public nf7::File::Interface {
  public:
   virtual std::shared_ptr<nf7::Lambda> CreateInitiator(
       const std::shared_ptr<nf7::Lambda::Owner>&) noexcept = 0;
 };
 
+// ChildNode is a File where it can be supposed that owner is Node/Network.
 class Network::ChildNode : public nf7::File {
  public:
   using nf7::File::File;
@@ -208,14 +213,14 @@ class Network::ChildNode : public nf7::File {
       return;
     }
   }
-
   Network& owner() const noexcept { assert(owner_); return *owner_; }
 
  private:
   Network* owner_;
 };
 
-
+// Item holds an entity of File, and its watcher
+// to manage a Node owned by Node/Network.
 class Network::Item final {
  public:
   class Watcher;
@@ -297,6 +302,8 @@ class Network::Item final {
   }
 };
 
+// Watches the child Node to propagate update signal to Node/Network
+// and detect memento changes.
 class Network::Item::Watcher final : public nf7::Env::Watcher {
  public:
   Watcher(Item& owner) noexcept : nf7::Env::Watcher(owner.env()), owner_(&owner) {
@@ -309,6 +316,9 @@ class Network::Item::Watcher final : public nf7::Env::Watcher {
   void Handle(const nf7::File::Event&) noexcept override;
 };
 
+// Builds and holds network information independently from Node/Network.
+// When it receives an input from outside or an output from Nodes in the network,
+// propagates it to appropriate Nodes.
 class Network::Lambda : public nf7::Context, public nf7::Lambda,
     public std::enable_shared_from_this<Lambda> {
  public:
@@ -412,18 +422,25 @@ class Network::Lambda : public nf7::Context, public nf7::Lambda,
   std::unordered_map<Node*, std::shared_ptr<nf7::Lambda>> nmap_;
   std::unordered_map<nf7::Lambda*, std::vector<Conn>>     conns_;
 };
+void Network::DetachLambda() noexcept {
+  if (lambda_ && !lambda_->owner()) {
+    lambda_->Abort();
+  }
+  lambda_ = nullptr;
+}
 
+// An generic implementation of Node::Editor for Node/Network.
 class Network::Editor final : public nf7::Node::Editor {
  public:
   Editor(Network& owner) noexcept : owner_(&owner) {
   }
 
   void Emit(Node& node, size_t idx, nf7::Value&& v) noexcept override {
-    if (!owner_->exec_) {
-      owner_->exec_ = std::make_shared<Network::Lambda>(*owner_);
+    if (!owner_->lambda_) {
+      owner_->lambda_ = std::make_shared<Network::Lambda>(*owner_);
     }
 
-    const auto& exec = owner_->exec_;
+    const auto& exec = owner_->lambda_;
     const auto& lam  = exec->sub(node);
     assert(lam);
     owner_->env().ExecSub(
@@ -501,6 +518,7 @@ class Network::Editor final : public nf7::Node::Editor {
 };
 
 
+// A command that add or remove a Node socket.
 class Network::SocketSwapCommand final : public nf7::History::Command {
  public:
   SocketSwapCommand(Network& owner, size_t idx) noexcept :
@@ -555,6 +573,8 @@ class Network::SocketSwapCommand final : public nf7::History::Command {
     owner_->ApplyNetworkChanges();
   }
 };
+
+// A command that add or remove a Node.
 class Network::Item::SwapCommand final : public nf7::History::Command {
  public:
   SwapCommand(Network& owner, std::unique_ptr<Item>&& item) noexcept :
@@ -597,6 +617,8 @@ class Network::Item::SwapCommand final : public nf7::History::Command {
     owner_->ApplyNetworkChanges();
   }
 };
+
+// A command that moves displayed position of a Node on Node/Network.
 class Network::Item::MoveCommand final : public nf7::History::Command {
  public:
   MoveCommand(Network::Item& item, const ImVec2& pos) noexcept :
@@ -615,6 +637,8 @@ class Network::Item::MoveCommand final : public nf7::History::Command {
     target_->prev_pos_ = target_->pos_;
   }
 };
+
+// A command that restores Node's memento by its tag instance.
 class Network::Item::RestoreCommand final : public nf7::History::Command {
  public:
   RestoreCommand(Network::Item& item, const std::shared_ptr<nf7::Memento::Tag>& tag) noexcept :
@@ -637,7 +661,8 @@ class Network::Item::RestoreCommand final : public nf7::History::Command {
   }
 };
 
-
+// An implementation of ChildNode that emits a pulse
+// when Network lambda receives the first input.
 class Network::Initiator final : public Network::ChildNode,
     public nf7::Memento,
     public nf7::Node,
@@ -736,6 +761,8 @@ class Network::Initiator final : public Network::ChildNode,
   bool enable_auto_;
 };
 
+// A base implementation of ChildNode
+// that has useful methods for Input or Output Node on Node/Network.
 class Network::InputOrOutput : public Network::ChildNode {
  public:
   InputOrOutput(const TypeInfo& type, Env& env, std::string_view name, Socket::Type st) noexcept :
@@ -780,6 +807,7 @@ class Network::InputOrOutput : public Network::ChildNode {
   Socket::Type type_;
 };
 
+// An implementation of ChildNode that emits an input value when Node/Network receives.
 class Network::Input final : public Network::InputOrOutput,
     public Network::InternalNode,
     public nf7::Node {
@@ -844,6 +872,8 @@ class Network::Input final : public Network::InputOrOutput,
         Network::InternalNode, nf7::Node, nf7::Memento>(t).Select(this, &mem_);
   }
 };
+
+// An implementation of ChildNode that passes an input to a caller of Node/Network's lambda.
 class Network::Output final : public Network::InputOrOutput,
     public nf7::Node {
  public:
@@ -938,10 +968,7 @@ void Network::ApplySockets() noexcept {
   }
 }
 void Network::ApplyNetworkChanges() noexcept {
-  if (exec_) {
-    exec_->Abort();
-    exec_ = nullptr;
-  }
+  DetachLambda();
   Touch();
 }
 File* Network::Find(std::string_view name) const noexcept
@@ -958,7 +985,9 @@ try {
 }
 std::shared_ptr<nf7::Lambda> Network::CreateLambda(
     const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
-  return std::make_shared<Network::Lambda>(*this, owner);
+  auto ret = std::make_shared<Network::Lambda>(*this, owner);
+  lambdas_running_.emplace_back(ret);
+  return ret;
 }
 void Network::Handle(const Event& ev) noexcept {
   switch (ev.type) {
@@ -969,7 +998,6 @@ void Network::Handle(const Event& ev) noexcept {
     for (const auto& item : items_) item->Detach();
     break;
   case Event::kUpdate:
-    exec_ = nullptr;
     break;
   case Event::kReqFocus:
     win_.SetFocus();
@@ -1045,6 +1073,12 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 void Network::Update() noexcept {
   const auto em = ImGui::GetFontSize();
 
+  // forget expired lambdas
+  lambdas_running_.erase(
+      std::remove_if(lambdas_running_.begin(), lambdas_running_.end(),
+                     [](auto& x) { return x.expired(); }),
+      lambdas_running_.end());
+
   // update children
   for (const auto& item : items_) {
     item->Update();
@@ -1055,7 +1089,7 @@ void Network::Update() noexcept {
     ImGui::OpenPopup(name);
   }
 
-  // add popup
+  // node add popup
   if (ImGui::BeginPopup("AddPopup")) {
     static nf7::gui::FileCreatePopup<0> p({"File_Factory",}, {"Node"});
 
@@ -1068,7 +1102,7 @@ void Network::Update() noexcept {
     ImGui::EndPopup();
   }
 
-  // I/O socket editor
+  // ---- I/O socket editor
   if (ImGui::BeginPopup("SocketEditorPopup")) {
     static std::unordered_set<size_t> select;
 
@@ -1171,7 +1205,7 @@ void Network::Update() noexcept {
     }
     ImGui::EndGroup();
 
-    // add popup
+    // ---- I/O socket editor popup / socket add popup
     if (ImGui::BeginPopup("AddPopup")) {
       static int         new_type = 0;
       static std::string new_name;
@@ -1230,7 +1264,7 @@ void Network::Update() noexcept {
       }
       ImGui::EndPopup();
     }
-    // mod popup
+    // ---- I/O socket editor popup / mod popup
     if (ImGui::BeginPopup("ModifyPopup")) {
       static int         new_type;
       static std::string new_desc;
@@ -1275,70 +1309,121 @@ void Network::Update() noexcept {
     ImGui::EndPopup();
   }
 
-  // editor window
+  // ---- editor window
   const auto kInit = [em]() {
     ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
   };
   if (win_.Begin(kInit)) {
-    ImNodes::BeginCanvas(&canvas_);
+    // ---- editor window / toolbar
+    ImGui::BeginGroup();
+    {
+      // ---- editor window / toolbar / attached lambda combo
+      const auto current_lambda =
+          !lambda_?          "(unselected)"s:
+          !lambda_->owner()? "(isolated)"s:
+          std::to_string(reinterpret_cast<uintptr_t>(lambda_.get()));
+      if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
+        if (lambda_) {
+          if (ImGui::Selectable("detach from current lambda")) {
+            DetachLambda();
+          }
+          ImGui::Separator();
+        }
+        for (const auto& wptr : lambdas_running_) {
+          auto ptr = wptr.lock();
+          if (!ptr) continue;
 
-    // update child nodes
-    auto ed = Network::Editor {*this};
-    for (const auto& item : items_) {
-      item->UpdateNode(ed);
+          const auto name = std::to_string(reinterpret_cast<uintptr_t>(ptr.get()));
+          if (ImGui::Selectable(name.c_str(), ptr == lambda_)) {
+            DetachLambda();
+            lambda_ = ptr;
+          }
+          if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted("call stack:");
+            ImGui::Indent();
+            for (auto owner = ptr->owner(); owner; owner = owner->parent()) {
+              ImGui::TextUnformatted(owner->path().Stringify().c_str());
+              ImGui::TextDisabled("%s", owner->desc().c_str());
+            }
+            ImGui::Unindent();
+            ImGui::EndTooltip();
+          }
+        }
+        if (lambdas_running_.size() == 0) {
+          ImGui::TextDisabled("no running lambda found...");
+        }
+        ImGui::EndCombo();
+      }
     }
+    ImGui::EndGroup();
 
-    // handle existing links
-    for (const auto& lk : links_.items()) {
-      const auto src_id = reinterpret_cast<void*>(lk.src_id);
-      const auto dst_id = reinterpret_cast<void*>(lk.dst_id);
-      if (!ImNodes::Connection(dst_id, lk.dst_name.c_str(), src_id, lk.src_name.c_str())) {
-        auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing link");
-        auto cmd = NodeLinkStore::SwapCommand::CreateToRemove(links_, NodeLinkStore::Link(lk));
+    // ---- editor window / canvas
+    if (ImGui::BeginChild("canvas")) {
+      ImNodes::BeginCanvas(&canvas_);
+
+      // update child nodes
+      auto ed = Network::Editor {*this};
+      for (const auto& item : items_) {
+        item->UpdateNode(ed);
+      }
+
+      // handle existing links
+      for (const auto& lk : links_.items()) {
+        const auto src_id   = reinterpret_cast<void*>(lk.src_id);
+        const auto dst_id   = reinterpret_cast<void*>(lk.dst_id);
+        const auto src_name = lk.src_name.c_str();
+        const auto dst_name = lk.dst_name.c_str();
+        if (!ImNodes::Connection(dst_id, dst_name, src_id, src_name)) {
+          auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing link");
+          auto cmd = NodeLinkStore::SwapCommand::
+              CreateToRemove(links_, NodeLinkStore::Link(lk));
+          QueueCommand(ctx, std::move(cmd));
+        }
+      }
+
+      // handle new link
+      void*       src_ptr;
+      const char* src_name;
+      void*       dst_ptr;
+      const char* dst_name;
+      if (ImNodes::GetNewConnection(&dst_ptr, &dst_name, &src_ptr, &src_name)) {
+        auto lk = NodeLinkStore::Link {
+          .src_id   = reinterpret_cast<ItemId>(src_ptr),
+          .src_name = src_name,
+          .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
+          .dst_name = dst_name,
+        };
+        auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new link");
+        auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk));
         QueueCommand(ctx, std::move(cmd));
       }
-    }
 
-    // handle new link
-    void*       src_ptr;
-    const char* src_name;
-    void*       dst_ptr;
-    const char* dst_name;
-    if (ImNodes::GetNewConnection(&dst_ptr, &dst_name, &src_ptr, &src_name)) {
-      auto lk = NodeLinkStore::Link {
-        .src_id   = reinterpret_cast<ItemId>(src_ptr),
-        .src_name = src_name,
-        .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
-        .dst_name = dst_name,
-      };
-      auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new link");
-      auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk));
-      QueueCommand(ctx, std::move(cmd));
-    }
+      ImNodes::EndCanvas();
 
-    ImNodes::EndCanvas();
-
-    // popup menu for canvas
-    constexpr auto kFlags =
-        ImGuiPopupFlags_MouseButtonRight |
-        ImGuiPopupFlags_NoOpenOverExistingPopup;
-    if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
-      if (ImGui::MenuItem("add")) {
-        popup_ = "AddPopup";
+      // popup menu for canvas
+      constexpr auto kFlags =
+          ImGuiPopupFlags_MouseButtonRight |
+          ImGuiPopupFlags_NoOpenOverExistingPopup;
+      if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
+        if (ImGui::MenuItem("add")) {
+          popup_ = "AddPopup";
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
+          UnDo();
+        }
+        if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
+          ReDo();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("I/O sockets")) {
+          popup_ = "SocketEditorPopup";
+        }
+        ImGui::EndPopup();
       }
-      ImGui::Separator();
-      if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
-        UnDo();
-      }
-      if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
-        ReDo();
-      }
-      ImGui::Separator();
-      if (ImGui::MenuItem("I/O sockets")) {
-        popup_ = "SocketEditorPopup";
-      }
-      ImGui::EndPopup();
     }
+    ImGui::EndChild();
   }
   win_.End();
 
