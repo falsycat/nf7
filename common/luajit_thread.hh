@@ -80,7 +80,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   // must be called on luajit thread
   // handler_ won't be called on next yielding
-  void ExpectYield() noexcept {
+  void ExpectYield(lua_State*) noexcept {
     skip_handle_ = true;
   }
 

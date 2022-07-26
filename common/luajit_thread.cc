@@ -21,8 +21,30 @@ void Thread::PushMeta(lua_State* L) noexcept {
     lua_createtable(L, 0, 0);
     {
       lua_pushcfunction(L, [](auto L) {
+        auto th   = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto base = th->ctx_->initiator();
+
+        std::string path = luaL_checkstring(L, 2);
+        th->env_.ExecSub(th->ctx_, [th, L, base, path = std::move(path)]() {
+          nf7::File::Id ret;
+          try {
+            ret = th->env_.GetFileOrThrow(base).ResolveOrThrow(path).id();
+          } catch (nf7::File::NotFoundException&) {
+            ret = 0;
+          }
+          th->ljq_->Push(th->ctx_, [th, L, ret](auto) {
+            lua_pushinteger(L, static_cast<lua_Integer>(ret));
+            th->Resume(L, 1);
+          });
+        });
+        th->ExpectYield(L);
+        return lua_yield(L, 0);
+      });
+      lua_setfield(L, -2, "resolve");
+
+      lua_pushcfunction(L, [](auto L) {
         auto th = CheckWeakPtr<Thread>(L, 1, kTypeName);
-        th->ExpectYield();
+        th->ExpectYield(L);
         th->ExecResume(L);
         return lua_yield(L, lua_gettop(L)-1);
       });
