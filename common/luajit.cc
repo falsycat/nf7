@@ -239,8 +239,8 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
   if (luaL_newmetatable(L, "nf7::Value::Vector")) {
     lua_createtable(L, 0, 0);
       lua_pushcfunction(L, [](auto L) {
-        const auto& v      = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
-        const auto  offset = luaL_checkinteger(L, 3);
+        const auto& v = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
+        const auto offset = luaL_checkinteger(L, 2);
         if (offset < 0) {
           return luaL_error(L, "negative offset");
         }
@@ -251,14 +251,14 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
         const uint8_t* ptr = v->data() + offset;
         const uint8_t* end = v->data() + v->size();
 
-        if (lua_istable(L, 2)) {
+        if (lua_istable(L, 3)) {
           return luaL_error(L, "table is expected for the second argument");
         }
-        const int ecnt = static_cast<int>(lua_objlen(L, -2));
+        const int ecnt = static_cast<int>(lua_objlen(L, 3));
         lua_createtable(L, ecnt, 0);
 
         for (int i = 1; i <= ecnt; ++i) {
-          lua_rawgeti(L, 2, i);
+          lua_rawgeti(L, 3, i);
           if (lua_istable(L, -1)) {  // array
             lua_rawgeti(L, -1, 1);
             const std::string_view type = luaL_checkstring(L, -1);
@@ -334,6 +334,7 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
     });
     lua_setfield(L, -2, "__gc");
   }
+  lua_setmetatable(L, -2);
 }
 
 void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
@@ -343,19 +344,19 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
     lua_createtable(L, 0, 0);
       lua_pushcfunction(L, [](auto L) {
         auto& v = CheckRef<std::vector<uint8_t>>(L, 1, "nf7::Value::MutableVector");
-        const lua_Integer offset = luaL_checkinteger(L, 3);
+        const lua_Integer offset = luaL_checkinteger(L, 2);
         if (offset < 0) return luaL_error(L, "negative offset");
 
-        if (!lua_istable(L, 2)) {
+        if (!lua_istable(L, 3)) {
           return luaL_error(L, "table is expected for the second argument");
         }
-        const int len = static_cast<int>(lua_objlen(L, 2));
+        const int len = static_cast<int>(lua_objlen(L, 3));
 
         uint8_t* ptr = v.data() + offset;
         uint8_t* end = v.data() + v.size();
 
         for (int i = 1; i <= len; ++i) {
-          lua_rawgeti(L, 2, i);
+          lua_rawgeti(L, 3, i);
           lua_rawgeti(L, -1, 1);
           lua_rawgeti(L, -2, 2);
 

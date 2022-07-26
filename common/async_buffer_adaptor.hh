@@ -89,7 +89,11 @@ class AsyncBufferAdaptor final :
     std::unique_lock<std::mutex> k(mtx_);
     if (auto task = q_.Pop()) {
       k.unlock();
-      (*task)();
+      try {
+        (*task)();
+      } catch (nf7::Exception&) {
+        // TODO: unhandled exception :(
+      }
       ctx_->env().ExecAsync(
           ctx_, [self = shared_from_this()]() { self->Handle(); });
     } else {

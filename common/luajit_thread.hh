@@ -13,6 +13,7 @@
 #include "nf7.hh"
 
 #include "common/future.hh"
+#include "common/lock.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_ref.hh"
@@ -73,7 +74,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   // must be called on luajit thread
   void Resume(lua_State* L, int narg) noexcept;
 
-  // queue a task that exec Resume() with narg=0
+  // queue a task that exec Resume()
   void ExecResume(lua_State* L) noexcept {
     ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
   }
@@ -94,6 +95,13 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     }
   }
 
+  void RegisterLock(const std::shared_ptr<nf7::Lock>& k) noexcept {
+    locks_.push_back(k);
+  }
+  void ForgetLock(const std::shared_ptr<nf7::Lock>& k) noexcept {
+    locks_.erase(std::remove(locks_.begin(), locks_.end(), k), locks_.end());
+  }
+
   nf7::Env& env() noexcept { return env_; }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
@@ -110,6 +118,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   Handler handler_;
   std::atomic<State> state_ = kInitial;
 
+
   // initialized on Init()
   lua_State* th_ = nullptr;
   std::optional<nf7::luajit::Ref> th_ref_;
@@ -124,6 +133,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   File* file_parent_ = nullptr;
   std::unique_ptr<nf7::File> file_;
+
+  std::vector<std::shared_ptr<nf7::Lock>> locks_;
 
   bool skip_handle_ = false;
 };
