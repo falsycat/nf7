@@ -1,6 +1,11 @@
 #include "common/luajit.hh"
 
+#include <algorithm>
 #include <cassert>
+#include <cinttypes>
+#include <cctype>
+#include <string>
+#include <string_view>
 
 #include <lua.hpp>
 
@@ -11,8 +16,117 @@
 
 namespace nf7::luajit {
 
+template <typename T>
+static size_t PushArrayFromBytes(lua_State* L, size_t n, const uint8_t* ptr, const uint8_t* end) {
+  const size_t size = n*sizeof(T);
+  if (ptr + size > end) {
+    luaL_error(L, "bytes shortage");
+    return 0;
+  }
+  lua_createtable(L, static_cast<int>(n), 0);
+  for (size_t i = 0; i < n; ++i) {
+    if constexpr (std::is_integral<T>::value) {
+      lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
+    } else if constexpr (std::is_floating_point<T>::value) {
+      lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
+    } else {
+      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+    }
+    lua_rawseti(L, -2, static_cast<int>(i + 1));
+  }
+  return size;
+}
+template <typename T>
+static size_t PushFromBytes(lua_State* L, const uint8_t* ptr, const uint8_t* end) {
+  const size_t size = sizeof(T);
+  if (ptr + size > end) {
+    luaL_error(L, "bytes shortage");
+    return 0;
+  }
+  if constexpr (std::is_integral<T>::value) {
+    lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
+  } else if constexpr (std::is_floating_point<T>::value) {
+    lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
+  } else {
+    [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+  }
+  return size;
+}
+
+template <typename T>
+static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end) {
+  if (lua_istable(L, -1)) {
+    const size_t len  = lua_objlen(L, -1);
+    const size_t size = sizeof(T)*len;
+    if (ptr + size > end) {
+      luaL_error(L, "buffer size overflow");
+      return 0;
+    }
+    for (size_t i = 0; i < len; ++i) {
+      lua_rawgeti(L, -1, static_cast<int>(i+1));
+      if constexpr (std::is_integral<T>::value) {
+        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
+      } else if constexpr (std::is_floating_point<T>::value) {
+        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
+      } else {
+        [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+      }
+      lua_pop(L, 1);
+      ptr += sizeof(T);
+    }
+    return size;
+  } else if (lua_isnumber(L, -1)) {
+    if (ptr + sizeof(T) > end) {
+      luaL_error(L, "buffer size overflow");
+      return 0;
+    }
+    if constexpr (std::is_integral<T>::value) {
+      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
+    } else if constexpr (std::is_floating_point<T>::value) {
+      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
+    } else {
+      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+    }
+    return sizeof(T);
+  } else {
+    luaL_error(L, "number or array expected");
+    return 0;
+  }
+}
+
+
+static void PushMathLib(lua_State* L) noexcept {
+  lua_newuserdata(L, 0);
+
+  lua_createtable(L, 0, 0);
+  lua_createtable(L, 0, 0);
+  {
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::sin(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "sin");
+
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::cos(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "cos");
+
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::tan(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "tan");
+  }
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+}
 void PushGlobalTable(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushGlobalTable")) {
+    PushMathLib(L);
+    lua_setfield(L, -2, "math");
+
     lua_pushcfunction(L, [](auto L) {
       PushValue(L, CheckValue(L, 1));
       return 1;
@@ -122,25 +236,96 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
   assert(v);
   new (lua_newuserdata(L, sizeof(v))) nf7::Value::Vector(v);
 
-  // TODO: separate const vector and mutable vector
-
   if (luaL_newmetatable(L, "nf7::Value::Vector")) {
     lua_createtable(L, 0, 0);
       lua_pushcfunction(L, [](auto L) {
-        const auto& v = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
-        const lua_Integer offset = luaL_checkinteger(L, 2);
-        const lua_Integer size   = luaL_checkinteger(L, 3);
-        if (offset < 0) return luaL_error(L, "negative offset");
-        if (size   < 0) return luaL_error(L, "negative size");
-
-        if (static_cast<size_t>(offset + size) > v->size()) {
-          return luaL_error(L, "size overflow");
+        const auto& v      = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
+        const auto  offset = luaL_checkinteger(L, 3);
+        if (offset < 0) {
+          return luaL_error(L, "negative offset");
+        }
+        if (offset > static_cast<lua_Integer>(v->size())) {
+          return luaL_error(L, "offset overflow");
         }
 
-        lua_pushlstring(L, reinterpret_cast<const char*>(v->data()+offset), static_cast<size_t>(size));
+        const uint8_t* ptr = v->data() + offset;
+        const uint8_t* end = v->data() + v->size();
+
+        if (lua_istable(L, 2)) {
+          return luaL_error(L, "table is expected for the second argument");
+        }
+        const int ecnt = static_cast<int>(lua_objlen(L, -2));
+        lua_createtable(L, ecnt, 0);
+
+        for (int i = 1; i <= ecnt; ++i) {
+          lua_rawgeti(L, 2, i);
+          if (lua_istable(L, -1)) {  // array
+            lua_rawgeti(L, -1, 1);
+            const std::string_view type = luaL_checkstring(L, -1);
+            lua_rawgeti(L, -1, 2);
+            const size_t n = static_cast<size_t>(luaL_checkinteger(L, -1));
+            lua_pop(L, 2);
+
+            if (type == "u8") {
+              ptr += PushArrayFromBytes<uint8_t>(L, n, ptr, end);
+            } else if (type == "u16") {
+              ptr += PushArrayFromBytes<uint16_t>(L, n, ptr, end);
+            } else if (type == "u32") {
+              ptr += PushArrayFromBytes<uint32_t>(L, n, ptr, end);
+            } else if (type == "u64") {
+              ptr += PushArrayFromBytes<uint64_t>(L, n, ptr, end);
+            } else if (type == "i8") {
+              ptr += PushArrayFromBytes<int8_t>(L, n, ptr, end);
+            } else if (type == "i16") {
+              ptr += PushArrayFromBytes<int16_t>(L, n, ptr, end);
+            } else if (type == "i32") {
+              ptr += PushArrayFromBytes<int32_t>(L, n, ptr, end);
+            } else if (type == "i64") {
+              ptr += PushArrayFromBytes<int64_t>(L, n, ptr, end);
+            } else if (type == "f32") {
+              ptr += PushArrayFromBytes<float>(L, n, ptr, end);
+            } else if (type == "f64") {
+              ptr += PushArrayFromBytes<double>(L, n, ptr, end);
+            }
+          } else if (lua_isstring(L, -1)) {  // single
+            const std::string_view type = lua_tostring(L, -1);
+            if (type == "u8") {
+              ptr += PushFromBytes<uint8_t>(L, ptr, end);
+            } else if (type == "u16") {
+              ptr += PushFromBytes<uint16_t>(L, ptr, end);
+            } else if (type == "u32") {
+              ptr += PushFromBytes<uint32_t>(L, ptr, end);
+            } else if (type == "u64") {
+              ptr += PushFromBytes<uint64_t>(L, ptr, end);
+            } else if (type == "i8") {
+              ptr += PushFromBytes<int8_t>(L, ptr, end);
+            } else if (type == "i16") {
+              ptr += PushFromBytes<int16_t>(L, ptr, end);
+            } else if (type == "i32") {
+              ptr += PushFromBytes<int32_t>(L, ptr, end);
+            } else if (type == "i64") {
+              ptr += PushFromBytes<int64_t>(L, ptr, end);
+            } else if (type == "f32") {
+              ptr += PushFromBytes<float>(L, ptr, end);
+            } else if (type == "f64") {
+              ptr += PushFromBytes<double>(L, ptr, end);
+            }
+          } else {
+            return luaL_error(L, "unknown type specifier at index: %d", i);
+          }
+          lua_rawseti(L, -3, i);
+          lua_pop(L, 1);
+        }
         return 1;
       });
-      lua_setfield(L, -2, "fetch");
+      lua_setfield(L, -2, "get");
+
+      lua_pushcfunction(L, [](auto L) {
+        const auto& v = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
+        lua_pushinteger(L, static_cast<lua_Integer>(v->size()));
+        return 1;
+      });
+      lua_setfield(L, -2, "size");
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
@@ -158,19 +343,49 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
     lua_createtable(L, 0, 0);
       lua_pushcfunction(L, [](auto L) {
         auto& v = CheckRef<std::vector<uint8_t>>(L, 1, "nf7::Value::MutableVector");
-        const lua_Integer offset = luaL_checkinteger(L, 2);
+        const lua_Integer offset = luaL_checkinteger(L, 3);
         if (offset < 0) return luaL_error(L, "negative offset");
 
-        size_t size;
-        const char* buf = luaL_checklstring(L, 3, &size);
-        if (static_cast<size_t>(offset) + size > v.size()) {
-          return luaL_error(L, "size overflow");
+        if (!lua_istable(L, 2)) {
+          return luaL_error(L, "table is expected for the second argument");
         }
+        const int len = static_cast<int>(lua_objlen(L, 2));
 
-        std::memcpy(v.data()+offset, buf, size);
+        uint8_t* ptr = v.data() + offset;
+        uint8_t* end = v.data() + v.size();
+
+        for (int i = 1; i <= len; ++i) {
+          lua_rawgeti(L, 2, i);
+          lua_rawgeti(L, -1, 1);
+          lua_rawgeti(L, -2, 2);
+
+          const std::string_view type = lua_tostring(L, -2);
+          if (type == "u8") {
+            ptr += ToBytes<uint8_t>(L, ptr, end);
+          } else if (type == "u16") {
+            ptr += ToBytes<uint16_t>(L, ptr, end);
+          } else if (type == "u32") {
+            ptr += ToBytes<uint32_t>(L, ptr, end);
+          } else if (type == "u64") {
+            ptr += ToBytes<uint64_t>(L, ptr, end);
+          } else if (type == "i8") {
+            ptr += ToBytes<int8_t>(L, ptr, end);
+          } else if (type == "i16") {
+            ptr += ToBytes<int16_t>(L, ptr, end);
+          } else if (type == "i32") {
+            ptr += ToBytes<int32_t>(L, ptr, end);
+          } else if (type == "i64") {
+            ptr += ToBytes<int64_t>(L, ptr, end);
+          } else if (type == "f32") {
+            ptr += ToBytes<float>(L, ptr, end);
+          } else if (type == "f64") {
+            ptr += ToBytes<double>(L, ptr, end);
+          }
+          lua_pop(L, 3);
+        }
         return 0;
       });
-      lua_setfield(L, -2, "blit");
+      lua_setfield(L, -2, "set");
 
       lua_pushcfunction(L, [](auto L) {
         auto& v = CheckRef<std::vector<uint8_t>>(L, 1, "nf7::Value::MutableVector");
@@ -179,7 +394,7 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
         v.resize(static_cast<size_t>(size));
         return 0;
       });
-      lua_setfield(L, -2, "truncate");
+      lua_setfield(L, -2, "resize");
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
