@@ -36,8 +36,10 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     using nf7::Exception::Exception;
   };
 
+  // Creates a handler to finalize a promise.
   template <typename T>
-  static Handler CreatePromiseHandler(nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
+  static Handler CreatePromiseHandler(
+      nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
 
   Thread() = delete;
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
@@ -57,25 +59,11 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   }
 
   // must be called on luajit thread
-  lua_State* Init(lua_State* L) noexcept {
-    assert(state_ == kInitial);
-
-    th_ = lua_newthread(L);
-    PushImmEnv(L);
-    lua_setfenv(L, -2);
-    th_ref_.emplace(ctx_, ljq_, luaL_ref(L, LUA_REGISTRYINDEX));
-
-    state_ = kPaused;
-    return th_;
-  }
+  lua_State* Init(lua_State* L) noexcept;
 
   // must be called on luajit thread
+  // L must be a thread state, which is returned by Init().
   void Resume(lua_State* L, int narg) noexcept;
-
-  // queue a task that exec Resume()
-  void ExecResume(lua_State* L) noexcept {
-    ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
-  }
 
   // must be called on luajit thread
   // handler_ won't be called on next yielding
@@ -83,21 +71,29 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     skip_handle_ = true;
   }
 
+  // must be called on luajit thread
+  void RegisterLock(lua_State*, const std::shared_ptr<nf7::Lock>& k) noexcept {
+    locks_.push_back(k);
+  }
+  void ForgetLock(lua_State*, const std::shared_ptr<nf7::Lock>& k) noexcept {
+    locks_.erase(std::remove(locks_.begin(), locks_.end(), k), locks_.end());
+  }
+
   // thread-safe
   void Abort() noexcept;
 
+  // queue a task that exec Resume()
+  // thread-safe
+  void ExecResume(lua_State* L) noexcept {
+    ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
+  }
+
+  // Creates new file from typename and sets it as child.
   void EmplaceFile(std::string_view name) {
     file_ = nf7::File::registry(name).Create(env_);
     if (file_parent_) {
       file_->MoveUnder(*file_parent_, "file");
     }
-  }
-
-  void RegisterLock(const std::shared_ptr<nf7::Lock>& k) noexcept {
-    locks_.push_back(k);
-  }
-  void ForgetLock(const std::shared_ptr<nf7::Lock>& k) noexcept {
-    locks_.erase(std::remove(locks_.begin(), locks_.end(), k), locks_.end());
   }
 
   nf7::Env& env() noexcept { return env_; }
@@ -138,7 +134,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   bool skip_handle_ = false;
 };
 
-// Holder handles events for files dynamically created in lua thread
+// Holder handles an event to maintain Thread.
+// The owner file must call Handle() when it received any events.
 class Thread::Holder final {
  public:
   Holder() = delete;
@@ -201,6 +198,8 @@ class Thread::Holder final {
   void Assign(const std::shared_ptr<Thread>&) noexcept;
 };
 
+// Holder handles an event to maintain multiple Threads.
+// The owner file must call Handle() when it received any events.
 template <size_t kMax>
 class Thread::HolderSet final {
  public:

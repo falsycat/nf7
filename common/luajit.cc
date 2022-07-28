@@ -16,112 +16,19 @@
 
 namespace nf7::luajit {
 
+// pushes original libraries
+static void PushMathLib(lua_State* L) noexcept;
+
+// buffer <-> lua value conversion
 template <typename T>
-static size_t PushArrayFromBytes(lua_State* L, size_t n, const uint8_t* ptr, const uint8_t* end) {
-  const size_t size = n*sizeof(T);
-  if (ptr + size > end) {
-    luaL_error(L, "bytes shortage");
-    return 0;
-  }
-  lua_createtable(L, static_cast<int>(n), 0);
-  for (size_t i = 0; i < n; ++i) {
-    if constexpr (std::is_integral<T>::value) {
-      lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
-    } else if constexpr (std::is_floating_point<T>::value) {
-      lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
-    } else {
-      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
-    }
-    lua_rawseti(L, -2, static_cast<int>(i + 1));
-  }
-  return size;
-}
+static size_t PushArrayFromBytes(
+    lua_State* L, size_t n, const uint8_t* ptr, const uint8_t* end);
 template <typename T>
-static size_t PushFromBytes(lua_State* L, const uint8_t* ptr, const uint8_t* end) {
-  const size_t size = sizeof(T);
-  if (ptr + size > end) {
-    luaL_error(L, "bytes shortage");
-    return 0;
-  }
-  if constexpr (std::is_integral<T>::value) {
-    lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
-  } else if constexpr (std::is_floating_point<T>::value) {
-    lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
-  } else {
-    [] <bool F = false>() { static_assert(F, "T is invalid"); }();
-  }
-  return size;
-}
-
+static size_t PushFromBytes(lua_State* L, const uint8_t* ptr, const uint8_t* end);
 template <typename T>
-static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end) {
-  if (lua_istable(L, -1)) {
-    const size_t len  = lua_objlen(L, -1);
-    const size_t size = sizeof(T)*len;
-    if (ptr + size > end) {
-      luaL_error(L, "buffer size overflow");
-      return 0;
-    }
-    for (size_t i = 0; i < len; ++i) {
-      lua_rawgeti(L, -1, static_cast<int>(i+1));
-      if constexpr (std::is_integral<T>::value) {
-        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
-      } else if constexpr (std::is_floating_point<T>::value) {
-        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
-      } else {
-        [] <bool F = false>() { static_assert(F, "T is invalid"); }();
-      }
-      lua_pop(L, 1);
-      ptr += sizeof(T);
-    }
-    return size;
-  } else if (lua_isnumber(L, -1)) {
-    if (ptr + sizeof(T) > end) {
-      luaL_error(L, "buffer size overflow");
-      return 0;
-    }
-    if constexpr (std::is_integral<T>::value) {
-      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
-    } else if constexpr (std::is_floating_point<T>::value) {
-      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
-    } else {
-      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
-    }
-    return sizeof(T);
-  } else {
-    luaL_error(L, "number or array expected");
-    return 0;
-  }
-}
+static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end);
 
 
-static void PushMathLib(lua_State* L) noexcept {
-  lua_newuserdata(L, 0);
-
-  lua_createtable(L, 0, 0);
-  lua_createtable(L, 0, 0);
-  {
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::sin(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "sin");
-
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::cos(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "cos");
-
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::tan(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "tan");
-  }
-  lua_setfield(L, -2, "__index");
-  lua_setmetatable(L, -2);
-}
 void PushGlobalTable(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushGlobalTable")) {
     PushMathLib(L);
@@ -164,7 +71,6 @@ void PushGlobalTable(lua_State* L) noexcept {
     lua_setfield(L, -2, "nf7_MutableVector");
   }
 }
-
 void PushImmEnv(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushImmEnv")) {
     lua_createtable(L, 0, 0);
@@ -176,6 +82,7 @@ void PushImmEnv(lua_State* L) noexcept {
     lua_setmetatable(L, -2);
   }
 }
+
 
 void PushValue(lua_State* L, const nf7::Value& v) noexcept {
   new (lua_newuserdata(L, sizeof(v))) nf7::Value(v);
@@ -231,7 +138,6 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
   }
   lua_setmetatable(L, -2);
 }
-
 void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
   assert(v);
   new (lua_newuserdata(L, sizeof(v))) nf7::Value::Vector(v);
@@ -336,7 +242,6 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
   }
   lua_setmetatable(L, -2);
 }
-
 void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
   new (lua_newuserdata(L, sizeof(v))) std::vector<uint8_t>(std::move(v));
 
@@ -407,6 +312,7 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
   lua_setmetatable(L, -2);
 }
 
+
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
   if (lua_isnil(L, idx)) {
     return nf7::Value {nf7::Value::Pulse {}};
@@ -459,6 +365,113 @@ std::optional<std::vector<uint8_t>> ToMutableVector(lua_State* L, int idx) noexc
   auto ptr = ToRef<std::vector<uint8_t>>(L, idx, "nf7::Value::MutableVector");
   if (!ptr) return std::nullopt;
   return std::move(*ptr);
+}
+
+
+static void PushMathLib(lua_State* L) noexcept {
+  lua_newuserdata(L, 0);
+
+  lua_createtable(L, 0, 0);
+  lua_createtable(L, 0, 0);
+  {
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::sin(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "sin");
+
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::cos(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "cos");
+
+    lua_pushcfunction(L, [](auto L) {
+      lua_pushnumber(L, std::tan(luaL_checknumber(L, 1)));
+      return 1;
+    });
+    lua_setfield(L, -2, "tan");
+  }
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+}
+
+
+template <typename T>
+static size_t PushArrayFromBytes(lua_State* L, size_t n, const uint8_t* ptr, const uint8_t* end) {
+  const size_t size = n*sizeof(T);
+  if (ptr + size > end) {
+    luaL_error(L, "bytes shortage");
+    return 0;
+  }
+  lua_createtable(L, static_cast<int>(n), 0);
+  for (size_t i = 0; i < n; ++i) {
+    if constexpr (std::is_integral<T>::value) {
+      lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
+    } else if constexpr (std::is_floating_point<T>::value) {
+      lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
+    } else {
+      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+    }
+    lua_rawseti(L, -2, static_cast<int>(i + 1));
+  }
+  return size;
+}
+template <typename T>
+static size_t PushFromBytes(lua_State* L, const uint8_t* ptr, const uint8_t* end) {
+  const size_t size = sizeof(T);
+  if (ptr + size > end) {
+    luaL_error(L, "bytes shortage");
+    return 0;
+  }
+  if constexpr (std::is_integral<T>::value) {
+    lua_pushinteger(L, static_cast<lua_Integer>(*reinterpret_cast<const T*>(ptr)));
+  } else if constexpr (std::is_floating_point<T>::value) {
+    lua_pushnumber(L, static_cast<lua_Number>(*reinterpret_cast<const T*>(ptr)));
+  } else {
+    [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+  }
+  return size;
+}
+template <typename T>
+static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end) {
+  if (lua_istable(L, -1)) {
+    const size_t len  = lua_objlen(L, -1);
+    const size_t size = sizeof(T)*len;
+    if (ptr + size > end) {
+      luaL_error(L, "buffer size overflow");
+      return 0;
+    }
+    for (size_t i = 0; i < len; ++i) {
+      lua_rawgeti(L, -1, static_cast<int>(i+1));
+      if constexpr (std::is_integral<T>::value) {
+        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
+      } else if constexpr (std::is_floating_point<T>::value) {
+        *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
+      } else {
+        [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+      }
+      lua_pop(L, 1);
+      ptr += sizeof(T);
+    }
+    return size;
+  } else if (lua_isnumber(L, -1)) {
+    if (ptr + sizeof(T) > end) {
+      luaL_error(L, "buffer size overflow");
+      return 0;
+    }
+    if constexpr (std::is_integral<T>::value) {
+      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tointeger(L, -1));
+    } else if constexpr (std::is_floating_point<T>::value) {
+      *reinterpret_cast<T*>(ptr) = static_cast<T>(lua_tonumber(L, -1));
+    } else {
+      [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+    }
+    return sizeof(T);
+  } else {
+    luaL_error(L, "number or array expected");
+    return 0;
+  }
 }
 
 }  // namespace nf7::luajit

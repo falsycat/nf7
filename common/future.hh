@@ -18,6 +18,15 @@
 
 namespace nf7 {
 
+// How To Use (factory side)
+// 1. Create Future<T>::Promise. (T is a type of returned value)
+// 2. Get Future<T> from Future<T>::Promise and Pass it to ones who want to get T.
+// 3. Call Promise::Return(T) or Promise::Throw() to finish the promise.
+//
+// Users who receive Future can wait for finishing
+// by Future::Then(), Future::ThenSub(), or co_await.
+
+
 // T must not be void, use std::monostate instead
 template <typename T>
 class Future final {
@@ -29,6 +38,8 @@ class Future final {
 
   enum State { kYet, kDone, kError, };
 
+  // A data shared between Future, Promise, and Coro.
+  // One per one Promise.
   struct Data final {
    public:
     std::weak_ptr<nf7::Context> ctx;
@@ -43,6 +54,8 @@ class Future final {
     std::exception_ptr exception;
     std::vector<std::function<void()>> recv;
   };
+
+  // Factory side have this to tell finish or abort.
   class Promise final {
    public:
     template <typename U> friend class nf7::Future;
@@ -72,14 +85,7 @@ class Future final {
     }
 
     // thread-safe
-    auto Wrap(const std::function<T()>& f) noexcept
-    try {
-      Return(f());
-    } catch (Exception&) {
-      Throw(std::current_exception());
-    }
-    // thread-safe
-    auto Return(T&& v) {
+    auto Return(T&& v) noexcept {
       std::unique_lock<std::mutex> k(data_->mtx);
       if (data_->state == kYet) {
         data_->state = kDone;
@@ -97,6 +103,17 @@ class Future final {
       }
     }
 
+    // thread-safe
+    // Do Return(f()) if no exception is thrown, otherwise call Throw().
+    auto Wrap(const std::function<T()>& f) noexcept
+    try {
+      Return(f());
+    } catch (Exception&) {
+      Throw(std::current_exception());
+    }
+
+    // thread-safe
+    // Creates Future() object.
     Future future() const noexcept {
       assert(data_);
       return Future(data_);
@@ -137,6 +154,8 @@ class Future final {
       data_->recv.clear();
     }
   };
+
+  // Define a function returning Coro to implement a factory with coroutine.
   class Coro final {
    public:
     friend Promise;
@@ -171,6 +190,7 @@ class Future final {
     Coro(Handle h, const std::shared_ptr<Data>& data) noexcept : h_(h), data_(data) { }
   };
 
+
   Future(const T& v) noexcept : imm_({v}) {
   }
   Future(T&& v) noexcept : imm_({std::move(v)}) {
@@ -182,6 +202,8 @@ class Future final {
   Future& operator=(const Future&) = default;
   Future& operator=(Future&&) = default;
 
+  // Schedules to execute f() immediately on any thread
+  // when the promise is finished or aborted.
   Future& Then(std::function<void(Future)>&& f) noexcept {
     if (data_) {
       std::unique_lock<std::mutex> k(data_->mtx);
@@ -194,6 +216,8 @@ class Future final {
     f(*this);
     return *this;
   }
+
+  // Schedules to execute f() as a sub task when the promise is finished or aborted.
   Future& ThenSub(const std::shared_ptr<nf7::Context>& ctx,
                   std::function<void(Future)>&&        f) noexcept {
     if (data_) {

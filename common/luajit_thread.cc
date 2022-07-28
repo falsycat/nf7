@@ -39,6 +39,17 @@ static void PushLock(
 Thread::~Thread() noexcept {
   if (holder_) *holder_ = nullptr;
 }
+lua_State* Thread::Init(lua_State* L) noexcept {
+  assert(state_ == kInitial);
+
+  th_ = lua_newthread(L);
+  PushImmEnv(L);
+  lua_setfenv(L, -2);
+  th_ref_.emplace(ctx_, ljq_, luaL_ref(L, LUA_REGISTRYINDEX));
+
+  state_ = kPaused;
+  return th_;
+}
 void Thread::Resume(lua_State* L, int narg) noexcept {
   std::unique_lock<std::mutex> k(mtx_);
 
@@ -266,7 +277,7 @@ static void AcquireAndPushLock(
         th->ljq()->Push(th->ctx(), [th, L, res, fu](auto) mutable {
           try {
             const auto& k = fu.value();
-            th->RegisterLock(k);
+            th->RegisterLock(L, k);
             PushLock<T>(L, th, res, k);
             th->Resume(L, 1);
           } catch (nf7::Exception& e) {
@@ -430,7 +441,7 @@ void PushLock<nf7::AsyncBuffer>(
     // lock:unlock()
     lua_pushcfunction(L, ([](auto L) {
       auto [th, buf, lock] = CheckRef<Holder>(L, 1, kTypeName).Validate(L);
-      th->ForgetLock(lock);
+      th->ForgetLock(L, lock);
       return 0;
     }));
     lua_setfield(L, -2, "unlock");
