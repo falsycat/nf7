@@ -39,8 +39,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   template <typename T>
   static Handler CreatePromiseHandler(nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
 
-  static void PushMeta(lua_State*) noexcept;
-
   Thread() = delete;
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
          const std::shared_ptr<nf7::luajit::Queue>& ljq,
@@ -105,6 +103,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   nf7::Env& env() noexcept { return env_; }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
+  const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
   State state() const noexcept { return state_; }
 
  private:
