@@ -36,9 +36,6 @@ static void PushLock(
     const std::shared_ptr<nf7::Lock>&) noexcept;
 
 
-Thread::~Thread() noexcept {
-  if (holder_) *holder_ = nullptr;
-}
 lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
 
@@ -54,7 +51,6 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   std::unique_lock<std::mutex> k(mtx_);
 
   if (state_ == kAborted) return;
-  assert(holder_);
   assert(L      == th_);
   assert(state_ == kPaused);
   (void) L;
@@ -79,14 +75,12 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   switch (ret) {
   case 0:
     state_ = kFinished;
-    if (holder_) *holder_ = nullptr;
     break;
   case LUA_YIELD:
     state_ = kPaused;
     break;
   default:
     state_ = kAborted;
-    if (holder_) *holder_ = nullptr;
   }
   if (!std::exchange(skip_handle_, false)) {
     handler_(*this, th_);
@@ -95,63 +89,6 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
 void Thread::Abort() noexcept {
   std::unique_lock<std::mutex> k(mtx_);
   state_ = kAborted;
-  if (holder_) *holder_ = nullptr;
-}
-
-
-void Thread::Holder::Handle(const nf7::File::Event& ev) noexcept {
-  std::unique_lock<std::mutex> k(mtx_);
-
-  switch (ev.type) {
-  case nf7::File::Event::kAdd:
-    assert(isolated_);
-    isolated_ = false;
-
-    if (th_) {
-      th_->file_parent_ = owner_;
-      if (auto& f = th_->file_) {
-        assert(!f->parent());
-        f->MoveUnder(*owner_, "file");
-      }
-    }
-    return;
-  case nf7::File::Event::kRemove:
-    assert(!isolated_);
-    isolated_ = true;
-
-    if (th_) {
-      th_->file_parent_ = nullptr;
-      if (auto& f = th_->file_) {
-        assert(f->parent());
-        f->Isolate();
-      }
-    }
-    return;
-  default:
-    return;
-  }
-}
-void Thread::Holder::Assign(const std::shared_ptr<Thread>& th) noexcept {
-  if (th_ == th) return;
-  if (th_) {
-    th_->holder_ = nullptr;
-    if (!isolated_) {
-      if (auto& f = th_->file_) {
-        assert(f->parent());
-        f->Isolate();
-      }
-    }
-  }
-  th_ = th;
-  if (th_) {
-    th_->holder_ = this;
-    if (!isolated_) {
-      if (auto& f = th_->file_) {
-        assert(!f->parent());
-        f->MoveUnder(*owner_, "file");
-      }
-    }
-  }
 }
 
 

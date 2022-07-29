@@ -50,7 +50,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
        std::vector<std::string>&& out = {}) noexcept :
       File(kType, env),
       DirItem(DirItem::kMenu | DirItem::kTooltip | DirItem::kDragDropTarget),
-      log_(std::make_shared<nf7::LoggerRef>()), th_(*this),
+      log_(std::make_shared<nf7::LoggerRef>()),
       obj_(*this, std::move(path)), desc_(desc) {
     input_  = std::move(in);
     output_ = std::move(out);
@@ -100,8 +100,6 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<nf7::luajit::Ref> handler_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
-
-  nf7::luajit::Thread::HolderSet<32> th_;
 
   const char* popup_ = nullptr;
 
@@ -192,7 +190,9 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
   }
   void Abort() noexcept override {
     for (auto& wth : th_) {
-      if (auto th = wth.lock()) th->Abort();
+      if (auto th = wth.lock()) {
+        th->Abort();
+      }
     }
   }
 
@@ -222,7 +222,7 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
     ljq_ = handler->ljq();
 
     env().GetFileOrThrow(file_id_);  // check if the owner is alive
-    auto th = file_->th_.Add(
+    auto th = std::make_shared<nf7::luajit::Thread>(
         self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
     th->Install(log_);
     th_.emplace_back(th);
@@ -321,7 +321,6 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
 }
 
 void Node::Handle(const Event& ev) noexcept {
-  th_.Handle(ev);
   switch (ev.type) {
   case Event::kAdd:
     log_->SetUp(*this);

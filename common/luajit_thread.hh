@@ -17,17 +17,12 @@
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_ref.hh"
-#include "common/proxy_env.hh"
 
 
 namespace nf7::luajit {
 
-// use with Thread::Holder or Thread::HolderSet to handle child files properly
 class Thread final : public std::enable_shared_from_this<Thread> {
  public:
-  class Holder;
-  template <size_t kMax> class HolderSet;
-
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
 
@@ -45,9 +40,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
          const std::shared_ptr<nf7::luajit::Queue>& ljq,
          Handler&& handler) noexcept :
-      env_(ctx->env()), ctx_(ctx), ljq_(ljq), handler_(std::move(handler)) {
+      ctx_(ctx), ljq_(ljq), handler_(std::move(handler)) {
   }
-  ~Thread() noexcept;
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
   Thread& operator=(const Thread&) = delete;
@@ -88,15 +82,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
   }
 
-  // Creates new file from typename and sets it as child.
-  void EmplaceFile(std::string_view name) {
-    file_ = nf7::File::registry(name).Create(env_);
-    if (file_parent_) {
-      file_->MoveUnder(*file_parent_, "file");
-    }
-  }
-
-  nf7::Env& env() noexcept { return env_; }
+  nf7::Env& env() noexcept { return ctx_->env(); }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
   const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
@@ -105,7 +91,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
  private:
   // initialized by constructor
   std::mutex mtx_;
-  nf7::ProxyEnv env_;
 
   std::shared_ptr<nf7::Context>       ctx_;
   std::shared_ptr<nf7::luajit::Queue> ljq_;
@@ -124,115 +109,9 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
 
   // mutable params
-  Holder* holder_ = nullptr;
-
-  File* file_parent_ = nullptr;
-  std::unique_ptr<nf7::File> file_;
-
   std::vector<std::shared_ptr<nf7::Lock>> locks_;
 
   bool skip_handle_ = false;
-};
-
-// Holder handles an event to maintain Thread.
-// The owner file must call Handle() when it received any events.
-class Thread::Holder final {
- public:
-  Holder() = delete;
-  Holder(File& owner) noexcept : owner_(&owner) {
-  }
-  ~Holder() noexcept {
-    assert(isolated_);
-    *this = nullptr;
-  }
-  Holder(const Holder&) = delete;
-  Holder(Holder&&) = delete;
-  Holder& operator=(const Holder&) = delete;
-  Holder& operator=(Holder&&) = delete;
-
-  // thread-safe
-  Holder& operator=(const std::shared_ptr<Thread>& th) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    Assign(th);
-    return *this;
-  }
-
-  std::shared_ptr<Thread> EmplaceIf(
-      const std::shared_ptr<nf7::Context>&       ctx,
-      const std::shared_ptr<nf7::luajit::Queue>& ljq,
-      Handler&& handler) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    if (th_) return nullptr;
-    Assign(std::make_shared<Thread>(ctx, ljq, std::move(handler)));
-    return th_;
-  }
-  std::shared_ptr<Thread> Emplace(
-      const std::shared_ptr<nf7::Context>&       ctx,
-      const std::shared_ptr<nf7::luajit::Queue>& ljq,
-      Handler&& handler) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    Assign(std::make_shared<Thread>(ctx, ljq, std::move(handler)));
-    return th_;
-  }
-
-  void Handle(const nf7::File::Event& ev) noexcept;
-
-  bool holding() const noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    return !!th_;
-  }
-  nf7::File* child() const noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    return th_? th_->file_.get(): nullptr;
-  }
-
- private:
-  mutable std::mutex mtx_;
-
-  nf7::File* const owner_;
-
-  bool isolated_ = true;
-  std::shared_ptr<Thread> th_;
-
-
-  void Assign(const std::shared_ptr<Thread>&) noexcept;
-};
-
-// Holder handles an event to maintain multiple Threads.
-// The owner file must call Handle() when it received any events.
-template <size_t kMax>
-class Thread::HolderSet final {
- public:
-  HolderSet() = delete;
-  HolderSet(nf7::File& owner) noexcept {
-    for (auto& h : items_) {
-      h.emplace(owner);
-    }
-  }
-  HolderSet(const HolderSet&) = delete;
-  HolderSet(HolderSet&&) = delete;
-  HolderSet& operator=(const HolderSet&) = delete;
-  HolderSet& operator=(HolderSet&&) = delete;
-
-  std::shared_ptr<Thread> Add(
-      const std::shared_ptr<nf7::Context>& ctx,
-      const std::shared_ptr<nf7::luajit::Queue>& ljq,
-      Handler&& handler) {
-    for (auto& h : items_) {
-      if (auto th = h->EmplaceIf(ctx, ljq, std::move(handler))) {
-        return th;
-      }
-    }
-    throw nf7::Exception("luajit thread overflow");
-  }
-  void Handle(const nf7::File::Event& ev) noexcept {
-    for (auto& h : items_) {
-      h->Handle(ev);
-    }
-  }
-
- private:
-  std::array<std::optional<Holder>, kMax> items_;
 };
 
 

@@ -49,7 +49,7 @@ class Obj final : public nf7::File,
   Obj(Env& env, Path&& path = {}) noexcept :
       File(kType, env),
       DirItem(DirItem::kTooltip | DirItem::kMenu | DirItem::kDragDropTarget),
-      log_(std::make_shared<nf7::LoggerRef>()), th_(*this),
+      log_(std::make_shared<nf7::LoggerRef>()),
       src_(*this, std::move(path)) {
   }
 
@@ -81,7 +81,6 @@ class Obj final : public nf7::File,
   std::optional<nf7::GenericWatcher> watcher_;
   std::shared_ptr<nf7::luajit::Ref>  cache_;
 
-  nf7::luajit::Thread::Holder th_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder exec_;
 
   const char* popup_ = nullptr;
@@ -156,7 +155,6 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
             }
             return luaL_ref(L, LUA_REGISTRYINDEX);
           });
-      auto th = target_->th_.Emplace(self(), ljq, std::move(handler));
 
       // setup watcher
       try {
@@ -182,6 +180,8 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
       }
 
       // queue task to trigger the thread
+      auto th = std::make_shared<nf7::luajit::Thread>(self(), ljq, std::move(handler));
+      th->Install(log_);
       ljq->Push(self(), [&](auto L) {
         try {
           auto thL = th->Init(L);
@@ -238,8 +238,6 @@ nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Obj::Build() noexcept {
   return exec->fu();
 }
 void Obj::Handle(const Event& ev) noexcept {
-  th_.Handle(ev);
-
   switch (ev.type) {
   case Event::kAdd:
     log_->SetUp(*this);

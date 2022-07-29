@@ -79,7 +79,6 @@ target_sources(nf7
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh
-    common/proxy_env.hh
     common/ptr_selector.hh
     common/queue.hh
     common/task.hh
@@ -90,6 +89,7 @@ target_sources(nf7
     common/yas_imgui.hh
     common/yas_imnodes.hh
     common/yas_nf7.hh
+    common/yas_std_atomic.hh
     common/yas_std_filesystem.hh
 
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
