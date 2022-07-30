@@ -330,16 +330,16 @@ class Network::Lambda : public nf7::Context, public nf7::Lambda,
     std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> idmap;
     conns_.reserve(f.items_.size());
     for (const auto& item : f.items_) {
+      auto lambda = item->node().CreateLambda(self);
       if (auto inode = item->inode()) {
-        if (auto lambda = inode->CreateInitiator(self)) {
-          initiators_.push_back(std::move(lambda));
-        }
+        assert(!lambda && "it's not allowed to have both initiator and normal lambda");
+        lambda = inode->CreateInitiator(self);
+        initiators_.push_back(lambda);
       }
-      if (auto lambda = item->node().CreateLambda(self)) {
-        conns_[lambda.get()] = {};
-        nmap_[&item->node()] = lambda;
-        idmap[item->id()]    = lambda;
-      }
+      assert(lambda);
+      conns_[lambda.get()] = {};
+      nmap_[&item->node()] = lambda;
+      idmap[item->id()]    = lambda;
     }
 
     // build connection map
