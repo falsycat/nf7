@@ -4,16 +4,17 @@
 #include <atomic>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <lua.hpp>
 
 #include "nf7.hh"
 
 #include "common/future.hh"
-#include "common/lock.hh"
+#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_ref.hh"
@@ -25,6 +26,11 @@ class Thread final : public std::enable_shared_from_this<Thread> {
  public:
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
+
+  // Registry keeps an objects used in the Thread and deletes immediately when the Thread ends.
+  class RegistryItem;
+  class Lambda;
+  template <typename T> class Lock;
 
   class Exception final : public nf7::Exception {
    public:
@@ -39,8 +45,9 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   Thread() = delete;
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
          const std::shared_ptr<nf7::luajit::Queue>& ljq,
+         const std::shared_ptr<nf7::Lambda::Owner>& la_owner,
          Handler&& handler) noexcept :
-      ctx_(ctx), ljq_(ljq), handler_(std::move(handler)) {
+      ctx_(ctx), ljq_(ljq), la_owner_(la_owner), handler_(std::move(handler)) {
   }
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
@@ -66,11 +73,14 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   }
 
   // must be called on luajit thread
-  void RegisterLock(lua_State*, const std::shared_ptr<nf7::Lock>& k) noexcept {
-    locks_.push_back(k);
+  void Register(lua_State*, const std::shared_ptr<RegistryItem>& item) noexcept {
+    registry_.push_back(item);
   }
-  void ForgetLock(lua_State*, const std::shared_ptr<nf7::Lock>& k) noexcept {
-    locks_.erase(std::remove(locks_.begin(), locks_.end(), k), locks_.end());
+  void Forget(lua_State*, const RegistryItem& item) noexcept {
+    registry_.erase(
+        std::remove_if(registry_.begin(), registry_.end(),
+                       [&item](auto& x) { return x.get() == &item; }),
+        registry_.end());
   }
 
   // thread-safe
@@ -78,13 +88,18 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   // queue a task that exec Resume()
   // thread-safe
-  void ExecResume(lua_State* L) noexcept {
-    ljq_->Push(ctx_, [this, L, self = shared_from_this()](auto) { Resume(L, 0); });
+  template <typename... Args>
+  void ExecResume(lua_State* L, Args&&... args) noexcept {
+    auto self = shared_from_this();
+    ljq_->Push(ctx_, [this, L, self, args...](auto) mutable {
+      Resume(L, luajit::PushAll(L, std::forward<Args>(args)...));
+    });
   }
 
   nf7::Env& env() noexcept { return ctx_->env(); }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
+  const std::shared_ptr<nf7::Lambda::Owner>& lambdaOwner() const noexcept { return la_owner_; }
   const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
   State state() const noexcept { return state_; }
 
@@ -94,6 +109,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   std::shared_ptr<nf7::Context>       ctx_;
   std::shared_ptr<nf7::luajit::Queue> ljq_;
+  std::shared_ptr<nf7::Lambda::Owner> la_owner_;
 
   Handler handler_;
   std::atomic<State> state_ = kInitial;
@@ -109,9 +125,20 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
 
   // mutable params
-  std::vector<std::shared_ptr<nf7::Lock>> locks_;
+  std::vector<std::shared_ptr<RegistryItem>> registry_;
 
   bool skip_handle_ = false;
+};
+
+
+class Thread::RegistryItem {
+ public:
+  RegistryItem() = default;
+  virtual ~RegistryItem() = default;
+  RegistryItem(const RegistryItem&) = delete;
+  RegistryItem(RegistryItem&&) = delete;
+  RegistryItem& operator=(const RegistryItem&) = delete;
+  RegistryItem& operator=(RegistryItem&&) = delete;
 };
 
 

@@ -33,8 +33,8 @@ class Lambda {
 class Lambda::Owner final {
  public:
   Owner() = delete;
-  Owner(nf7::File::Path&&              path,
-        std::string_view               desc,
+  Owner(nf7::File::Path&&             path,
+        std::string_view              desc,
         const std::shared_ptr<Owner>& parent = nullptr) noexcept :
       path_(std::move(path)),
       desc_(desc),

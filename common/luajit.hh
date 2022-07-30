@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <lua.hpp>
@@ -21,6 +23,48 @@ void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
 std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
 std::optional<nf7::Value::Vector> ToVector(lua_State*, int) noexcept;
 std::optional<std::vector<uint8_t>> ToMutableVector(lua_State*, int) noexcept;
+
+
+template <typename T>
+void Push(lua_State* L, T v) noexcept {
+  if constexpr (std::is_integral<T>::value) {
+    lua_pushinteger(L, static_cast<lua_Integer>(v));
+  } else if constexpr (std::is_floating_point<T>::value) {
+    lua_pushnumber(L, static_cast<lua_Number>(v));
+  } else if constexpr (std::is_null_pointer<T>::value) {
+    lua_pushnil(L);
+  } else {
+    [] <bool F = false>() { static_assert(F, "T is invalid"); }();
+  }
+}
+inline void Push(lua_State* L, const std::string& v) noexcept {
+  lua_pushstring(L, v.c_str());
+}
+inline void Push(lua_State* L, const Value& v) noexcept {
+  luajit::PushValue(L, v);
+}
+inline void Push(lua_State* L, const nf7::Value::Vector& v) noexcept {
+  luajit::PushVector(L, v);
+}
+inline void Push(lua_State* L, const std::vector<uint8_t>& v) noexcept {
+  luajit::PushMutableVector(L, std::vector<uint8_t> {v});
+}
+inline void Push(lua_State* L, std::vector<uint8_t>&& v) noexcept {
+  luajit::PushMutableVector(L, std::move(v));
+}
+
+inline int PushAll(lua_State*) noexcept {
+  return 0;
+}
+template <typename T, typename... Args>
+int PushAll(lua_State* L, T v, Args&&... args) noexcept {
+  if constexpr (std::is_reference<T>::value) {
+    Push(L, std::forward<T>(v));
+  } else {
+    Push(L, v);
+  }
+  return 1+PushAll(L, std::forward<Args>(args)...);
+}
 
 
 template <typename T>

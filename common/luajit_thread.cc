@@ -1,4 +1,6 @@
 #include "common/luajit_thread.hh"
+#include "common/luajit_thread_lambda.hh"
+#include "common/luajit_thread_lock.hh"
 
 #include <sstream>
 #include <tuple>
@@ -20,20 +22,6 @@ static void PushMeta(lua_State*) noexcept;
 // Pushes Lua object built by a file who implements luajit::Obj interface.
 static void GetLuaObjAndPush(
     lua_State* L, const std::shared_ptr<Thread>& th, File& f);
-
-// Acquires a lock and push it to Lua stack using PushLock.
-template <typename T>
-static void AcquireAndPushLock(
-    lua_State* L, const std::shared_ptr<Thread>& th, File& f, bool ex);
-
-// Pushes an object associated to the lock.
-// Specialize this to implement custom method depended a type of locked resource.
-template <typename T>
-static void PushLock(
-    lua_State* L,
-    const std::shared_ptr<Thread>&,
-    const std::shared_ptr<T>&,
-    const std::shared_ptr<nf7::Lock>&) noexcept;
 
 
 lua_State* Thread::Init(lua_State* L) noexcept {
@@ -106,16 +94,11 @@ static void PushMeta(lua_State* L) noexcept {
 
         std::string path = luaL_checkstring(L, 2);
         th->env().ExecSub(th->ctx(), [th, L, base, path = std::move(path)]() {
-          nf7::File::Id ret;
           try {
-            ret = th->env().GetFileOrThrow(base).ResolveOrThrow(path).id();
+            th->ExecResume(L, th->env().GetFileOrThrow(base).ResolveOrThrow(path).id());
           } catch (nf7::File::NotFoundException&) {
-            ret = 0;
+            th->ExecResume(L, 0);
           }
-          th->ljq()->Push(th->ctx(), [th, L, ret](auto) {
-            lua_pushinteger(L, static_cast<lua_Integer>(ret));
-            th->Resume(L, 1);
-          });
         });
         th->ExpectYield(L);
         return lua_yield(L, 0);
@@ -128,19 +111,22 @@ static void PushMeta(lua_State* L) noexcept {
 
         const auto  id    = luaL_checkinteger(L, 2);
         std::string iface = luaL_checkstring(L, 3);
-        const auto  ex    = lua_toboolean(L, 4);
-        th->env().ExecMain(th->ctx(), [th, L, id, iface = std::move(iface), ex]() {
+        th->env().ExecSub(th->ctx(), [th, L, id, iface = std::move(iface)]() {
           try {
             auto& f = th->env().GetFileOrThrow(static_cast<nf7::File::Id>(id));
             if (iface == "buffer") {
-              AcquireAndPushLock<nf7::AsyncBuffer>(L, th, f, ex);
+              Thread::Lock<nf7::AsyncBuffer>::AcquireAndPush(L, th, f, false);
+            } else if (iface == "exbuffer") {
+              Thread::Lock<nf7::AsyncBuffer>::AcquireAndPush(L, th, f, true);
             } else if (iface == "lua") {
               GetLuaObjAndPush(L, th, f);
+            } else if (iface == "node") {
+              Thread::Lambda::CreateAndPush(L, th, f);
             } else {
               throw nf7::Exception {"unknown interface: "+iface};
             }
-          } catch (nf7::Exception&) {
-            th->ljq()->Push(th->ctx(), [th, L](auto) { th->Resume(L, 0); });
+          } catch (nf7::Exception& e) {
+            th->ExecResume(L, nullptr, e.msg());
           }
         });
         th->ExpectYield(L);
@@ -197,201 +183,10 @@ static void GetLuaObjAndPush(
             lua_rawgeti(L, LUA_REGISTRYINDEX, obj->index());
             th->Resume(L, 1);
           } catch (nf7::Exception& e) {
-            lua_pushnil(L);
-            lua_pushstring(L, e.msg().c_str());
-            th->Resume(L, 2);
+            th->Resume(L, luajit::PushAll(L, nullptr, e.msg()));
           }
         });
       });
-}
-
-template <typename T>
-static void AcquireAndPushLock(
-    lua_State* L, const std::shared_ptr<Thread>& th, File& f, bool ex) {
-  auto& res = f.interfaceOrThrow<T>();
-  res.AcquireLock(ex).
-      Then([th, L, res = res.self()](auto fu) {
-        th->ljq()->Push(th->ctx(), [th, L, res, fu](auto) mutable {
-          try {
-            const auto& k = fu.value();
-            th->RegisterLock(L, k);
-            PushLock<T>(L, th, res, k);
-            th->Resume(L, 1);
-          } catch (nf7::Exception& e) {
-            lua_pushnil(L);
-            lua_pushstring(L, e.msg().c_str());
-            th->Resume(L, 2);
-          }
-        });
-      });
-}
-
-template <>
-void PushLock<nf7::AsyncBuffer>(
-    lua_State* L,
-    const std::shared_ptr<Thread>&           th,
-    const std::shared_ptr<nf7::AsyncBuffer>& buf,
-    const std::shared_ptr<nf7::Lock>&        lock) noexcept {
-  constexpr const char* kTypeName =
-      "nf7::luajit::Thread::PushLock<nf7::AsyncBuffer>::Holder";
-  struct Holder final {
-    std::weak_ptr<Thread>           th;
-    std::weak_ptr<nf7::AsyncBuffer> buf;
-    std::weak_ptr<nf7::Lock>        lock;
-
-    auto Validate(lua_State* L) {
-      auto t = th.lock();
-      if (!t) {
-        luaL_error(L, "thread expired");
-      }
-
-      auto b = buf.lock();
-      if (!b) {
-        luaL_error(L, "target buffer expired");
-      }
-
-      auto l = lock.lock();
-      if (!l) {
-        luaL_error(L, "lock expired");
-      }
-      try {
-        l->Validate();
-      } catch (nf7::Exception& e) {
-        luaL_error(L, "%s", e.msg().c_str());
-      }
-      return std::make_tuple(t, b, l);
-    }
-  };
-  new (lua_newuserdata(L, sizeof(Holder))) Holder {
-    .th   = th,
-    .buf  = buf,
-    .lock = lock,
-  };
-
-  if (luaL_newmetatable(L, kTypeName)) {
-    lua_createtable(L, 0, 0);
-
-    // lock:read(offset, bytes [, mutable vector]) -> MutableVector
-    lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckRef<Holder>(L, 1, kTypeName).Validate(L);
-
-      auto off  = luaL_checkinteger(L, 2);
-      auto size = luaL_checkinteger(L, 3);
-
-      if (off < 0) {
-        return luaL_error(L, "negative offset");
-      }
-      if (size < 0) {
-        return luaL_error(L, "negative size");
-      }
-      if (static_cast<size_t>(size) > kBufferSizeMax) {
-        return luaL_error(L, "too large size is requested");
-      }
-
-      std::shared_ptr<std::vector<uint8_t>> vec;
-      if (auto src = ToMutableVector(L, 4)) {
-        vec = std::make_shared<std::vector<uint8_t>>(std::move(*src));
-        vec->resize(static_cast<size_t>(size));
-      } else {
-        vec = std::make_shared<std::vector<uint8_t>>(size);
-      }
-
-      buf->Read(static_cast<size_t>(off), vec->data(), static_cast<size_t>(size)).
-        Then([th, L, vec](auto fu) {
-          th->ljq()->Push(th->ctx(), [th, L, vec, fu](auto) mutable {
-            try {
-              vec->resize(fu.value());
-              luajit::PushMutableVector(L, std::move(*vec));
-              th->Resume(L, 1);
-            } catch (nf7::Exception& e) {
-              luajit::PushMutableVector(L, {});
-              lua_pushstring(L, e.msg().c_str());
-              th->Resume(L, 2);
-            }
-          });
-        });
-      th->ExpectYield(L);
-      return lua_yield(L, 0);
-    }));
-    lua_setfield(L, -2, "read");
-
-    // lock:write(offset, vector) -> size
-    lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckRef<Holder>(L, 1, kTypeName).Validate(L);
-
-      auto off    = luaL_checkinteger(L, 2);
-      auto optvec = luajit::ToVector(L, 3);
-
-      if (off < 0) {
-        return luaL_error(L, "negative offset");
-      }
-      if (!optvec) {
-        return luaL_error(L, "vector is expected for the third argument");
-      }
-      auto& vec = *optvec;
-
-      buf->Write(static_cast<size_t>(off), vec->data(), vec->size()).
-        Then([th, L, vec](auto fu) {
-          th->ljq()->Push(th->ctx(), [th, L, fu](auto) mutable {
-            try {
-              lua_pushinteger(L, static_cast<lua_Integer>(fu.value()));
-              th->Resume(L, 1);
-            } catch (nf7::Exception& e) {
-              lua_pushinteger(L, 0);
-              lua_pushstring(L, e.msg().c_str());
-              th->Resume(L, 2);
-            }
-          });
-        });
-      th->ExpectYield(L);
-      return lua_yield(L, 0);
-    }));
-    lua_setfield(L, -2, "write");
-
-    // lock:truncate(size) -> size
-    lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckRef<Holder>(L, 1, kTypeName).Validate(L);
-
-      auto size = luaL_checkinteger(L, 2);
-      if (size < 0) {
-        return luaL_error(L, "negative size");
-      }
-
-      buf->Truncate(static_cast<size_t>(size)).
-        Then([th, L](auto fu) {
-          th->ljq()->Push(th->ctx(), [th, L, fu](auto) mutable {
-            try {
-              lua_pushinteger(L, static_cast<lua_Integer>(fu.value()));
-              th->Resume(L, 1);
-            } catch (nf7::Exception& e) {
-              lua_pushnil(L);
-              lua_pushstring(L, e.msg().c_str());
-              th->Resume(L, 2);
-            }
-          });
-        });
-      th->ExpectYield(L);
-      return lua_yield(L, 0);
-    }));
-    lua_setfield(L, -2, "truncate");
-
-    // lock:unlock()
-    lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckRef<Holder>(L, 1, kTypeName).Validate(L);
-      th->ForgetLock(L, lock);
-      return 0;
-    }));
-    lua_setfield(L, -2, "unlock");
-
-    lua_setfield(L, -2, "__index");
-
-    lua_pushcfunction(L, [](auto L) {
-      CheckRef<Holder>(L, 1, kTypeName).~Holder();
-      return 0;
-    });
-    lua_setfield(L, -2, "__gc");
-  }
-  lua_setmetatable(L, -2);
 }
 
 }  // namespace nf7::luajit

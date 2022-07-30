@@ -180,7 +180,10 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
       }
 
       // queue task to trigger the thread
-      auto th = std::make_shared<nf7::luajit::Thread>(self(), ljq, std::move(handler));
+      auto la_owner = std::make_shared<nf7::Lambda::Owner>(
+          target_->abspath(), "building Lua object", nullptr);
+      auto th = std::make_shared<nf7::luajit::Thread>(
+          self(), ljq, la_owner, std::move(handler));
       th->Install(log_);
       ljq->Push(self(), [&](auto L) {
         try {

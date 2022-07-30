@@ -314,7 +314,7 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
 
 
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
-  if (lua_isnil(L, idx)) {
+  if (lua_isnoneornil(L, idx)) {
     return nf7::Value {nf7::Value::Pulse {}};
   }
   if (lua_isnumber(L, idx)) {

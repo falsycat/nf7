@@ -223,7 +223,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
 
     env().GetFileOrThrow(file_id_);  // check if the owner is alive
     auto th = std::make_shared<nf7::luajit::Thread>(
-        self, ljq_, [self](auto& th, auto L) { self->HandleThread(th, L); });
+        self, ljq_, owner(),
+        [self](auto& th, auto L) { self->HandleThread(th, L); });
     th->Install(log_);
     th_.emplace_back(th);
 

@@ -75,6 +75,7 @@ target_sources(nf7
     common/luajit_ref.hh
     common/luajit_thread.hh
     common/luajit_thread.cc
+    common/luajit_thread_lambda.hh
     common/memento.hh
     common/native_file.hh
     common/node.hh
