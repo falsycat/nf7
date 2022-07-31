@@ -18,6 +18,7 @@ namespace nf7::luajit {
 
 // pushes original libraries
 static void PushMathLib(lua_State* L) noexcept;
+static void PushTableLib(lua_State* L) noexcept;
 
 // buffer <-> lua value conversion
 template <typename T>
@@ -33,6 +34,9 @@ void PushGlobalTable(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushGlobalTable")) {
     PushMathLib(L);
     lua_setfield(L, -2, "math");
+
+    PushTableLib(L);
+    lua_setfield(L, -2, "table");
 
     lua_pushcfunction(L, [](auto L) {
       PushValue(L, CheckValue(L, 1));
@@ -157,9 +161,7 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
         const uint8_t* ptr = v->data() + offset;
         const uint8_t* end = v->data() + v->size();
 
-        if (lua_istable(L, 3)) {
-          return luaL_error(L, "table is expected for the second argument");
-        }
+        luaL_checktype(L, 3, LUA_TTABLE);
         const int ecnt = static_cast<int>(lua_objlen(L, 3));
         lua_createtable(L, ecnt, 0);
 
@@ -180,13 +182,13 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
               ptr += PushArrayFromBytes<uint32_t>(L, n, ptr, end);
             } else if (type == "u64") {
               ptr += PushArrayFromBytes<uint64_t>(L, n, ptr, end);
-            } else if (type == "i8") {
+            } else if (type == "s8") {
               ptr += PushArrayFromBytes<int8_t>(L, n, ptr, end);
-            } else if (type == "i16") {
+            } else if (type == "s16") {
               ptr += PushArrayFromBytes<int16_t>(L, n, ptr, end);
-            } else if (type == "i32") {
+            } else if (type == "s32") {
               ptr += PushArrayFromBytes<int32_t>(L, n, ptr, end);
-            } else if (type == "i64") {
+            } else if (type == "s64") {
               ptr += PushArrayFromBytes<int64_t>(L, n, ptr, end);
             } else if (type == "f32") {
               ptr += PushArrayFromBytes<float>(L, n, ptr, end);
@@ -203,13 +205,13 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
               ptr += PushFromBytes<uint32_t>(L, ptr, end);
             } else if (type == "u64") {
               ptr += PushFromBytes<uint64_t>(L, ptr, end);
-            } else if (type == "i8") {
+            } else if (type == "s8") {
               ptr += PushFromBytes<int8_t>(L, ptr, end);
-            } else if (type == "i16") {
+            } else if (type == "s16") {
               ptr += PushFromBytes<int16_t>(L, ptr, end);
-            } else if (type == "i32") {
+            } else if (type == "s32") {
               ptr += PushFromBytes<int32_t>(L, ptr, end);
-            } else if (type == "i64") {
+            } else if (type == "s64") {
               ptr += PushFromBytes<int64_t>(L, ptr, end);
             } else if (type == "f32") {
               ptr += PushFromBytes<float>(L, ptr, end);
@@ -252,9 +254,7 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
         const lua_Integer offset = luaL_checkinteger(L, 2);
         if (offset < 0) return luaL_error(L, "negative offset");
 
-        if (!lua_istable(L, 3)) {
-          return luaL_error(L, "table is expected for the second argument");
-        }
+        luaL_checktype(L, 3, LUA_TTABLE);
         const int len = static_cast<int>(lua_objlen(L, 3));
 
         uint8_t* ptr = v.data() + offset;
@@ -274,13 +274,13 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
             ptr += ToBytes<uint32_t>(L, ptr, end);
           } else if (type == "u64") {
             ptr += ToBytes<uint64_t>(L, ptr, end);
-          } else if (type == "i8") {
+          } else if (type == "s8") {
             ptr += ToBytes<int8_t>(L, ptr, end);
-          } else if (type == "i16") {
+          } else if (type == "s16") {
             ptr += ToBytes<int16_t>(L, ptr, end);
-          } else if (type == "i32") {
+          } else if (type == "s32") {
             ptr += ToBytes<int32_t>(L, ptr, end);
-          } else if (type == "i64") {
+          } else if (type == "s64") {
             ptr += ToBytes<int64_t>(L, ptr, end);
           } else if (type == "f32") {
             ptr += ToBytes<float>(L, ptr, end);
@@ -395,6 +395,25 @@ static void PushMathLib(lua_State* L) noexcept {
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);
 }
+static void PushTableLib(lua_State* L) noexcept {
+  lua_newuserdata(L, 0);
+
+  lua_createtable(L, 0, 0);
+  lua_createtable(L, 0, 0);
+  {
+    // table.setmetatable(table, meta_table)
+    lua_pushcfunction(L, [](auto L) {
+      luaL_checktype(L, 1, LUA_TTABLE);
+      luaL_checktype(L, 2, LUA_TTABLE);
+      lua_settop(L, 2);
+      lua_setmetatable(L, 1);
+      return 1;
+    });
+    lua_setfield(L, -2, "setmetatable");
+  }
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+}
 
 
 template <typename T>
@@ -468,6 +487,16 @@ static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end) {
       [] <bool F = false>() { static_assert(F, "T is invalid"); }();
     }
     return sizeof(T);
+  } else if (lua_isstring(L, -1)) {
+    if constexpr (std::is_same<T,  uint8_t>::value) {
+      size_t sz;
+      const char* str = lua_tolstring(L, -1, &sz);
+      std::memcpy(ptr, str, std::min(static_cast<size_t>(end-ptr), sz));
+      return sz;
+    } else {
+      luaL_error(L, "string can be specified for only u8 type");
+      return 0;
+    }
   } else {
     luaL_error(L, "number or array expected");
     return 0;
