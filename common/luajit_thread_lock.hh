@@ -27,6 +27,7 @@ class Thread::Lock final : public Thread::RegistryItem,
       try {
         auto k = std::make_shared<Thread::Lock<Res>>(th, res, fu.value());
         th->ljq()->Push(th->ctx(), [L, th, k](auto) {
+          th->Register(L, k);
           k->Push(L);
           th->Resume(L, 1);
         });

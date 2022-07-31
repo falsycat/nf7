@@ -24,6 +24,7 @@ class Thread::Lambda final : public Thread::RegistryItem,
       lua_State* L, const std::shared_ptr<Thread>& th, nf7::File& f) {
     auto la = std::make_shared<Thread::Lambda>(th, f.interfaceOrThrow<nf7::Node>());
     th->ljq()->Push(th->ctx(), [L, th, la](auto) {
+      th->Register(L, la);
       la->Push(L);
       th->Resume(L, 1);
     });
