@@ -58,8 +58,9 @@ class Future final {
   // Factory side have this to tell finish or abort.
   class Promise final {
    public:
-    template <typename U> friend class nf7::Future;
-    template <typename U> friend class nf7::Future<U>::Coro;
+    // Use data_() instead, MSVC doesn't allow this:
+    // template <typename U> friend class nf7::Future<U>;
+    // template <typename U> friend class nf7::Future<U>::Coro;
 
     static constexpr bool kThisIsNf7FuturePromise = true;
 
@@ -136,15 +137,20 @@ class Future final {
       Return(std::move(v));
       return std::suspend_never();
     }
-    auto return_value(const T& v) {
-      Return(T(v));
-    }
-    auto return_value(T&& v) {
-      Return(std::move(v));
+    auto return_void() {
+      if (data_->state == kYet) {
+        if constexpr (std::is_same<T, std::monostate>::value) {
+          Return({});
+        } else {
+          assert(false && "coroutine returned without value");
+        }
+      }
     }
     auto unhandled_exception() noexcept {
       Throw(std::current_exception());
     }
+
+    const std::shared_ptr<Data>& data__() noexcept { return data_; }
 
    private:
     std::shared_ptr<Data> data_;
@@ -274,7 +280,7 @@ class Future final {
     auto callee_ctx = data.ctx.lock();
     assert(callee_ctx);
 
-    auto caller_data = caller.promise().data_;
+    auto caller_data = caller.promise().data__();
     auto caller_ctx  = caller_data->ctx.lock();
     assert(caller_ctx);
 

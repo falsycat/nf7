@@ -205,7 +205,7 @@ class Obj::ExecTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> 
 
       // return the object and cache it
       target_->cache_ = std::make_shared<nf7::luajit::Ref>(ctx, ljq, idx);
-      co_return target_->cache_;
+      co_yield target_->cache_;
 
     } catch (Exception& e) {
       log_->Error(e.msg());

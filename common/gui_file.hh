@@ -90,7 +90,7 @@ struct FileCreatePopup final {
         ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
         err = true;
       }
-      if constexpr (kFlags & FileCreatePopupFlag::kNameDupCheck) {
+      if constexpr ((kFlags & FileCreatePopupFlag::kNameDupCheck) != 0) {
         if (owner.Find(name_)) {
           ImGui::Bullet(); ImGui::Text("name duplicated");
           err = true;

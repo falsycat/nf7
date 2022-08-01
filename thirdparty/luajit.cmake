@@ -24,12 +24,15 @@ elseif (MINGW)
 
 elseif (MSVC)
   set(lib "${src}/lua51.lib")
-  add_custom_target(luajit-build
+  add_custom_command(
+    OUTPUT "${lib}"
     COMMAND msvcbuild.bat static
+    DEPENDS "${luajit_BINARY_DIR}/skip_build"
 
-    WORKING_DIRECTORY "${luajit_SOURCE_DIR}/src"
+    WORKING_DIRECTORY "${src}"
     VERBATIM
   )
+  add_custom_target(luajit-build SOURCES "${lib}")
 
 else()
   message(ERROR "unknown environment")

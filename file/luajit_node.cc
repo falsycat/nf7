@@ -144,32 +144,33 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
   std::shared_ptr<nf7::LoggerRef> log_;
 
 
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept
-  try {
-    auto& objf    = *target_->obj_;
-    auto& obj     = objf.interfaceOrThrow<nf7::luajit::Obj>();
-    auto  handler = co_await obj.Build();
-    co_yield handler;
-
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
     try {
-      *target_->obj_;  // checks if objf is alive
+      auto& objf    = *target_->obj_;
+      auto& obj     = objf.interfaceOrThrow<nf7::luajit::Obj>();
+      auto  handler = co_await obj.Build();
+      co_yield handler;
 
-      target_->handler_ = handler;
+      try {
+        *target_->obj_;  // checks if objf is alive
 
-      auto& w = target_->watcher_;
-      w.emplace(env());
-      w->Watch(objf.id());
-      w->AddHandler(Event::kUpdate, [t = target_](auto&) {
-        if (t->handler_) {
-          t->log_->Info("detected update of handler object, drops cache");
-          t->handler_ = nullptr;
-        }
-      });
+        target_->handler_ = handler;
+
+        auto& w = target_->watcher_;
+        w.emplace(env());
+        w->Watch(objf.id());
+        w->AddHandler(Event::kUpdate, [t = target_](auto&) {
+          if (t->handler_) {
+            t->log_->Info("detected update of handler object, drops cache");
+            t->handler_ = nullptr;
+          }
+        });
+      } catch (Exception& e) {
+        log_->Error("watcher setup failure: "+e.msg());
+      }
     } catch (Exception& e) {
-      log_->Error("watcher setup failure: "+e.msg());
+      log_->Error("fetch failure: "+e.msg());
     }
-  } catch (Exception& e) {
-    log_->Error("fetch failure: "+e.msg());
   }
 };
 

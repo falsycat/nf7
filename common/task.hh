@@ -36,7 +36,7 @@ class Task : public nf7::Context,
   auto fu() noexcept { return *fu_; }
 
  protected:
-  virtual nf7::Future<T>::Coro Proc() noexcept = 0;
+  virtual typename nf7::Future<T>::Coro Proc() noexcept = 0;
 
  private:
   std::optional<typename nf7::Future<T>::Coro> coro_;

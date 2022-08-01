@@ -238,7 +238,7 @@ class IO::Ring final {
     std::unique_lock<std::mutex> k(mtx_);
     for (size_t i = 0; i < n; ++i, ++cursor_) {
       if (cursor_ >= buf_.size())  cursor_ = 0;
-      dst[i] = std::exchange(buf_[cursor_], 0);
+      dst[i] = std::exchange(buf_[cursor_], 0.f);
     }
     time_ += n;
   }

@@ -24,12 +24,13 @@ class LuaContext final : public nf7::File,
 
   class Queue;
 
-  LuaContext(Env& env) noexcept
-  try :
-      File(kType, env), DirItem(DirItem::kTooltip),
-      q_(std::make_shared<Queue>(env)) {
-  } catch (nf7::Exception&) {
-    // Thread construction failure (ignore it)
+  LuaContext(Env& env) noexcept :
+      File(kType, env), DirItem(DirItem::kTooltip) {
+    try {
+      q_ = std::make_shared<Queue>(env);
+    } catch (nf7::Exception&) {
+      // Thread construction failure (ignore it)
+    }
   }
 
   LuaContext(Env& env, Deserializer&) noexcept : LuaContext(env) {
