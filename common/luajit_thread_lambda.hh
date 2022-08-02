@@ -30,6 +30,12 @@ class Thread::Lambda final : public Thread::RegistryItem,
     });
   }
 
+  static std::shared_ptr<Thread::Lambda> GetPtr(lua_State* L, int idx) {
+    auto self = luajit::CheckWeakPtr<Thread::Lambda>(L, idx, kTypeName);
+    self->GetThread(L)->EnsureActive(L);
+    return self;
+  }
+
   // must be created on main thread
   explicit Lambda(const std::shared_ptr<Thread>& th, nf7::Node& n) noexcept;
 
@@ -127,7 +133,7 @@ void Thread::Lambda::PushMeta(lua_State* L) noexcept {
 
     // Lambda:send(name or idx, value)
     lua_pushcfunction(L, [](auto L) {
-      auto self = CheckWeakPtr<Thread::Lambda>(L, 1, kTypeName);
+      auto self = GetPtr(L, 1);
 
       const auto idx = GetIndex(L, 2, self->imm_->in);
       const auto val = luajit::CheckValue(L, 3);
@@ -145,7 +151,7 @@ void Thread::Lambda::PushMeta(lua_State* L) noexcept {
 
     // Lambda:recv(handler)
     lua_pushcfunction(L, [](auto L) {
-      auto self = CheckWeakPtr<Thread::Lambda>(L, 1, kTypeName);
+      auto self = GetPtr(L, 1);
 
       std::vector<size_t> indices = {};
       if (lua_istable(L, 2)) {

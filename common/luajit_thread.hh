@@ -24,6 +24,8 @@ namespace nf7::luajit {
 
 class Thread final : public std::enable_shared_from_this<Thread> {
  public:
+  static constexpr const char* kTypeName = "nf7::luajit::Thread";
+
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
 
@@ -41,6 +43,13 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   template <typename T>
   static Handler CreatePromiseHandler(
       nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
+
+  // must be called on luajit thread
+  static std::shared_ptr<Thread> GetPtr(lua_State* L, int idx) {
+    auto th = CheckWeakPtr<Thread>(L, idx, kTypeName);
+    th->EnsureActive(L);
+    return th;
+  }
 
   Thread() = delete;
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
@@ -70,6 +79,13 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   // handler_ won't be called on next yielding
   void ExpectYield(lua_State*) noexcept {
     skip_handle_ = true;
+  }
+
+  // must be called on luajit thread
+  void EnsureActive(lua_State* L) {
+    if (!active_) {
+      luaL_error(L, "thread is not active");
+    }
   }
 
   // must be called on luajit thread
@@ -127,7 +143,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   // mutable params
   std::vector<std::shared_ptr<RegistryItem>> registry_;
 
-  bool skip_handle_ = false;
+  bool active_      = false;  // true while executing lua_resume
+  bool skip_handle_ = false;  // handler_ won't be called on next yield
 };
 
 

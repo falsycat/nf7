@@ -61,6 +61,7 @@ class Thread::Lock final : public Thread::RegistryItem,
     if (!t) {
       luaL_error(L, "thread expired");
     }
+    t->EnsureActive(L);
     try {
       lock_->Validate();
     } catch (nf7::Exception& e) {

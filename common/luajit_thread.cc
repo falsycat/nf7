@@ -11,9 +11,8 @@
 
 namespace nf7::luajit {
 
-constexpr const char* kTypeName         = "nf7::luajit::Thread";
-constexpr size_t      kInstructionLimit = 10000000;
-constexpr size_t      kBufferSizeMax    = 64 * 1024 * 1024;
+constexpr size_t kInstructionLimit = 10000000;
+constexpr size_t kBufferSizeMax    = 64 * 1024 * 1024;
 
 
 // Pushes a metatable for Thread object, available on global table as 'nf7'.
@@ -57,7 +56,9 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
 
   state_ = kRunning;
   k.unlock();
+  active_ = true;
   const auto ret = lua_resume(th_, narg);
+  active_ = false;
   k.lock();
   if (state_ == kAborted) return;
   switch (ret) {
@@ -81,7 +82,7 @@ void Thread::Abort() noexcept {
 
 
 static void PushMeta(lua_State* L) noexcept {
-  if (luaL_newmetatable(L, kTypeName)) {
+  if (luaL_newmetatable(L, Thread::kTypeName)) {
     PushWeakPtrDeleter<Thread>(L);
     lua_setfield(L, -2, "__gc");
 
@@ -89,7 +90,7 @@ static void PushMeta(lua_State* L) noexcept {
     {
       // nf7:resolve(path)
       lua_pushcfunction(L, [](auto L) {
-        auto th   = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto th   = Thread::GetPtr(L, 1);
         auto base = th->ctx()->initiator();
 
         std::string path = luaL_checkstring(L, 2);
@@ -107,7 +108,7 @@ static void PushMeta(lua_State* L) noexcept {
 
       // nf7:query(file_id, interface)
       lua_pushcfunction(L, [](auto L) {
-        auto th = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto th = Thread::GetPtr(L, 1);
 
         const auto  id    = luaL_checkinteger(L, 2);
         std::string iface = luaL_checkstring(L, 3);
@@ -136,7 +137,7 @@ static void PushMeta(lua_State* L) noexcept {
 
       // nf7:yield(results...)
       lua_pushcfunction(L, [](auto L) {
-        auto th = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto th = Thread::GetPtr(L, 1);
         th->ExecResume(L);
         th->ExpectYield(L);
         return lua_yield(L, lua_gettop(L)-1);
@@ -145,7 +146,7 @@ static void PushMeta(lua_State* L) noexcept {
 
       // logging functions
       static const auto log_write = [](lua_State* L, nf7::Logger::Level lv) {
-        auto th     = CheckWeakPtr<Thread>(L, 1, kTypeName);
+        auto th     = Thread::GetPtr(L, 1);
         auto logger = th->logger();
         if (!logger) return luaL_error(L, "logger is not installed on current thread");
 
