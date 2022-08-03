@@ -90,8 +90,8 @@ try {
   auto ret = const_cast<File*>(this);
   for (const auto& term : p.terms()) {
     if (term == "..") {
-      if (!parent_) throw NotFoundException("cannot go up over the root");
-      ret = parent_;
+      if (!ret->parent_) throw NotFoundException("cannot go up over the root");
+      ret = ret->parent_;
     } else if (term == ".") {
       // do nothing
     } else if (term == "$") {
