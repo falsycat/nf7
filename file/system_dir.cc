@@ -2,11 +2,13 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
 #include <yas/serialize.hpp>
 #include <yas/types/std/map.hpp>
+#include <yas/types/std/unordered_set.hpp>
 #include <yas/types/std/string.hpp>
 
 #include "nf7.hh"
@@ -40,10 +42,10 @@ class Dir final : public File,
   }
 
   Dir(Env& env, Deserializer& ar) : Dir(env) {
-    ar(items_, win_);
+    ar(items_, opened_, win_);
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(items_, win_);
+    ar(items_, opened_, win_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
     ItemMap items;
@@ -113,6 +115,8 @@ class Dir final : public File,
   // persistent params
   ItemMap     items_;
   gui::Window win_;
+
+  std::unordered_set<std::string> opened_;
 };
 
 void Dir::Update() noexcept {
@@ -226,7 +230,15 @@ void Dir::UpdateTree() noexcept {
       flags |= ImGuiTreeNodeFlags_Leaf;
     }
 
+    const bool opened = opened_.contains(name);
+    if (opened) {
+      ImGui::SetNextItemOpen(true, ImGuiCond_Appearing);
+    }
+
     const bool open = ImGui::TreeNodeEx(item.second.get(), flags, "%s", name.c_str());
+    if (!opened && open) {
+      opened_.insert(name);
+    }
 
     // tooltip
     if (ImGui::IsItemHovered()) {

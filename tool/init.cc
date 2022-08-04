@@ -4,10 +4,12 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <unordered_set>
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/map.hpp>
 #include <yas/types/std/string.hpp>
+#include <yas/types/std/unordered_set.hpp>
 
 
 using namespace std::literals;
@@ -49,8 +51,11 @@ int main(void) {
     { "_luajit"s,
         Write(ar, "LuaJIT/Context"s) },
     { "home"s,
-        Write(ar, "System/Dir"s, std::map<std::string, L> {}, WINDOW_(false)) },
-  }, WINDOW_(true));
+        Write(ar, "System/Dir"s,
+              std::map<std::string, L> {},
+              std::unordered_set<std::string> {},
+              WINDOW_(false)) },
+  }, std::unordered_set<std::string> {}, WINDOW_(true));
 
   const auto buf = os.get_shared_buffer();
   for (size_t i = 0; i < buf.size;) {
