@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <yas/serialize.hpp>
 #include <yas/types/std/map.hpp>
@@ -37,7 +38,10 @@ class Dir final : public File,
 
   Dir(Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
       File(kType, env),
-      DirItem(DirItem::kTree | DirItem::kMenu | DirItem::kTooltip),
+      DirItem(DirItem::kTree |
+              DirItem::kMenu |
+              DirItem::kTooltip |
+              DirItem::kDragDropTarget),
       items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
   }
 
@@ -85,6 +89,7 @@ class Dir final : public File,
   void UpdateTree() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateDragDropTarget() noexcept override;
 
   void Handle(const Event& ev) noexcept override {
     switch (ev.type) {
@@ -117,6 +122,15 @@ class Dir final : public File,
   gui::Window win_;
 
   std::unordered_set<std::string> opened_;
+
+
+  std::string GetUniqueName(std::string_view name) const noexcept {
+    auto ret = std::string {name};
+    while (Find(ret)) {
+      ret += "_dup";
+    }
+    return ret;
+  }
 };
 
 void Dir::Update() noexcept {
@@ -212,6 +226,15 @@ void Dir::Update() noexcept {
       ImGui::EndPopup();
     }
     UpdateTree();
+
+    if (nf7::gui::dnd::IsFirstAccept()) {
+      ImGui::SetCursorPos({0, 0});
+      ImGui::Dummy(ImGui::GetContentRegionAvail());
+      if (ImGui::BeginDragDropTarget()) {
+        UpdateDragDropTarget();
+        ImGui::EndDragDropTarget();
+      }
+    }
   }
   win_.End();
 }
@@ -235,6 +258,7 @@ void Dir::UpdateTree() noexcept {
       ImGui::SetNextItemOpen(true, ImGuiCond_Appearing);
     }
 
+    const auto top  = ImGui::GetCursorPosY();
     const bool open = ImGui::TreeNodeEx(item.second.get(), flags, "%s", name.c_str());
     if (!opened && open) {
       opened_.insert(name);
@@ -301,14 +325,6 @@ void Dir::UpdateTree() noexcept {
       ImGui::EndDragDropSource();
     }
 
-    // dnd target
-    if (ditem && (ditem->flags() & DirItem::kDragDropTarget)) {
-      if (ImGui::BeginDragDropTarget()) {
-        ditem->UpdateDragDropTarget();
-        ImGui::EndDragDropTarget();
-      }
-    }
-
     // displayed contents
     if (open) {
       ImGui::TreePush(&file);
@@ -317,6 +333,21 @@ void Dir::UpdateTree() noexcept {
       }
       ImGui::TreePop();
     }
+    const auto bottom = ImGui::GetCursorPosY();
+
+    // dnd target
+    if (nf7::gui::dnd::IsFirstAccept()) {
+      if (ditem && (ditem->flags() & DirItem::kDragDropTarget)) {
+        ImGui::SetCursorPosY(top);
+        ImGui::Dummy({ImGui::GetContentRegionAvail().x, bottom-top});
+        if (ImGui::BeginDragDropTarget()) {
+          ditem->UpdateDragDropTarget();
+          ImGui::EndDragDropTarget();
+        }
+      }
+    }
+
+    ImGui::SetCursorPosY(bottom);
     ImGui::PopID();
   }
 }
@@ -329,6 +360,32 @@ void Dir::UpdateMenu() noexcept {
 }
 void Dir::UpdateTooltip() noexcept {
   ImGui::Text("children: %zu", items_.size());
+}
+void Dir::UpdateDragDropTarget() noexcept
+try {
+  nf7::File::Path p;
+  if (auto pay = gui::dnd::Peek<Path>(gui::dnd::kFilePath, p)) {
+    auto& target = ResolveOrThrow(p);
+    if (target.parent() == this) {
+      return;
+    }
+
+    auto parent = static_cast<nf7::File*>(this);
+    while (parent) {
+      if (parent == &target) return;
+      parent = parent->parent();
+    }
+
+    auto& dir = target.parent()->interfaceOrThrow<nf7::Dir>();
+
+    nf7::gui::dnd::DrawRect();
+    if (pay->IsDelivery()) {
+      env().ExecMain(
+          std::make_shared<nf7::GenericContext>(*this, "moving an item"),
+          [this, &dir, name = target.name()]() { Add(GetUniqueName(name), dir.Remove(name)); });
+    }
+  }
+} catch (nf7::Exception&) {
 }
 
 }

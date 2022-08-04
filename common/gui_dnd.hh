@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include "nf7.hh"
 
@@ -58,12 +59,25 @@ std::optional<T> Accept(const char* type, ImGuiDragDropFlags flags = 0) noexcept
 }
 template <typename T>
 const ImGuiPayload* Peek(const char* type, auto& v, ImGuiDragDropFlags flags = 0) noexcept {
-  flags |= ImGuiDragDropFlags_AcceptBeforeDelivery;
+  flags |= ImGuiDragDropFlags_AcceptPeekOnly;
   if (auto pay = ImGui::AcceptDragDropPayload(type, flags)) {
-    if (pay->IsDelivery()) v = To<T>(*pay);
+    v = To<T>(*pay);
     return pay;
   }
   return nullptr;
+}
+
+inline bool IsFirstAccept() noexcept {
+    const auto ctx = ImGui::GetCurrentContext();
+    return ctx->DragDropAcceptFrameCount < ctx->FrameCount;
+}
+
+inline void DrawRect() noexcept {
+  auto& r = ImGui::GetCurrentContext()->DragDropTargetRect;
+  ImGui::GetForegroundDrawList()->AddRect(
+      r.Min - ImVec2 {3.5f, 3.5f},
+      r.Max + ImVec2 {3.5f, 3.5f},
+      ImGui::GetColorU32(ImGuiCol_DragDropTarget), 0.0f, 2.0f);
 }
 
 }  // namespace nf7::gui::dnd
