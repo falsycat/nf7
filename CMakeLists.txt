@@ -96,7 +96,7 @@ target_sources(nf7
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 
     file/audio_context.cc
-    file/audio_io.cc
+    file/audio_device.cc
     file/luajit_context.cc
     file/luajit_node.cc
     file/luajit_obj.cc

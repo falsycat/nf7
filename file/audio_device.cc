@@ -34,16 +34,16 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<IO> kType = {"Audio/IO", {"DirItem",}};
+  static inline const GenericTypeInfo<Device> kType = {"Audio/Device", {"DirItem",}};
 
   class Ring;
   class PlaybackLambda;
   class CaptureLambda;
 
-  using DeviceSelector = std::variant<size_t, std::string>;
-  struct DeviceSelectorVisitor;
+  using Selector = std::variant<size_t, std::string>;
+  struct SelectorVisitor;
 
   static ma_device_config defaultConfig() noexcept {
     ma_device_config cfg;
@@ -55,22 +55,20 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
     cfg.capture.channels  = 2;
     return cfg;
   }
-  IO(Env& env,
-     DeviceSelector&&        sel  = size_t{0},
-     const ma_device_config& cfg  = defaultConfig()) noexcept :
+  Device(Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
       File(kType, env), nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
       data_(std::make_shared<Data>()),
       selector_(std::move(sel)), cfg_(cfg) {
   }
 
-  IO(Env& env, Deserializer& ar) : IO(env) {
+  Device(Env& env, Deserializer& ar) : Device(env) {
     ar(selector_, cfg_);
   }
   void Serialize(Serializer& ar) const noexcept override {
     ar(selector_, cfg_);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<IO>(env, DeviceSelector {selector_}, cfg_);
+    return std::make_unique<Device>(env, Selector {selector_}, cfg_);
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
@@ -104,13 +102,13 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
   std::shared_ptr<Data> data_;
 
   // persistent params
-  DeviceSelector   selector_;
+  Selector         selector_;
   ma_device_config cfg_;
 
   // ConfigPopup param
   struct ConfigPopup final : std::enable_shared_from_this<ConfigPopup> {
     ma_device_config cfg;
-    DeviceSelector   selector;
+    Selector         selector;
 
     std::atomic<bool> fetching = false;
     ma_device_info*   devs   = nullptr;
@@ -124,7 +122,7 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
           std::make_shared<nf7::GenericContext>(f, "fetching device list"),
           [this, self = shared_from_this(), mode](auto ma) {
             try {
-              auto [ptr, n] = IO::FetchDevs(ma, mode);
+              auto [ptr, n] = Device::FetchDevs(ma, mode);
               devs   = ptr;
               devs_n = static_cast<ma_uint32>(n);
             } catch (nf7::Exception&) {
@@ -187,7 +185,7 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
 
   static bool UpdateModeSelector(ma_device_type*) noexcept;
-  static const ma_device_info* UpdateDeviceSelector(DeviceSelector*, ma_device_info*, size_t) noexcept;
+  static const ma_device_info* UpdateSelector(Selector*, ma_device_info*, size_t) noexcept;
   static void UpdatePresetSelector(ma_device_config*, const ma_device_info*) noexcept;
 
 
@@ -199,7 +197,7 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 };
 
-class IO::Ring final {
+class Device::Ring final {
  public:
   static constexpr auto kDur = 3000;  /* msecs */
 
@@ -282,8 +280,8 @@ class IO::Ring final {
   std::atomic<uint64_t> time_ = 0;
 };
 
-class IO::PlaybackLambda final : public nf7::Lambda,
-    public std::enable_shared_from_this<IO::PlaybackLambda> {
+class Device::PlaybackLambda final : public nf7::Lambda,
+    public std::enable_shared_from_this<Device::PlaybackLambda> {
  public:
   static inline const std::vector<std::string> kInputs  = {"get_info", "mix"};
   static inline const std::vector<std::string> kOutputs = {"info", "mixed_size"};
@@ -297,7 +295,7 @@ class IO::PlaybackLambda final : public nf7::Lambda,
   };
 
   PlaybackLambda() = delete;
-  PlaybackLambda(IO& f, const std::shared_ptr<Owner>& owner) noexcept :
+  PlaybackLambda(Device& f, const std::shared_ptr<Owner>& owner) noexcept :
       Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
   }
 
@@ -331,8 +329,8 @@ class IO::PlaybackLambda final : public nf7::Lambda,
 
   uint64_t time_ = 0;
 };
-class IO::CaptureLambda final : public nf7::Lambda,
-    std::enable_shared_from_this<IO::CaptureLambda> {
+class Device::CaptureLambda final : public nf7::Lambda,
+    std::enable_shared_from_this<Device::CaptureLambda> {
  public:
   static inline const std::vector<std::string> kInputs  = {"get_info", "peek"};
   static inline const std::vector<std::string> kOutputs = {"info", "samples"};
@@ -346,7 +344,7 @@ class IO::CaptureLambda final : public nf7::Lambda,
   };
 
   CaptureLambda() = delete;
-  CaptureLambda(IO& f, const std::shared_ptr<Owner>& owner) noexcept :
+  CaptureLambda(Device& f, const std::shared_ptr<Owner>& owner) noexcept :
       Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
   }
 
@@ -378,28 +376,28 @@ class IO::CaptureLambda final : public nf7::Lambda,
 
   std::optional<uint64_t> time_;
 };
-std::shared_ptr<nf7::Lambda> IO::CreateLambda(
+std::shared_ptr<nf7::Lambda> Device::CreateLambda(
     const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
-    return std::make_shared<IO::PlaybackLambda>(*this, owner);
+    return std::make_shared<Device::PlaybackLambda>(*this, owner);
   case ma_device_type_capture:
-    return std::make_shared<IO::CaptureLambda>(*this, owner);
+    return std::make_shared<Device::CaptureLambda>(*this, owner);
   default:
     std::abort();
   }
 }
 
 
-struct IO::DeviceSelectorVisitor final {
+struct Device::SelectorVisitor final {
  public:
-  DeviceSelectorVisitor() = delete;
-  DeviceSelectorVisitor(ma_device_info* info, size_t n) noexcept : info_(info), n_(n) {
+  SelectorVisitor() = delete;
+  SelectorVisitor(ma_device_info* info, size_t n) noexcept : info_(info), n_(n) {
   }
-  DeviceSelectorVisitor(const DeviceSelectorVisitor&) = delete;
-  DeviceSelectorVisitor(DeviceSelectorVisitor&&) = delete;
-  DeviceSelectorVisitor& operator=(const DeviceSelectorVisitor&) = delete;
-  DeviceSelectorVisitor& operator=(DeviceSelectorVisitor&&) = delete;
+  SelectorVisitor(const SelectorVisitor&) = delete;
+  SelectorVisitor(SelectorVisitor&&) = delete;
+  SelectorVisitor& operator=(const SelectorVisitor&) = delete;
+  SelectorVisitor& operator=(SelectorVisitor&&) = delete;
 
   ma_device_info* operator()(const size_t& idx) noexcept {
     return idx < n_? &info_[idx]: nullptr;
@@ -418,7 +416,7 @@ struct IO::DeviceSelectorVisitor final {
 };
 
 
-void IO::InitDev() noexcept {
+void Device::InitDev() noexcept {
   if (!data_->aq) {
     data_->log.Error("audio queue is missing");
     return;
@@ -446,7 +444,7 @@ void IO::InitDev() noexcept {
       }
 
       auto [devs, devs_n] = FetchDevs(ma, cfg.deviceType);
-      auto dinfo = std::visit(DeviceSelectorVisitor {devs, devs_n}, sel);
+      auto dinfo = std::visit(SelectorVisitor {devs, devs_n}, sel);
       if (!dinfo) {
         throw nf7::Exception("missing device");
       }
@@ -475,7 +473,7 @@ void IO::InitDev() noexcept {
     --d->busy;
   });
 }
-void IO::DeinitDev() noexcept {
+void Device::DeinitDev() noexcept {
   if (!data_->aq) {
     data_->log.Error("audio queue is missing");
     return;
@@ -491,7 +489,7 @@ void IO::DeinitDev() noexcept {
     --d->busy;
   });
 }
-void IO::BuildNode() noexcept {
+void Device::BuildNode() noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
     nf7::Node::input_  = PlaybackLambda::kInputs;
@@ -508,7 +506,7 @@ void IO::BuildNode() noexcept {
 }
 
 
-void IO::Handle(const Event& ev) noexcept {
+void Device::Handle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
     data_->log.SetUp(*this);
@@ -537,7 +535,7 @@ void IO::Handle(const Event& ev) noexcept {
 }
 
 
-void IO::Update() noexcept {
+void Device::Update() noexcept {
   if (const auto popup = std::exchange(popup_, nullptr)) {
     ImGui::OpenPopup(popup);
   }
@@ -565,7 +563,7 @@ void IO::Update() noexcept {
     }
     const ma_device_info* dev = nullptr;
     if (!p->fetching) {
-      dev = UpdateDeviceSelector(&p->selector, p->devs, p->devs_n);
+      dev = UpdateSelector(&p->selector, p->devs, p->devs_n);
     } else {
       ImGui::LabelText("device", "fetching list...");
     }
@@ -588,7 +586,7 @@ void IO::Update() noexcept {
     ImGui::EndPopup();
   }
 }
-void IO::UpdateMenu() noexcept {
+void Device::UpdateMenu() noexcept {
   if (cfg_.deviceType == ma_device_type_playback) {
     if (ImGui::MenuItem("simulate sinwave output for 1 sec")) {
       const auto wave = GenerateSineWave(cfg_.sampleRate, cfg_.playback.channels);
@@ -600,7 +598,7 @@ void IO::UpdateMenu() noexcept {
     popup_ = "ConfigPopup";
   }
 }
-void IO::UpdateTooltip() noexcept {
+void Device::UpdateTooltip() noexcept {
   const char* mode =
       cfg_.deviceType == ma_device_type_playback? "playback":
       cfg_.deviceType == ma_device_type_capture ? "capture":
@@ -611,7 +609,7 @@ void IO::UpdateTooltip() noexcept {
   ImGui::Text("channels   : %" PRIu32, cfg_.playback.channels);
   ImGui::Text("sample rate: %" PRIu32, cfg_.sampleRate);
 }
-bool IO::UpdateModeSelector(ma_device_type* m) noexcept {
+bool Device::UpdateModeSelector(ma_device_type* m) noexcept {
   const char* mode =
       *m == ma_device_type_playback? "playback":
       *m == ma_device_type_capture?  "capture":
@@ -630,9 +628,9 @@ bool IO::UpdateModeSelector(ma_device_type* m) noexcept {
   }
   return ret;
 }
-const ma_device_info* IO::UpdateDeviceSelector(
-    DeviceSelector* sel, ma_device_info* devs, size_t n) noexcept {
-  const auto dev = std::visit(DeviceSelectorVisitor {devs, n}, *sel);
+const ma_device_info* Device::UpdateSelector(
+    Selector* sel, ma_device_info* devs, size_t n) noexcept {
+  const auto dev = std::visit(SelectorVisitor {devs, n}, *sel);
 
   if (ImGui::BeginCombo("device", dev? dev->name: "(missing)")) {
     for (size_t i = 0; i < n; ++i) {
@@ -665,7 +663,7 @@ const ma_device_info* IO::UpdateDeviceSelector(
   }
   return dev;
 }
-void IO::UpdatePresetSelector(ma_device_config* cfg, const ma_device_info* dev) noexcept {
+void Device::UpdatePresetSelector(ma_device_config* cfg, const ma_device_info* dev) noexcept {
   auto& srate = cfg->sampleRate;
   auto& ch    = GetChannels(*cfg);
 
