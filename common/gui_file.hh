@@ -42,7 +42,7 @@ struct FileCreatePopup final {
       ImGui::Spacing();
     }
 
-    if (ImGui::BeginListBox("type", {16*em, 4*em})) {
+    if (ImGui::BeginListBox("type", {16*em, 8*em})) {
       for (const auto& reg : nf7::File::registry()) {
         const auto& t = *reg.second;
 
