@@ -78,13 +78,6 @@ class Dir final : public File,
     if (id()) ret->Isolate();
     return ret;
   }
-  std::map<std::string, File*> FetchItems() const noexcept override {
-    std::map<std::string, File*> ret;
-    for (const auto& item : items_) {
-      ret[item.first] = item.second.get();
-    }
-    return ret;
-  }
 
   void Update() noexcept override;
   void UpdateTree() noexcept override;
@@ -211,10 +204,6 @@ void Dir::Update() noexcept {
   };
   if (win_.Begin(kInit)) {
     if (ImGui::BeginPopupContextWindow()) {
-      if (ImGui::MenuItem("new")) {
-        popup_ = "NewItemPopup";
-      }
-      ImGui::Separator();
       UpdateMenu();
       ImGui::EndPopup();
     }
@@ -258,15 +247,32 @@ void Dir::UpdateTree() noexcept {
       if (ImGui::MenuItem("copy path")) {
         ImGui::SetClipboardText(file.abspath().Stringify().c_str());
       }
+
       ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
-        auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing item");
-        env().ExecMain(ctx, [this, name]() { Remove(name); });
+        env().ExecMain(
+            std::make_shared<nf7::GenericContext>(*this, "removing item"),
+            [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
         rename_target_ = name;
         popup_         = "RenamePopup";
       }
+
+      if (ImGui::MenuItem("renew")) {
+        env().ExecMain(
+            std::make_shared<nf7::GenericContext>(*this, "removing item"),
+            [this, name]() { Add(name, Remove(name)); });
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("re-initialize the item by re-adding after removing");
+      }
+
+      ImGui::Separator();
+      if (ImGui::MenuItem("add new sibling")) {
+        popup_ = "NewItemPopup";
+      }
+
       if (ditem && (ditem->flags() & DirItem::kMenu)) {
         ImGui::Separator();
         ditem->UpdateMenu();
@@ -303,6 +309,10 @@ void Dir::UpdateTree() noexcept {
   }
 }
 void Dir::UpdateMenu() noexcept {
+  if (ImGui::MenuItem("add new child")) {
+    popup_ = "NewItemPopup";
+  }
+  ImGui::Separator();
   ImGui::MenuItem("TreeView", nullptr, &win_.shown());
 }
 void Dir::UpdateTooltip() noexcept {
