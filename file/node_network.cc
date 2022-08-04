@@ -1363,7 +1363,7 @@ void Network::Update() noexcept {
     ImGui::EndGroup();
 
     // ---- editor window / canvas
-    if (ImGui::BeginChild("canvas")) {
+    if (ImGui::BeginChild("canvas", {0, 0}, false, ImGuiWindowFlags_NoMove)) {
       const auto canvas_pos = ImGui::GetCursorScreenPos();
       ImNodes::BeginCanvas(&canvas_);
 
