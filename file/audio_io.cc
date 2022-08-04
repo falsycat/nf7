@@ -48,7 +48,7 @@ class IO final : public nf7::File, public nf7::DirItem, public nf7::Node {
   static ma_device_config defaultConfig() noexcept {
     ma_device_config cfg;
     cfg = ma_device_config_init(ma_device_type_playback);
-    cfg.sampleRate        = 480000;
+    cfg.sampleRate        = 48000;
     cfg.playback.format   = ma_format_f32;
     cfg.playback.channels = 2;
     cfg.capture.format    = ma_format_f32;
