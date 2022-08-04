@@ -135,6 +135,7 @@ class Network final : public nf7::File,
   std::vector<std::weak_ptr<Network::Lambda>> lambdas_running_;
 
   const char* popup_ = nullptr;
+  ImVec2 canvas_action_pos_;
 
   // persistent params
   gui::Window                        win_;
@@ -1097,7 +1098,10 @@ void Network::Update() noexcept {
     if (p.Update(*this)) {
       auto item = std::make_unique<Item>(next_++, p.type().Create(env()));
       auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new node");
+
+      auto& item_ref = *item;
       QueueCommand(ctx, std::make_unique<Item::SwapCommand>(*this, std::move(item)));
+      QueueCommand(ctx, std::make_unique<Item::MoveCommand>(item_ref, canvas_action_pos_));
     }
     ImGui::EndPopup();
   }
@@ -1360,6 +1364,7 @@ void Network::Update() noexcept {
 
     // ---- editor window / canvas
     if (ImGui::BeginChild("canvas")) {
+      const auto canvas_pos = ImGui::GetCursorScreenPos();
       ImNodes::BeginCanvas(&canvas_);
 
       // update child nodes
@@ -1398,7 +1403,6 @@ void Network::Update() noexcept {
         auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk));
         QueueCommand(ctx, std::move(cmd));
       }
-
       ImNodes::EndCanvas();
 
       // popup menu for canvas
@@ -1406,8 +1410,15 @@ void Network::Update() noexcept {
           ImGuiPopupFlags_MouseButtonRight |
           ImGuiPopupFlags_NoOpenOverExistingPopup;
       if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
+        if (ImGui::IsWindowAppearing()) {
+          canvas_action_pos_ =
+              (ImGui::GetMousePos() - canvas_pos - canvas_.Offset)/canvas_.Zoom;
+        }
         if (ImGui::MenuItem("add")) {
           popup_ = "AddPopup";
+        }
+        if (ImGui::MenuItem("I/O sockets")) {
+          popup_ = "SocketEditorPopup";
         }
         ImGui::Separator();
         if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
@@ -1417,8 +1428,8 @@ void Network::Update() noexcept {
           ReDo();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("I/O sockets")) {
-          popup_ = "SocketEditorPopup";
+        if (ImGui::MenuItem("reset canvas zoom")) {
+          canvas_.Zoom = 1.f;
         }
         ImGui::EndPopup();
       }
