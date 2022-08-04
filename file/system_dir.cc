@@ -262,6 +262,8 @@ void Dir::UpdateTree() noexcept {
     const bool open = ImGui::TreeNodeEx(item.second.get(), flags, "%s", name.c_str());
     if (!opened && open) {
       opened_.insert(name);
+    } else if (opened && !open) {
+      opened_.erase(name);
     }
 
     // tooltip
