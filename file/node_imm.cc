@@ -45,7 +45,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
     {kStringText,   "string/text"},
   };
 
-  Imm(Env& env, Type type = kPulse, nf7::Value&& v = {}) noexcept :
+  Imm(Env& env, Type type = kInteger, nf7::Value&& v = nf7::Value::Integer {0}) noexcept :
       File(kType, env), DirItem(DirItem::kNone), mem_(*this, {type, std::move(v)}) {
     output_ = {"out"};
   }
