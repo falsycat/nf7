@@ -77,6 +77,7 @@ class Node::Editor {
   Editor& operator=(Editor&&) = delete;
 
   virtual void Emit(Node&, size_t, nf7::Value&&) noexcept = 0;
+  virtual std::shared_ptr<nf7::Lambda> GetLambda(Node& node) noexcept = 0;
 
   virtual void AddLink(Node& src_node, std::string_view src_name,
                        Node& dst_node, std::string_view dst_name) noexcept = 0;

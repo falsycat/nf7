@@ -395,13 +395,13 @@ class Network::Lambda : public nf7::Lambda,
   }
 
   // Ensure that net_ is alive before calling
-  std::shared_ptr<nf7::Lambda> FindOrCreateLambda(ItemId id) noexcept
+  const std::shared_ptr<nf7::Lambda>& FindOrCreateLambda(ItemId id) noexcept
   try {
     return FindLambda(id);
   } catch (nf7::Exception&) {
     return CreateLambda(net_->GetItem(id));
   }
-  std::shared_ptr<nf7::Lambda> FindOrCreateLambda(const Item& item) noexcept
+  const std::shared_ptr<nf7::Lambda>& FindOrCreateLambda(const Item& item) noexcept
   try {
     return FindLambda(item.id());
   } catch (nf7::Exception&) {
@@ -458,18 +458,19 @@ class Network::Editor final : public nf7::Node::Editor {
   }
 
   void Emit(Node& node, size_t idx, nf7::Value&& v) noexcept override {
-    if (!owner_->lambda_) {
-      owner_->lambda_ = std::make_shared<Network::Lambda>(*owner_);
-    }
+    const auto main = lambda();
+    const auto sub  = GetLambda(node);
+    owner_->env().ExecSub(main, [main, sub, idx, v = std::move(v)]() mutable {
+      sub->Handle(idx, std::move(v), main);
+    });
+  }
+  std::shared_ptr<nf7::Lambda> GetLambda(Node& node) noexcept override {
     try {
-      const auto& exec = owner_->lambda_;
-      const auto& la   = exec->FindOrCreateLambda(owner_->GetItem(node));
+      const auto& la = lambda()->FindOrCreateLambda(owner_->GetItem(node));
       assert(la);
-      owner_->env().ExecSub(
-          exec, [exec, la, idx, v = std::move(v)]() mutable {
-            la->Handle(idx, std::move(v), exec);
-          });
+      return la;
     } catch (nf7::Exception&) {
+      return nullptr;
     }
   }
 
@@ -535,6 +536,13 @@ class Network::Editor final : public nf7::Node::Editor {
     return ret;
   } catch (Exception&) {
     return {};
+  }
+
+  const std::shared_ptr<Network::Lambda>& lambda() const noexcept {
+    if (!owner_->lambda_) {
+      owner_->lambda_ = std::make_shared<Network::Lambda>(*owner_);
+    }
+    return owner_->lambda_;
   }
 
  private:
