@@ -47,6 +47,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   Imm(Env& env, Type type = kInteger, nf7::Value&& v = nf7::Value::Integer {0}) noexcept :
       File(kType, env), DirItem(DirItem::kNone), mem_(*this, {type, std::move(v)}) {
+    input_  = {"in"};
     output_ = {"out"};
   }
 
@@ -112,15 +113,16 @@ class Imm::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Imm::Lambda> {
  public:
   Lambda(Imm& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
-      nf7::Lambda(f, parent), value_(f.mem_.data().value) {
+      nf7::Lambda(f, parent), imm_(&f) {
   }
 
-  void Handle(size_t, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& recv) noexcept override {
-    recv->Handle(0, nf7::Value {value_}, shared_from_this());
+  void Handle(size_t, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+    if (!env().GetFile(initiator())) return;
+    caller->Handle(0, nf7::Value {imm_->mem_.data().value}, shared_from_this());
   }
 
  private:
-  nf7::Value value_;
+  Imm* const imm_;
 };
 std::shared_ptr<nf7::Lambda> Imm::CreateLambda(
     const std::shared_ptr<nf7::Lambda>& parent) noexcept {
@@ -154,9 +156,14 @@ void Imm::UpdateNode(Node::Editor& editor) noexcept {
   ImGui::NewLine();
 
   ImGui::PushItemWidth(right-left);
+  if (ImNodes::BeginInputSlot("in", 1)) {
+    gui::NodeSocket();
+    ImNodes::EndSlot();
+  }
+  ImGui::SameLine();
+  UpdateEditor(editor, right-left);
+  ImGui::SameLine();
   if (ImNodes::BeginOutputSlot("out", 1)) {
-    UpdateEditor(editor, right-left);
-    ImGui::SameLine();
     gui::NodeSocket();
     ImNodes::EndSlot();
   }
