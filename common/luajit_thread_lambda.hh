@@ -82,8 +82,9 @@ class Thread::Lambda::Receiver final : public nf7::Lambda,
   static constexpr size_t kMaxQueue = 1024;
 
   Receiver() = delete;
-  Receiver(const std::shared_ptr<const Thread::Lambda::ImmData>& imm) noexcept :
-      nf7::Lambda(nullptr), imm_(imm) {
+  Receiver(nf7::Env& env, nf7::File::Id id,
+           const std::shared_ptr<const Thread::Lambda::ImmData>& imm) noexcept :
+      nf7::Lambda(env, id, nullptr), imm_(imm) {
   }
 
   void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>&) noexcept override {
@@ -124,8 +125,8 @@ class Thread::Lambda::Receiver final : public nf7::Lambda,
 Thread::Lambda::Lambda(const std::shared_ptr<Thread>& th, nf7::Node& n) noexcept :
     th_(th),
     imm_(new ImmData {n.input(), n.output()}),
-    recv_(new Receiver {imm_}),
-    la_(n.CreateLambda(th->lambdaOwner())) {
+    recv_(new Receiver {th->env(), th->ctx()->initiator(), imm_}),
+    la_(n.CreateLambda(recv_)) {
 }
 void Thread::Lambda::PushMeta(lua_State* L) noexcept {
   if (luaL_newmetatable(L, kTypeName)) {

@@ -80,7 +80,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
+      const std::shared_ptr<nf7::Lambda>&) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -170,17 +170,17 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
       }
     } catch (Exception& e) {
       log_->Error("fetch failure: "+e.msg());
+      throw;
     }
   }
 };
 
-class Node::Lambda final : public nf7::Context, public nf7::Lambda,
+class Node::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
-  Lambda(Node& f, const std::shared_ptr<Owner>& owner) noexcept :
-      Context(f), nf7::Lambda(owner),
-      file_(&f), file_id_(f.id()),
-      log_(f.log_), handler_(f.FetchHandler()) {
+  Lambda(Node& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+      nf7::Lambda(f, parent),
+      file_(&f), log_(f.log_), handler_(f.FetchHandler()) {
   }
 
   void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
@@ -199,7 +199,6 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
 
  private:
   Node* const file_;
-  File::Id file_id_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
@@ -222,9 +221,9 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
     auto handler = handler_.value();
     ljq_ = handler->ljq();
 
-    env().GetFileOrThrow(file_id_);  // check if the owner is alive
+    env().GetFileOrThrow(initiator());  // check if the owner is alive
     auto th = std::make_shared<nf7::luajit::Thread>(
-        self, ljq_, owner(),
+        self, ljq_,
         [self](auto& th, auto L) { self->HandleThread(th, L); });
     th->Install(log_);
     th_.emplace_back(th);
@@ -309,8 +308,8 @@ class Node::Lambda final : public nf7::Context, public nf7::Lambda,
 
 
 std::shared_ptr<nf7::Lambda> Node::CreateLambda(
-    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
-  return std::make_shared<Node::Lambda>(*this, owner);
+    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+  return std::make_shared<Node::Lambda>(*this, parent);
 }
 nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
   if (handler_) return handler_;

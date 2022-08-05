@@ -60,7 +60,7 @@ class Ref final : public nf7::File, public nf7::Node {
         std::vector<std::string>{input_}, std::vector<std::string>{output_});
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&) noexcept override;
 
   void Handle(const Event& ev) noexcept {
     const auto& d = mem_.data();
@@ -155,10 +155,8 @@ class Ref final : public nf7::File, public nf7::Node {
 class Ref::Lambda final : public nf7::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
-  Lambda(Ref& f,
-         std::shared_ptr<nf7::Lambda>&& base,
-         const std::shared_ptr<nf7::Lambda::Owner>& owner) :
-      nf7::Lambda(owner), base_(std::move(base)), log_(f.log_) {
+  Lambda(Ref& f, const std::shared_ptr<nf7::Lambda>& parent) :
+      nf7::Lambda(f, parent), ref_(&f), log_(f.log_) {
     auto& n = f.target();
 
     // ref input index -> target input index
@@ -184,12 +182,18 @@ class Ref::Lambda final : public nf7::Lambda,
 
   void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
   try {
-    auto parent = parent_.lock();
-    if (parent && caller == base_) {
+    if (!env().GetFile(initiator())) return;
+
+    auto parent = this->parent().lock();
+    if (!parent) return;
+
+    if (caller == base_) {
       parent->Handle(GetIndex(outmap_, idx), std::move(v), shared_from_this());
-    } else {
-      assert(!parent || parent == caller);
-      parent_ = caller;
+    }
+    if (caller == parent) {
+      if (!base_) {
+        base_ = ref_->target().CreateLambda(shared_from_this());
+      }
       base_->Handle(GetIndex(inmap_, idx), std::move(v), shared_from_this());
     }
   } catch (nf7::Exception&) {
@@ -197,10 +201,10 @@ class Ref::Lambda final : public nf7::Lambda,
   }
 
  private:
-  std::shared_ptr<nf7::Lambda> base_;
+  Ref* const ref_;
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::weak_ptr<nf7::Lambda> parent_;
+  std::shared_ptr<nf7::Lambda> base_;
 
   std::vector<std::optional<size_t>> inmap_, outmap_;
 
@@ -214,11 +218,9 @@ class Ref::Lambda final : public nf7::Lambda,
 };
 
 std::shared_ptr<nf7::Lambda> Ref::CreateLambda(
-    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept
+    const std::shared_ptr<nf7::Lambda>& parent) noexcept
 try {
-  auto self = std::make_shared<nf7::Lambda::Owner>(
-      abspath(), "call through reference", owner);
-  return std::make_shared<Ref::Lambda>(*this, target().CreateLambda(self), owner);
+  return std::make_shared<Ref::Lambda>(*this, parent);
 } catch (nf7::Exception& e) {
   log_->Error("failed to create lambda: "+e.msg());
   return nullptr;

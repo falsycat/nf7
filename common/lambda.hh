@@ -9,12 +9,16 @@
 
 namespace nf7 {
 
-class Lambda {
+class Lambda : public nf7::Context {
  public:
   class Owner;
 
   Lambda() = delete;
-  Lambda(const std::shared_ptr<Owner>& owner) noexcept : owner_(owner) {
+  Lambda(nf7::File& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+      Lambda(f.env(), f.id(), parent) {
+  }
+  Lambda(Env& env, File::Id id, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+      Context(env, id), depth_(parent? parent->depth()+1: 0), parent_(parent) {
   }
   virtual ~Lambda() = default;
   Lambda(const Lambda&) = delete;
@@ -24,41 +28,13 @@ class Lambda {
 
   virtual void Handle(size_t, Value&&, const std::shared_ptr<Lambda>&) noexcept { }
 
-  const std::shared_ptr<Owner>& owner() const noexcept { return owner_; }
-
- private:
-  std::shared_ptr<Owner> owner_;
-};
-
-class Lambda::Owner final {
- public:
-  Owner() = delete;
-  Owner(nf7::File::Path&&             path,
-        std::string_view              desc,
-        const std::shared_ptr<Owner>& parent = nullptr) noexcept :
-      path_(std::move(path)),
-      desc_(desc),
-      depth_(parent? parent->depth()+1: 0),
-      parent_(parent) {
-  }
-  Owner(const Owner&) = delete;
-  Owner(Owner&&) = delete;
-  Owner& operator=(const Owner&) = delete;
-  Owner& operator=(Owner&&) = delete;
-
-  const nf7::File::Path& path() const noexcept { return path_; }
-  const std::string& desc() const noexcept { return desc_; }
   size_t depth() const noexcept { return depth_; }
-
-  const std::shared_ptr<Owner>& parent() const noexcept { return parent_; }
+  const std::weak_ptr<Lambda>& parent() const noexcept { return parent_; }
 
  private:
-  nf7::File::Path path_;
-  std::string desc_;
-
   size_t depth_;
 
-  std::shared_ptr<Owner> parent_;
+  std::weak_ptr<Lambda> parent_;
 };
 
 }  // namespace nf7

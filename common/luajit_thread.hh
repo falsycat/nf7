@@ -14,7 +14,6 @@
 #include "nf7.hh"
 
 #include "common/future.hh"
-#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_ref.hh"
@@ -54,9 +53,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   Thread() = delete;
   Thread(const std::shared_ptr<nf7::Context>&       ctx,
          const std::shared_ptr<nf7::luajit::Queue>& ljq,
-         const std::shared_ptr<nf7::Lambda::Owner>& la_owner,
          Handler&& handler) noexcept :
-      ctx_(ctx), ljq_(ljq), la_owner_(la_owner), handler_(std::move(handler)) {
+      ctx_(ctx), ljq_(ljq), handler_(std::move(handler)) {
   }
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
@@ -115,7 +113,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   nf7::Env& env() noexcept { return ctx_->env(); }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
-  const std::shared_ptr<nf7::Lambda::Owner>& lambdaOwner() const noexcept { return la_owner_; }
   const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
   State state() const noexcept { return state_; }
 
@@ -125,7 +122,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   std::shared_ptr<nf7::Context>       ctx_;
   std::shared_ptr<nf7::luajit::Queue> ljq_;
-  std::shared_ptr<nf7::Lambda::Owner> la_owner_;
 
   Handler handler_;
   std::atomic<State> state_ = kInitial;

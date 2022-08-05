@@ -71,7 +71,7 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return std::make_unique<Device>(env, Selector {selector_}, cfg_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -295,8 +295,8 @@ class Device::PlaybackLambda final : public nf7::Lambda,
   };
 
   PlaybackLambda() = delete;
-  PlaybackLambda(Device& f, const std::shared_ptr<Owner>& owner) noexcept :
-      Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
+  PlaybackLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+      Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
@@ -344,8 +344,8 @@ class Device::CaptureLambda final : public nf7::Lambda,
   };
 
   CaptureLambda() = delete;
-  CaptureLambda(Device& f, const std::shared_ptr<Owner>& owner) noexcept :
-      Lambda(owner), data_(f.data_), info_(f.infoTuple()) {
+  CaptureLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+      Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(size_t idx, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
@@ -377,12 +377,12 @@ class Device::CaptureLambda final : public nf7::Lambda,
   std::optional<uint64_t> time_;
 };
 std::shared_ptr<nf7::Lambda> Device::CreateLambda(
-    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
+    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
-    return std::make_shared<Device::PlaybackLambda>(*this, owner);
+    return std::make_shared<Device::PlaybackLambda>(*this, parent);
   case ma_device_type_capture:
-    return std::make_shared<Device::CaptureLambda>(*this, owner);
+    return std::make_shared<Device::CaptureLambda>(*this, parent);
   default:
     std::abort();
   }

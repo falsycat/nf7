@@ -116,7 +116,7 @@ class Network final : public nf7::File,
   void Handle(const Event& ev) noexcept override;
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override;
+      const std::shared_ptr<nf7::Lambda>&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -188,12 +188,27 @@ class Network final : public nf7::File,
   }
 };
 
-// InternalNode is an interface which can create an initiator lambda,
-// Network lambda passes its input to all initiator lambdas.
+// InternalNode is an interface which provides additional parameters.
 class Network::InternalNode : public nf7::File::Interface {
  public:
-  virtual std::shared_ptr<nf7::Lambda> CreateInitiator(
-      const std::shared_ptr<nf7::Lambda::Owner>&) noexcept = 0;
+  enum Flag : uint8_t {
+    kNone          = 0,
+    kInputHandler  = 1 << 0,  // receives all input from outer
+    kOutputEmitter = 1 << 1,  // all output is transmitted to outer
+  };
+  using Flags = uint8_t;
+
+  InternalNode(Flags flags) noexcept : flags_(flags) {
+  }
+  InternalNode(const InternalNode&) = delete;
+  InternalNode(InternalNode&&) = delete;
+  InternalNode& operator=(const InternalNode&) = delete;
+  InternalNode& operator=(InternalNode&&) = delete;
+
+  Flags flags() const noexcept { return flags_; }
+
+ private:
+  const Flags flags_;
 };
 
 // ChildNode is a File where it can be supposed that owner is Node/Network.
@@ -270,7 +285,9 @@ class Network::Item final {
   nf7::Env& env() const noexcept { return file_->env(); }
   nf7::File& file() const noexcept { return *file_; }
   nf7::Node& node() const noexcept { return *node_; }
+
   InternalNode* inode() const noexcept { return inode_; }
+  InternalNode::Flags iflags() const noexcept { return inode_? inode_->flags(): 0; }
 
  private:
   ItemId id_;
@@ -320,70 +337,88 @@ class Network::Item::Watcher final : public nf7::Env::Watcher {
 // Builds and holds network information independently from Node/Network.
 // When it receives an input from outside or an output from Nodes in the network,
 // propagates it to appropriate Nodes.
-class Network::Lambda : public nf7::Context, public nf7::Lambda,
+class Network::Lambda : public nf7::Lambda,
     public std::enable_shared_from_this<Lambda> {
  public:
-  Lambda(Network& f, const std::shared_ptr<nf7::Lambda::Owner>& owner = nullptr) noexcept :
-      Context(f), nf7::Lambda(owner) {
-    auto self = std::make_shared<nf7::Lambda::Owner>(f.abspath(), "network lambda", owner);
-
-    // create sub lambdas
-    std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> idmap;
-    conns_.reserve(f.items_.size());
-    for (const auto& item : f.items_) {
-      auto lambda = item->node().CreateLambda(self);
-      if (auto inode = item->inode()) {
-        assert(!lambda && "it's not allowed to have both initiator and normal lambda");
-        lambda = inode->CreateInitiator(self);
-        initiators_.push_back(lambda);
-      }
-      assert(lambda);
-      conns_[lambda.get()] = {};
-      nmap_[&item->node()] = lambda;
-      idmap[item->id()]    = lambda;
-    }
-
-    // build connection map
-    for (const auto& lk : f.links_.items()) {
-      try {
-        const auto& src_lambda = idmap[lk.src_id];
-        const auto& dst_lambda = idmap[lk.dst_id];
-        if (!src_lambda || !dst_lambda) continue;
-
-        const auto src_index = f.GetItem(lk.src_id).node().output(lk.src_name);
-        const auto dst_index = f.GetItem(lk.dst_id).node().input(lk.dst_name);
-        conns_[src_lambda.get()].emplace_back(src_index, dst_lambda, dst_index);
-      } catch (Exception&) {
-      }
-    }
+  Lambda(Network& f, const std::shared_ptr<nf7::Lambda>& parent = nullptr) noexcept :
+      nf7::Lambda(f, parent), net_(&f), root_(parent == nullptr) {
   }
 
-  // The first caller is remembered as an outer context. After that all callers
-  // are treated as a sub lambda.
   void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
-    if(abort_) return;
-    auto task = [this, self = shared_from_this(), idx, v = std::move(v), caller]() {
-      if(abort_) return;
-
-      if (owner() && outer_ == nullptr) {
-        outer_ = caller;
+    env().ExecSub(shared_from_this(), [this, idx, v = std::move(v), caller]() {
+      if (abort_) return;
+      if (!env().GetFile(initiator())) {
+        return;  // net_ is expired
       }
+      auto parent = this->parent().lock();
 
-      if (caller == outer_) {
-        for (auto init : initiators_) {
-          init->Handle(0, nf7::Value{v}, shared_from_this());
-        }
-      } else {
-        auto itr = conns_.find(caller.get());
-        if (itr == conns_.end()) return;
-        for (const auto& conn : itr->second) {
-          if (idx == conn.src_idx) {
-            conn.dst->Handle(conn.dst_idx, nf7::Value {v}, shared_from_this());
+      // send input from outer to input handlers
+      if (caller == parent) {
+        for (auto& item : net_->items_) {
+          if (item->iflags() & InternalNode::kInputHandler) {
+            auto la = FindOrCreateLambda(item->id());
+            la->Handle(idx, nf7::Value {v}, shared_from_this());
           }
         }
+        return;
       }
-    };
-    env().ExecSub(shared_from_this(), std::move(task));
+
+      // send an output from children as input to children
+      try {
+        auto itr = idmap_.find(caller.get());
+        if (itr == idmap_.end()) {
+          throw nf7::Exception {"called by unknown lambda"};
+        }
+        const auto  src_id   = itr->second;
+        const auto& src_item = net_->GetItem(src_id);
+        const auto  src_name = src_item.node().output(idx);
+
+        if (parent && src_item.iflags() & InternalNode::kOutputEmitter) {
+          parent->Handle(idx, nf7::Value {v}, shared_from_this());
+        }
+
+        for (auto& lk : net_->links_.items()) {
+          if (lk.src_id == src_id && lk.src_name == src_name) {
+            try {
+              const auto& dst_item = net_->GetItem(lk.dst_id);
+              const auto  dst_idx  = dst_item.node().input(lk.dst_name);
+              const auto  dst_la   = FindOrCreateLambda(lk.dst_id);
+              dst_la->Handle(dst_idx, nf7::Value {v}, shared_from_this());
+            } catch (nf7::Exception&) {
+              // ignore missing socket
+            }
+          }
+        }
+      } catch (nf7::Exception&) {
+      }
+    });
+  }
+
+  // Ensure that net_ is alive before calling
+  std::shared_ptr<nf7::Lambda> FindOrCreateLambda(ItemId id) noexcept
+  try {
+    return FindLambda(id);
+  } catch (nf7::Exception&) {
+    return CreateLambda(net_->GetItem(id));
+  }
+  std::shared_ptr<nf7::Lambda> FindOrCreateLambda(const Item& item) noexcept
+  try {
+    return FindLambda(item.id());
+  } catch (nf7::Exception&) {
+    return CreateLambda(item);
+  }
+  const std::shared_ptr<nf7::Lambda>& CreateLambda(const Item& item) noexcept {
+    auto la = item.node().CreateLambda(shared_from_this());
+    idmap_[la.get()] = item.id();
+    auto [itr, added] = lamap_.emplace(item.id(), std::move(la));
+    return itr->second;
+  }
+  const std::shared_ptr<nf7::Lambda>& FindLambda(ItemId id) {
+    auto itr = lamap_.find(id);
+    if (itr == lamap_.end()) {
+      throw nf7::Exception {"lambda is not registered"};
+    }
+    return itr->second;
   }
 
   void CleanUp() noexcept override {
@@ -398,33 +433,19 @@ class Network::Lambda : public nf7::Context, public nf7::Lambda,
     return "executing Node/Network";
   }
 
-  const std::shared_ptr<nf7::Lambda>& outer() const noexcept { return outer_; }
-  const std::shared_ptr<nf7::Lambda>& sub(nf7::Node& node) const noexcept {
-    auto itr = nmap_.find(&node);
-    assert(itr != nmap_.end());
-    return itr->second;
-  }
+  bool isRoot() const noexcept { return root_; }
 
  private:
-  struct Conn {
-   public:
-    Conn(size_t srci, const std::shared_ptr<nf7::Lambda>& dstp, size_t dsti) noexcept :
-        src_idx(srci), dst(dstp), dst_idx(dsti) {
-    }
-    size_t src_idx;
-    std::shared_ptr<nf7::Lambda> dst;
-    size_t dst_idx;
-  };
+  Network* const net_;
+  bool root_;
 
-  std::shared_ptr<nf7::Lambda> outer_;
+  std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> lamap_;
+  std::unordered_map<nf7::Lambda*, ItemId> idmap_;
+
   std::atomic<bool> abort_ = false;
-
-  std::vector<std::shared_ptr<nf7::Lambda>>               initiators_;
-  std::unordered_map<Node*, std::shared_ptr<nf7::Lambda>> nmap_;
-  std::unordered_map<nf7::Lambda*, std::vector<Conn>>     conns_;
 };
 void Network::DetachLambda() noexcept {
-  if (lambda_ && !lambda_->owner()) {
+  if (lambda_ && lambda_->isRoot()) {
     lambda_->Abort();
   }
   lambda_ = nullptr;
@@ -440,14 +461,16 @@ class Network::Editor final : public nf7::Node::Editor {
     if (!owner_->lambda_) {
       owner_->lambda_ = std::make_shared<Network::Lambda>(*owner_);
     }
-
-    const auto& exec = owner_->lambda_;
-    const auto& lam  = exec->sub(node);
-    assert(lam);
-    owner_->env().ExecSub(
-        exec, [exec, lam, idx, v = std::move(v)]() mutable {
-          lam->Handle(idx, std::move(v), exec);
-        });
+    try {
+      const auto& exec = owner_->lambda_;
+      const auto& la   = exec->FindOrCreateLambda(owner_->GetItem(node));
+      assert(la);
+      owner_->env().ExecSub(
+          exec, [exec, la, idx, v = std::move(v)]() mutable {
+            la->Handle(idx, std::move(v), exec);
+          });
+    } catch (nf7::Exception&) {
+    }
   }
 
   void AddLink(Node& src_node, std::string_view src_name,
@@ -674,7 +697,8 @@ class Network::Initiator final : public Network::ChildNode,
   static constexpr size_t kManualIndex = 777;
 
   Initiator(Env& env, bool enable_auto = false) noexcept :
-      ChildNode(kType, env), enable_auto_(enable_auto) {
+      ChildNode(kType, env), InternalNode(InternalNode::kInputHandler),
+      enable_auto_(enable_auto) {
     output_ = {"out"};
   }
 
@@ -688,9 +712,9 @@ class Network::Initiator final : public Network::ChildNode,
     return std::make_unique<Initiator>(env, enable_auto_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateInitiator(
-      const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept override {
-    if (!enable_auto_) return nullptr;
+  std::shared_ptr<nf7::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
+    // TODO: use enable_auto_ value
     class Emitter final : public nf7::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
@@ -703,21 +727,7 @@ class Network::Initiator final : public Network::ChildNode,
      private:
       bool done_ = false;
     };
-    return std::make_shared<Emitter>(owner);
-  }
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept override {
-    class Emitter final : public nf7::Lambda,
-        public std::enable_shared_from_this<Emitter> {
-     public:
-      Emitter(const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept :
-          Lambda(owner) {
-      }
-      void Handle(size_t, Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
-        caller->Handle(0, nf7::Value::Pulse {}, shared_from_this());
-      }
-    };
-    return std::make_shared<Emitter>(owner);
+    return std::make_shared<Emitter>(*this, parent);
   }
 
   void UpdateNode(Editor& ed) noexcept override {
@@ -816,7 +826,8 @@ class Network::Input final : public Network::InputOrOutput,
   static inline const GenericTypeInfo<Input> kType = {"Node/Network/Input", {}};
 
   Input(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, Socket::kInput) {
+      InputOrOutput(kType, env, name, Socket::kInput),
+      InternalNode(InternalNode::kInputHandler) {
     output_ = {"out"};
   }
 
@@ -830,31 +841,22 @@ class Network::Input final : public Network::InputOrOutput,
     return std::make_unique<Input>(env, mem_.data());
   }
 
-  std::shared_ptr<nf7::Lambda> CreateInitiator(
-      const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept override
-  try {
+  std::shared_ptr<nf7::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
     class Emitter final : public nf7::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
-      Emitter(size_t idx, const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept :
-          Lambda(owner), idx_(idx) {
+      Emitter(Input& f, const std::shared_ptr<nf7::Lambda>& parent, size_t idx) noexcept :
+          nf7::Lambda(f, parent), idx_(idx) {
       }
-      void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& recv) noexcept override {
+      void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
         if (idx != idx_) return;
-        recv->Handle(0, std::move(v), shared_from_this());
+        caller->Handle(0, std::move(v), shared_from_this());
       }
      private:
       size_t idx_;
     };
-    return std::make_unique<Emitter>(InputOrOutput::owner().input(mem_.data()), owner);
-  } catch (Exception&) {
-    return nullptr;
-  }
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda::Owner>&) noexcept override {
-    // returning nullptr is allowed because it's guaranteed that
-    // parent is Node/Network, which can handle nullptr safely
-    return nullptr;
+    return std::make_unique<Emitter>(*this, parent, owner().input(mem_.data()));
   }
 
   void UpdateNode(Editor&) noexcept override {
@@ -876,12 +878,13 @@ class Network::Input final : public Network::InputOrOutput,
 
 // An implementation of ChildNode that passes an input to a caller of Node/Network's lambda.
 class Network::Output final : public Network::InputOrOutput,
-    public nf7::Node {
+    public nf7::Node, public Network::InternalNode {
  public:
   static inline const GenericTypeInfo<Output> kType = {"Node/Network/Output", {}};
 
   Output(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, Socket::kOutput) {
+      InputOrOutput(kType, env, name, Socket::kOutput),
+      InternalNode(InternalNode::kOutputEmitter) {
     input_ = {"in"};
   }
 
@@ -896,27 +899,26 @@ class Network::Output final : public Network::InputOrOutput,
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept override
+      const std::shared_ptr<nf7::Lambda>& parent) noexcept override
   try {
-    class Emitter final : public nf7::Lambda {
+    class Emitter final : public nf7::Lambda,
+        public std::enable_shared_from_this<Emitter> {
      public:
-      Emitter(size_t idx, const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept :
-          Lambda(owner), idx_(idx) {
+      Emitter(Output& f, const std::shared_ptr<Network::Lambda>& parent, size_t idx) noexcept :
+          Lambda(f, parent), idx_(idx) {
+        assert(parent);
       }
       void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
         if (idx != 0) return;
-
-        auto exec = std::dynamic_pointer_cast<Network::Lambda>(caller);
-        assert(exec);
-
-        auto outer = exec->outer();
-        assert(outer);
-        outer->Handle(idx, std::move(v), exec);
+        caller->Handle(idx_, std::move(v), shared_from_this());
       }
      private:
       size_t idx_;
     };
-    return std::make_unique<Emitter>(InputOrOutput::owner().output(mem_.data()), owner);
+    return std::make_shared<Emitter>(
+        *this,
+        std::dynamic_pointer_cast<Network::Lambda>(parent),
+        owner().output(mem_.data()));
   } catch (Exception&) {
     return nullptr;
   }
@@ -985,8 +987,8 @@ try {
   return nullptr;
 }
 std::shared_ptr<nf7::Lambda> Network::CreateLambda(
-    const std::shared_ptr<nf7::Lambda::Owner>& owner) noexcept {
-  auto ret = std::make_shared<Network::Lambda>(*this, owner);
+    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+  auto ret = std::make_shared<Network::Lambda>(*this, parent);
   lambdas_running_.emplace_back(ret);
   return ret;
 }
@@ -1324,7 +1326,7 @@ void Network::Update() noexcept {
       // ---- editor window / toolbar / attached lambda combo
       const auto current_lambda =
           !lambda_?          "(unselected)"s:
-          !lambda_->owner()? "(isolated)"s:
+          lambda_->isRoot()? "(isolated)"s:
           std::to_string(reinterpret_cast<uintptr_t>(lambda_.get()));
       if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
         if (lambda_) {
@@ -1346,9 +1348,12 @@ void Network::Update() noexcept {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted("call stack:");
             ImGui::Indent();
-            for (auto owner = ptr->owner(); owner; owner = owner->parent()) {
-              ImGui::TextUnformatted(owner->path().Stringify().c_str());
-              ImGui::TextDisabled("%s", owner->desc().c_str());
+            for (auto p = ptr->parent().lock(); p; p = p->parent().lock()) {
+              auto f = env().GetFile(p->initiator());
+
+              const auto path = f? f->abspath().Stringify(): "[missing file]";
+              ImGui::TextUnformatted(path.c_str());
+              ImGui::TextDisabled("%s", p->GetDescription().c_str());
             }
             ImGui::Unindent();
             ImGui::EndTooltip();
