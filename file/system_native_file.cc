@@ -37,6 +37,11 @@ class NativeFile final : public File,
  public:
   static inline const GenericTypeInfo<NativeFile> kType = {
     "System/NativeFile", {"AsyncBuffer", "DirItem"}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Reads/Writes a file placed on native filesystem.");
+    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::AsyncBuffer");
+    ImGui::Bullet(); ImGui::TextUnformatted("basepath is environment native path");
+  }
 
   NativeFile(Env& env, const std::filesystem::path& path = "", std::string_view mode = "") noexcept :
       File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),

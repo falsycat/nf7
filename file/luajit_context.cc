@@ -21,19 +21,24 @@ class LuaContext final : public nf7::File,
     public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<LuaContext> kType = {"LuaJIT/Context", {"DirItem",}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Drives LuaJIT thread and task queue.");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "implements nf7::luajit::Queue");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "create multiple contexts to execute LuaJIT paralelly");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "the thread remains alive after file deletion until unused");
+  }
 
   class Queue;
 
-  LuaContext(Env& env) noexcept :
+  LuaContext(Env& env) :
       File(kType, env), DirItem(DirItem::kTooltip) {
-    try {
-      q_ = std::make_shared<Queue>(env);
-    } catch (nf7::Exception&) {
-      // Thread construction failure (ignore it)
-    }
+    q_ = std::make_shared<Queue>(env);
   }
 
-  LuaContext(Env& env, Deserializer&) noexcept : LuaContext(env) {
+  LuaContext(Env& env, Deserializer&) : LuaContext(env) {
   }
   void Serialize(Serializer&) const noexcept override {
   }

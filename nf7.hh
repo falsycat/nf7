@@ -155,7 +155,9 @@ class File::TypeInfo {
   TypeInfo& operator=(TypeInfo&&) = delete;
 
   virtual std::unique_ptr<File> Deserialize(Env&, Deserializer&) const = 0;
-  virtual std::unique_ptr<File> Create(Env&) const noexcept = 0;
+  virtual std::unique_ptr<File> Create(Env&) const = 0;
+
+  virtual void UpdateTooltip() const noexcept = 0;
 
   const std::string& name() const noexcept { return name_; }
   const std::unordered_set<std::string>& flags() const noexcept { return flags_; }

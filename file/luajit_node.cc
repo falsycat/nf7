@@ -41,6 +41,13 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Node> kType =
       {"LuaJIT/Node", {"DirItem",}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Defines new Node using LuaJIT/Obj.");
+    ImGui::Bullet();
+    ImGui::TextUnformatted("refers nf7::luajit::Queue through linked LuaJIT/Obj");
+    ImGui::Bullet();
+    ImGui::TextUnformatted("requires nf7::luajit::Obj to refer this Node from externals");
+  }
 
   class FetchTask;
   class Lambda;

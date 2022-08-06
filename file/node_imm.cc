@@ -33,6 +33,13 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Imm> kType =
       {"Node/Imm", {"DirItem", "Node"}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Emits an immediate value when get an input.");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "implements nf7::Node");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "changes will be applied to active lambdas immediately");
+  }
 
   class Lambda;
 

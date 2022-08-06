@@ -70,6 +70,11 @@ struct FileCreatePopup final {
         if (ImGui::Selectable(t.name().c_str(), sel, kSelectableFlags)) {
           type_ = &t;
         }
+        if (ImGui::IsItemHovered()) {
+          ImGui::BeginTooltip();
+          t.UpdateTooltip();
+          ImGui::EndTooltip();
+        }
       }
       ImGui::EndListBox();
     }

@@ -37,6 +37,11 @@ namespace {
 class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Device> kType = {"Audio/Device", {"DirItem",}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Manages ring buffer and sends PCM samples to actual device.");
+    ImGui::Bullet();
+    ImGui::TextUnformatted("requires nf7::audio::Queue with name '_audio' on upper dirs");
+  }
 
   class Ring;
   class PlaybackLambda;

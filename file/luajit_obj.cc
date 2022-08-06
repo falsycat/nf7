@@ -41,6 +41,16 @@ class Obj final : public nf7::File,
     public nf7::luajit::Obj {
  public:
   static inline const GenericTypeInfo<Obj> kType = {"LuaJIT/Obj", {"DirItem",}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted(
+        "Compiles and runs LuaJIT script, and caches the object returned from the script.");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "implements nf7::luajit::Obj implementation");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "requires nf7::luajit::Queue implementation with name '_luajit' on upper dir");
+    ImGui::Bullet(); ImGui::TextUnformatted(
+        "requires nf7::AsyncBuffer implementation to load LuaJIT script");
+  }
 
   static constexpr size_t kMaxSize = 1024*1024*16;  /* = 16 MiB */
 

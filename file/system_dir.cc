@@ -33,6 +33,7 @@ class Dir final : public File,
     public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"DirItem"}};
+  static constexpr const char* kTypeDescription = "generic directory";
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
