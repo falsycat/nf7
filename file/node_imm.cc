@@ -77,7 +77,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&) noexcept override;
+      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
 
   void UpdateNode(Node::Editor&) noexcept override;
 
@@ -136,7 +136,7 @@ class Imm::Lambda final : public nf7::Lambda,
   Imm* const imm_;
 };
 std::shared_ptr<nf7::Lambda> Imm::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
   return std::make_shared<Imm::Lambda>(*this, parent);
 }
 

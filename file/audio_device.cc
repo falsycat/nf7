@@ -76,7 +76,8 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return std::make_unique<Device>(env, Selector {selector_}, cfg_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -361,7 +362,7 @@ class Device::CaptureLambda final : public nf7::Lambda,
   std::optional<uint64_t> time_;
 };
 std::shared_ptr<nf7::Lambda> Device::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
     return std::make_shared<Device::PlaybackLambda>(*this, parent);

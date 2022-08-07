@@ -87,7 +87,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&) noexcept override;
+      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -315,7 +315,7 @@ class Node::Lambda final : public nf7::Lambda,
 
 
 std::shared_ptr<nf7::Lambda> Node::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
   return std::make_shared<Node::Lambda>(*this, parent);
 }
 nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {

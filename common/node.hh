@@ -32,8 +32,9 @@ class Node : public File::Interface {
   Node& operator=(const Node&) = default;
   Node& operator=(Node&&) = default;
 
+  // Node* is a dummy parameter to avoid issues of multi inheritance.
   virtual std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&) noexcept = 0;
+      const std::shared_ptr<nf7::Lambda>&, Node* = nullptr) noexcept = 0;
 
   virtual void UpdateNode(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }

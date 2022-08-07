@@ -122,7 +122,7 @@ class Network final : public nf7::File,
   void Handle(const Event& ev) noexcept override;
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&) noexcept override;
+      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -730,7 +730,7 @@ class Network::Initiator final : public Network::ChildNode,
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
+      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
     // TODO: use enable_auto_ value
     class Emitter final : public nf7::Lambda,
         public std::enable_shared_from_this<Emitter> {
@@ -860,7 +860,7 @@ class Network::Input final : public Network::InputOrOutput,
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
+      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
     class Emitter final : public nf7::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
@@ -918,7 +918,7 @@ class Network::Output final : public Network::InputOrOutput,
   }
 
   std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent) noexcept override {
+      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
     class Emitter final : public nf7::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
@@ -1002,7 +1002,7 @@ try {
   return nullptr;
 }
 std::shared_ptr<nf7::Lambda> Network::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent) noexcept {
+    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
   auto ret = std::make_shared<Network::Lambda>(*this, parent);
   lambdas_running_.emplace_back(ret);
   return ret;

@@ -69,7 +69,7 @@ class Ref final : public nf7::File, public nf7::Node {
         std::vector<std::string>{input_}, std::vector<std::string>{output_});
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
 
   void Handle(const Event& ev) noexcept {
     const auto& d = mem_.data();
@@ -194,7 +194,7 @@ class Ref::Lambda final : public nf7::Lambda,
 };
 
 std::shared_ptr<nf7::Lambda> Ref::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent) noexcept
+    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept
 try {
   return std::make_shared<Ref::Lambda>(*this, parent);
 } catch (nf7::Exception& e) {
