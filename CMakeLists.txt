@@ -63,6 +63,8 @@ target_sources(nf7
     common/gui_node.hh
     common/gui_popup.hh
     common/gui_resizer.hh
+    common/gui_timeline.hh
+    common/gui_timeline.cc
     common/gui_window.hh
     common/history.hh
     common/lambda.hh
@@ -83,6 +85,7 @@ target_sources(nf7
     common/node_link_store.hh
     common/ptr_selector.hh
     common/queue.hh
+    common/sequencer.hh
     common/squashed_history.hh
     common/task.hh
     common/thread.hh

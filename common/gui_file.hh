@@ -134,7 +134,7 @@ struct FileFactory final {
   std::string default_name_;
 
   std::string name_;
-  const nf7::File::TypeInfo* type_;
+  const nf7::File::TypeInfo* type_ = nullptr;
   std::string type_filter_;
 };
 
