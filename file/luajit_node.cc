@@ -190,10 +190,11 @@ class Node::Lambda final : public nf7::Lambda,
       file_(&f), log_(f.log_), handler_(f.FetchHandler()) {
   }
 
-  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+  void Handle(std::string_view name, const nf7::Value& v,
+              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
     auto self = shared_from_this();
-    handler_.ThenSub(self, [self, idx, v = std::move(v), caller](auto) mutable {
-      self->CallHandler({{idx, std::move(v)}}, caller);
+    handler_.ThenSub(self, [self, name = std::string(name), v, caller](auto) mutable {
+      self->CallHandler({{std::move(name), std::move(v)}}, caller);
     });
   }
   void Abort() noexcept override {
@@ -217,7 +218,7 @@ class Node::Lambda final : public nf7::Lambda,
   std::optional<nf7::luajit::Ref> ctxtable_;
 
 
-  using Param = std::pair<size_t, nf7::Value>;
+  using Param = std::pair<std::string, nf7::Value>;
   void CallHandler(std::optional<Param>&& p, const std::shared_ptr<nf7::Lambda>& caller) noexcept
   try {
     auto self = shared_from_this();
@@ -239,7 +240,7 @@ class Node::Lambda final : public nf7::Lambda,
       auto thL = th->Init(L);
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
       if (p) {
-        lua_pushinteger(thL, static_cast<lua_Integer>(p->first));
+        lua_pushstring(thL, p->first.c_str());
         nf7::luajit::PushValue(thL, p->second);
       } else {
         lua_pushnil(thL);
@@ -280,14 +281,13 @@ class Node::Lambda final : public nf7::Lambda,
 
     if (luaL_newmetatable(L, kTypeName)) {
       lua_pushcfunction(L, [](auto L) {
-        const auto& d   = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
-        const auto  idx = luaL_checkint(L, 2);
+        const auto& d    = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
+        const auto  name = luaL_checkstring(L, 2);
 
         auto self = d.self.lock();
         if (!self) return luaL_error(L, "context expired");
-        if (idx < 0) return luaL_error(L, "negative index");
 
-        d.caller->Handle(static_cast<size_t>(idx), nf7::luajit::CheckValue(L, 3), self);
+        d.caller->Handle(name, nf7::luajit::CheckValue(L, 3), self);
         return 0;
       });
       lua_setfield(L, -2, "__call");

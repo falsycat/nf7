@@ -291,26 +291,18 @@ class Device::PlaybackLambda final : public nf7::Lambda,
   static inline const std::vector<std::string> kInputs  = {"get_info", "mix"};
   static inline const std::vector<std::string> kOutputs = {"info", "mixed_size"};
 
-  enum {
-    kInGetInfo = 0,
-    kInSamples = 1,
-
-    kOutInfo        = 0,
-    kOutSampleCount = 1,
-  };
-
   PlaybackLambda() = delete;
   PlaybackLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
       Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
-  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
-  try {
-    switch (idx) {
-    case kInGetInfo:
-      caller->Handle(kOutInfo, nf7::Value {info_}, shared_from_this());
-      break;
-    case kInSamples: {
+  void Handle(std::string_view name, const nf7::Value& v,
+              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+    if (name == "get_info") {
+      caller->Handle("info", nf7::Value {info_}, shared_from_this());
+      return;
+    }
+    if (name == "mix") {
       const auto& vec = v.vector();
       const auto  ptr = reinterpret_cast<const float*>(vec->data());
       const auto  n   = vec->size()/sizeof(float);
@@ -319,13 +311,11 @@ class Device::PlaybackLambda final : public nf7::Lambda,
       time_ = data_->ring->Mix(ptr, n, time_);
       if (time_ < ptime) ptime = time_;
 
-      caller->Handle(kOutSampleCount, static_cast<nf7::Value::Integer>(time_-ptime), shared_from_this());
-    } break;
-    default:
-      throw nf7::Exception("got unknown input");
+      const auto mixed = static_cast<nf7::Value::Integer>(time_-ptime);
+      caller->Handle("mixed_size", mixed, shared_from_this());
+      return;
     }
-  } catch (nf7::Exception& e) {
-    data_->log.Warn(e.msg());
+    data_->log.Warn("got unknown input");
   }
 
  private:
@@ -340,39 +330,28 @@ class Device::CaptureLambda final : public nf7::Lambda,
   static inline const std::vector<std::string> kInputs  = {"get_info", "peek"};
   static inline const std::vector<std::string> kOutputs = {"info", "samples"};
 
-  enum {
-    kInGetInfo = 0,
-    kInPeek    = 1,
-
-    kOutInfo    = 0,
-    kOutSamples = 1,
-  };
-
   CaptureLambda() = delete;
   CaptureLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
       Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
-  void Handle(size_t idx, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
-  try {
-    switch (idx) {
-    case kInGetInfo:
-      caller->Handle(kOutInfo, nf7::Value {info_}, shared_from_this());
-      break;
-    case kInPeek: {
+  void Handle(std::string_view name, const nf7::Value&,
+              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+    if (name == "get_info") {
+      caller->Handle("info", nf7::Value {info_}, shared_from_this());
+      return;
+    }
+    if (name == "peek") {
       std::vector<uint8_t> samples;
       if (time_) {
         time_ = data_->ring->Peek(samples, *time_);
       } else {
         time_ = data_->ring->time();
       }
-      caller->Handle(kOutSamples, {std::move(samples)}, shared_from_this());
-    } break;
-    default:
-      throw nf7::Exception("got unknown input");
+      caller->Handle("samples", {std::move(samples)}, shared_from_this());
+      return;
     }
-  } catch (nf7::Exception& e) {
-    data_->log.Warn(e.msg());
+    data_->log.Warn("got unknown input");
   }
 
  private:

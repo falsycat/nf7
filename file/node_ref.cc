@@ -166,47 +166,24 @@ class Ref::Lambda final : public nf7::Lambda,
  public:
   Lambda(Ref& f, const std::shared_ptr<nf7::Lambda>& parent) :
       nf7::Lambda(f, parent), ref_(&f), log_(f.log_) {
-    auto& n = f.target();
-
-    // ref input index -> target input index
-    inmap_.reserve(f.input_.size());
-    for (const auto& name : f.input()) {
-      try {
-        inmap_.push_back(n.input(name));
-      } catch (nf7::Exception&){
-        inmap_.push_back(std::nullopt);
-      }
-    }
-
-    // target output index -> ref output index
-    outmap_.reserve(f.output_.size());
-    for (const auto& name : n.output()) {
-      try {
-        outmap_.push_back(f.output(name));
-      } catch (nf7::Exception&){
-        outmap_.push_back(std::nullopt);
-      }
-    }
   }
 
-  void Handle(size_t idx, Value&& v, const std::shared_ptr<nf7::Lambda>& caller) noexcept override
-  try {
+  void Handle(std::string_view name, const Value& v,
+              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
     if (!env().GetFile(initiator())) return;
 
     auto parent = this->parent().lock();
     if (!parent) return;
 
     if (caller == base_) {
-      parent->Handle(GetIndex(outmap_, idx), std::move(v), shared_from_this());
+      parent->Handle(name, v, shared_from_this());
     }
     if (caller == parent) {
       if (!base_) {
         base_ = ref_->target().CreateLambda(shared_from_this());
       }
-      base_->Handle(GetIndex(inmap_, idx), std::move(v), shared_from_this());
+      base_->Handle(name, v, shared_from_this());
     }
-  } catch (nf7::Exception&) {
-    log_->Warn("ignored unknown IO");
   }
 
  private:
@@ -214,16 +191,6 @@ class Ref::Lambda final : public nf7::Lambda,
   std::shared_ptr<nf7::LoggerRef> log_;
 
   std::shared_ptr<nf7::Lambda> base_;
-
-  std::vector<std::optional<size_t>> inmap_, outmap_;
-
-
-  static size_t GetIndex(const std::vector<std::optional<size_t>>& map, size_t idx) {
-    if (idx >= map.size() || !map[idx]) {
-      throw nf7::Exception("got unexpected IO index");
-    }
-    return *map[idx];
-  }
 };
 
 std::shared_ptr<nf7::Lambda> Ref::CreateLambda(

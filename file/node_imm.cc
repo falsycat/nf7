@@ -123,9 +123,13 @@ class Imm::Lambda final : public nf7::Lambda,
       nf7::Lambda(f, parent), imm_(&f) {
   }
 
-  void Handle(size_t, nf7::Value&&, const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
-    if (!env().GetFile(initiator())) return;
-    caller->Handle(0, nf7::Value {imm_->mem_.data().value}, shared_from_this());
+  void Handle(std::string_view name, const nf7::Value&,
+              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+    if (name == "in") {
+      if (!env().GetFile(initiator())) return;
+      caller->Handle("out", imm_->mem_.data().value, shared_from_this());
+      return;
+    }
   }
 
  private:

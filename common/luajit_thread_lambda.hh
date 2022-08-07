@@ -48,14 +48,6 @@ class Thread::Lambda final : public Thread::RegistryItem,
  private:
   std::weak_ptr<Thread> th_;
 
-  struct ImmData {
-    ImmData(std::span<const std::string> i, std::span<const std::string> o) noexcept :
-        in(i.begin(), i.end()), out(o.begin(), o.end()) {
-    }
-    std::vector<std::string> in, out;
-  };
-  std::shared_ptr<const ImmData> imm_;
-
   class Receiver;
   std::shared_ptr<Receiver> recv_;
   std::shared_ptr<nf7::Lambda> la_;
@@ -71,7 +63,6 @@ class Thread::Lambda final : public Thread::RegistryItem,
   }
 
   static inline void PushMeta(lua_State* L) noexcept;
-  static inline size_t GetIndex(lua_State* L, int v, std::span<const std::string> names);
 };
 
 
@@ -82,13 +73,13 @@ class Thread::Lambda::Receiver final : public nf7::Lambda,
   static constexpr size_t kMaxQueue = 1024;
 
   Receiver() = delete;
-  Receiver(nf7::Env& env, nf7::File::Id id,
-           const std::shared_ptr<const Thread::Lambda::ImmData>& imm) noexcept :
-      nf7::Lambda(env, id, nullptr), imm_(imm) {
+  Receiver(nf7::Env& env, nf7::File::Id id) noexcept :
+      nf7::Lambda(env, id, nullptr) {
   }
 
-  void Handle(size_t idx, nf7::Value&& v, const std::shared_ptr<nf7::Lambda>&) noexcept override {
-    values_.emplace_back(idx, std::move(v));
+  void Handle(std::string_view name, const nf7::Value& v,
+              const std::shared_ptr<nf7::Lambda>&) noexcept override {
+    values_.emplace_back(name, v);
     if (values_.size() > kMaxQueue) {
       values_.pop_front();
     }
@@ -98,23 +89,21 @@ class Thread::Lambda::Receiver final : public nf7::Lambda,
 
   // must be called on luajit thread
   // Returns true and pushes results to Lua stack when a value is already queued.
-  bool Select(lua_State* L, const std::shared_ptr<Thread>& th, std::vector<size_t>&& indices) noexcept {
+  bool Select(lua_State* L,const std::shared_ptr<Thread>& th, std::vector<std::string>&& names) noexcept {
     std::unique_lock<std::mutex> k(mtx_);
     L_       = L;
     th_      = th;
-    waiting_ = std::move(indices);
+    waiting_ = std::move(names);
     return ResumeIf(false);
   }
 
  private:
-  std::shared_ptr<const Thread::Lambda::ImmData> imm_;
-
-  std::deque<std::pair<size_t, Value>> values_;
+  std::deque<std::pair<std::string, Value>> values_;
 
   std::mutex mtx_;
   lua_State* L_;
   std::shared_ptr<Thread> th_;
-  std::vector<size_t> waiting_;
+  std::vector<std::string> waiting_;
 
 
   // don't forget to lock mtx_
@@ -124,8 +113,7 @@ class Thread::Lambda::Receiver final : public nf7::Lambda,
 
 Thread::Lambda::Lambda(const std::shared_ptr<Thread>& th, nf7::Node& n) noexcept :
     th_(th),
-    imm_(new ImmData {n.input(), n.output()}),
-    recv_(new Receiver {th->env(), th->ctx()->initiator(), imm_}),
+    recv_(new Receiver {th->env(), th->ctx()->initiator()}),
     la_(n.CreateLambda(recv_)) {
 }
 void Thread::Lambda::PushMeta(lua_State* L) noexcept {
@@ -136,12 +124,12 @@ void Thread::Lambda::PushMeta(lua_State* L) noexcept {
     lua_pushcfunction(L, [](auto L) {
       auto self = GetPtr(L, 1);
 
-      const auto idx = GetIndex(L, 2, self->imm_->in);
-      const auto val = luajit::CheckValue(L, 3);
+      auto name = lua_tostring(L, 2);;
+      auto val  = luajit::CheckValue(L, 3);
 
       auto th = self->GetThread(L);
-      th->env().ExecSub(th->ctx(), [self, th, L, idx, val = std::move(val)]() mutable {
-        self->la_->Handle(idx, std::move(val), self->recv_);
+      th->env().ExecSub(th->ctx(), [self, th, L, name = std::move(name), val = std::move(val)]() mutable {
+        self->la_->Handle(name, std::move(val), self->recv_);
         th->ExecResume(L);
       });
 
@@ -154,20 +142,20 @@ void Thread::Lambda::PushMeta(lua_State* L) noexcept {
     lua_pushcfunction(L, [](auto L) {
       auto self = GetPtr(L, 1);
 
-      std::vector<size_t> indices = {};
+      std::vector<std::string> names = {};
       if (lua_istable(L, 2)) {
-        indices.resize(lua_objlen(L, 2));
-        for (size_t i = 0; i < indices.size(); ++i) {
+        names.resize(lua_objlen(L, 2));
+        for (size_t i = 0; i < names.size(); ++i) {
           lua_rawgeti(L, 2, static_cast<int>(i+1));
-          indices[i] = GetIndex(L, -1, self->imm_->out);
+          names[i] = lua_tostring(L, -1);
           lua_pop(L, 1);
         }
       } else {
-        indices.push_back(GetIndex(L, 2, self->imm_->out));
+        names.push_back(lua_tostring(L, 2));
       }
 
       auto th = self->GetThread(L);
-      if (self->recv_->Select(L, th, std::move(indices))) {
+      if (self->recv_->Select(L, th, std::move(names))) {
         return 2;
       } else {
         th->ExpectYield(L);
@@ -182,26 +170,6 @@ void Thread::Lambda::PushMeta(lua_State* L) noexcept {
     lua_setfield(L, -2, "__gc");
   }
 }
-size_t Thread::Lambda::GetIndex(lua_State* L, int v, std::span<const std::string> names) {
-  if (lua_isstring(L, v)) {
-    const char* name = lua_tostring(L, v);
-    auto itr = std::find(names.begin(), names.end(), name);
-    if (itr == names.end()) {
-      luaL_error(L, "unknown input name: %s", name);
-    }
-    return static_cast<size_t>(std::distance(names.begin(), itr));
-  } else {
-    const auto idx = luaL_checkinteger(L, v);
-    if (idx < 0) {
-      luaL_error(L, "index is negative");
-    }
-    const auto uidx = static_cast<size_t>(idx);
-    if (uidx >= names.size()) {
-      luaL_error(L, "index is too large");
-    }
-    return uidx;
-  }
-}
 
 
 bool Thread::Lambda::Receiver::ResumeIf(bool yielded) noexcept {
@@ -213,12 +181,10 @@ bool Thread::Lambda::Receiver::ResumeIf(bool yielded) noexcept {
       continue;
     }
 
-    const auto self = shared_from_this();
-    auto v = imm_->out[*itr];
     if (yielded) {
-      th_->ExecResume(L_, std::move(imm_->out[*itr]), p->second);
+      th_->ExecResume(L_, *itr, p->second);
     } else {
-      luajit::PushAll(L_, std::move(imm_->out[*itr]), p->second);
+      luajit::PushAll(L_, *itr, p->second);
     }
     values_.erase(p);
     waiting_ = {};

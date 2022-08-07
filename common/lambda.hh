@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string_view>
 
 #include "nf7.hh"
 
@@ -26,7 +27,7 @@ class Lambda : public nf7::Context {
   Lambda& operator=(const Lambda&) = delete;
   Lambda& operator=(Lambda&&) = delete;
 
-  virtual void Handle(size_t, Value&&, const std::shared_ptr<Lambda>&) noexcept { }
+  virtual void Handle(std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept { }
 
   size_t depth() const noexcept { return depth_; }
   const std::weak_ptr<Lambda>& parent() const noexcept { return parent_; }

@@ -40,23 +40,6 @@ class Node : public File::Interface {
 
   std::span<const std::string> input() const noexcept { return input_; }
   std::span<const std::string> output() const noexcept { return output_; }
-  const std::string& input(size_t i) const noexcept { return input_[i]; }
-  const std::string& output(size_t i) const noexcept { return output_[i]; }
-
-  size_t input(std::string_view name) const {
-    auto itr = std::find(input_.begin(), input_.end(), name);
-    if (itr >= input_.end()) {
-      throw Exception("missing input socket: "+std::string(name));
-    }
-    return static_cast<size_t>(itr - input_.begin());
-  }
-  size_t output(std::string_view name) const {
-    auto itr = std::find(output_.begin(), output_.end(), name);
-    if (itr >= output_.end()) {
-      throw Exception("missing output socket: "+std::string(name));
-    }
-    return static_cast<size_t>(itr - output_.begin());
-  }
 
   Flags flags() const noexcept { return flags_; }
 
@@ -76,7 +59,7 @@ class Node::Editor {
   Editor& operator=(const Editor&) = delete;
   Editor& operator=(Editor&&) = delete;
 
-  virtual void Emit(Node&, size_t, nf7::Value&&) noexcept = 0;
+  virtual void Emit(Node&, std::string_view, nf7::Value&&) noexcept = 0;
   virtual std::shared_ptr<nf7::Lambda> GetLambda(Node& node) noexcept = 0;
 
   virtual void AddLink(Node& src_node, std::string_view src_name,
