@@ -13,18 +13,17 @@ namespace nf7 {
 template <typename T>
 class GenericHistory : public History {
  public:
-  GenericHistory() = delete;
-  GenericHistory(Env& env) noexcept : env_(&env) {
-  }
+  GenericHistory() = default;
   GenericHistory(const GenericHistory&) = delete;
   GenericHistory(GenericHistory&&) = default;
   GenericHistory& operator=(const GenericHistory&) = delete;
   GenericHistory& operator=(GenericHistory&&) = default;
 
-  void Add(std::unique_ptr<T>&& cmd) noexcept {
+  T& Add(std::unique_ptr<T>&& cmd) noexcept {
     cmds_.erase(cmds_.begin()+static_cast<intmax_t>(cursor_), cmds_.end());
     cmds_.push_back(std::move(cmd));
     cursor_++;
+    return *cmds_.back();
   }
   void Clear() noexcept {
     cmds_.clear();
@@ -49,8 +48,6 @@ class GenericHistory : public History {
   }
 
  private:
-  Env* const env_;
-
   std::vector<std::unique_ptr<T>> cmds_;
 
   size_t cursor_ = 0;

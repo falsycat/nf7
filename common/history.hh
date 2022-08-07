@@ -31,6 +31,13 @@ class History::Command {
 
   virtual void Apply() = 0;
   virtual void Revert() = 0;
+
+  void ExecApply(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    ctx->env().ExecSub(ctx, [this]() { Apply(); });
+  }
+  void ExecRevert(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    ctx->env().ExecSub(ctx, [this]() { Revert(); });
+  }
 };
 
 class History::CorruptException : public Exception {

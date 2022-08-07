@@ -20,7 +20,6 @@
 
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
-#include "common/generic_history.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_file.hh"
@@ -31,6 +30,7 @@
 #include "common/node.hh"
 #include "common/node_link_store.hh"
 #include "common/ptr_selector.hh"
+#include "common/squashed_history.hh"
 #include "common/yas_imgui.hh"
 #include "common/yas_imnodes.hh"
 #include "common/yas_nf7.hh"
@@ -87,7 +87,7 @@ class Network final : public nf7::File,
           ItemList&&         items = {},
           NodeLinkStore&&    links = {}) noexcept :
       File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-      history_(env), win_(*this, "Editor Node/Network", win),
+      win_(*this, "Editor Node/Network", win),
       items_(std::move(items)), links_(std::move(links)) {
     Initialize();
     win_.shown() = true;
@@ -131,8 +131,7 @@ class Network final : public nf7::File,
  private:
   ItemId next_ = 1;
 
-  std::vector<std::unique_ptr<History::Command>> cmdq_;
-  nf7::GenericHistory<History::Command> history_;
+  nf7::SquashedHistory<nf7::History::Command> history_;
 
   std::unordered_map<ItemId,      Item*> item_map_;
   std::unordered_map<const Node*, Item*> node_map_;
@@ -166,16 +165,6 @@ class Network final : public nf7::File,
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "applying command to redo"),
         [this]() { history_.ReDo(); });
-  }
-
-  void QueueCommand(const std::shared_ptr<nf7::Context>& ctx,
-                    std::unique_ptr<History::Command>&&  cmd) noexcept {
-    auto ptr = cmd.get();
-    cmdq_.push_back(std::move(cmd));
-    env().ExecMain(ctx, [ptr]() { ptr->Apply(); });
-  }
-  void QueueCommandSilently(std::unique_ptr<History::Command>&& cmd) noexcept {
-    cmdq_.push_back(std::move(cmd));
   }
 
   Item& GetItem(ItemId id) const {
@@ -489,9 +478,9 @@ class Network::Editor final : public nf7::Node::Editor {
       .dst_id   = owner_->GetItem(dst_node).id(),
       .dst_name = std::string {dst_name},
     };
-    owner_->QueueCommand(
-        std::make_shared<nf7::GenericContext>(*owner_, "adding node link"),
-        NodeLinkStore::SwapCommand::CreateToAdd(owner_->links_, std::move(lk)));
+    auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(owner_->links_, std::move(lk));
+    auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "adding node link");
+    owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
   } catch (Exception&) {
   }
   void RemoveLink(Node& src_node, std::string_view src_name,
@@ -503,9 +492,9 @@ class Network::Editor final : public nf7::Node::Editor {
       .dst_id   = owner_->GetItem(dst_node).id(),
       .dst_name = std::string {dst_name},
     };
-    owner_->QueueCommand(
-        std::make_shared<nf7::GenericContext>(*owner_, "removing node links"),
-        NodeLinkStore::SwapCommand::CreateToRemove(owner_->links_, std::move(lk)));
+    auto cmd = NodeLinkStore::SwapCommand::CreateToRemove(owner_->links_, std::move(lk));
+    auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "removing node links");
+    owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
   } catch (Exception&) {
   }
 
@@ -1066,13 +1055,12 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 
         // check expired sockets
         if (auto cmd = net.links_.CreateCommandToRemoveExpired(item.id(), node.input(), node.output())) {
-          net.QueueCommand(
-              std::make_shared<nf7::GenericContext>(net, "removing expired node links"),
-              std::move(cmd));
+          auto ctx = std::make_shared<nf7::GenericContext>(net, "removing expired node links");
+          net.history_.Add(std::move(cmd)).ExecApply(ctx);
         }
 
         // tag change history
-        net.QueueCommandSilently(std::make_unique<Item::RestoreCommand>(*owner_, ptag));
+        net.history_.Add(std::make_unique<Item::RestoreCommand>(*owner_, ptag));
       }
     }
     if (item.owner_) item.owner_->ApplyNetworkChanges();
@@ -1117,8 +1105,12 @@ void Network::Update() noexcept {
       auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new node");
 
       auto& item_ref = *item;
-      QueueCommand(ctx, std::make_unique<Item::SwapCommand>(*this, std::move(item)));
-      QueueCommand(ctx, std::make_unique<Item::MoveCommand>(item_ref, canvas_action_pos_));
+      history_.
+          Add(std::make_unique<Item::SwapCommand>(*this, std::move(item))).
+          ExecApply(ctx);
+      history_.
+          Add(std::make_unique<Item::MoveCommand>(item_ref, canvas_action_pos_)).
+          ExecApply(ctx);
     }
     ImGui::EndPopup();
   }
@@ -1191,7 +1183,7 @@ void Network::Update() noexcept {
         for (const auto idx : select) {
           auto cmd = std::make_unique<SocketSwapCommand>(*this, idx);
           auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing existing socket");
-          QueueCommand(ctx, std::move(cmd));
+          history_.Add(std::move(cmd)).ExecApply(ctx);
         }
       }
       if (ImGui::IsItemHovered()) {
@@ -1216,7 +1208,7 @@ void Network::Update() noexcept {
           auto cmd = std::make_unique<Item::SwapCommand>(
               *this, std::make_unique<Item>(next_++, std::move(f)));
           auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new socket node");
-          QueueCommand(ctx, std::move(cmd));
+          history_.Add(std::move(cmd)).ExecApply(ctx);
         }
       }
       if (ImGui::IsItemHovered()) {
@@ -1276,7 +1268,7 @@ void Network::Update() noexcept {
 
           auto cmd = std::make_unique<SocketSwapCommand>(*this, index, std::move(sock), true);
           auto ctx = std::make_shared<nf7::GenericContext>(env(), id(), "adding new socket");
-          QueueCommand(ctx, std::move(cmd));
+          history_.Add(std::move(cmd)).ExecApply(ctx);
         }
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip("add new %s socket named '%s'",
@@ -1319,7 +1311,7 @@ void Network::Update() noexcept {
         };
         auto cmd = std::make_unique<SocketSwapCommand>(*this, mod_idx, std::move(sock), false);
         auto ctx = std::make_shared<nf7::GenericContext>(*this, "modifying socket");
-        QueueCommand(ctx, std::move(cmd));
+        history_.Add(std::move(cmd)).ExecApply(ctx);
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("modify socket named '%s'", mod_sock.name.c_str());
@@ -1400,10 +1392,9 @@ void Network::Update() noexcept {
         const auto src_name = lk.src_name.c_str();
         const auto dst_name = lk.dst_name.c_str();
         if (!ImNodes::Connection(dst_id, dst_name, src_id, src_name)) {
+          auto cmd = NodeLinkStore::SwapCommand::CreateToRemove(links_, NodeLinkStore::Link(lk));
           auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing link");
-          auto cmd = NodeLinkStore::SwapCommand::
-              CreateToRemove(links_, NodeLinkStore::Link(lk));
-          QueueCommand(ctx, std::move(cmd));
+          history_.Add(std::move(cmd)).ExecApply(ctx);
         }
       }
 
@@ -1419,9 +1410,9 @@ void Network::Update() noexcept {
           .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
           .dst_name = dst_name,
         };
-        auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new link");
         auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk));
-        QueueCommand(ctx, std::move(cmd));
+        auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new link");
+        history_.Add(std::move(cmd)).ExecApply(ctx);
       }
       ImNodes::EndCanvas();
 
@@ -1458,11 +1449,8 @@ void Network::Update() noexcept {
   }
   win_.End();
 
-  // push queued commands
-  if (cmdq_.size() > 0) {
-    history_.Add(std::make_unique<
-                 nf7::AggregateCommand<History::Command>>(std::move(cmdq_)));
-  }
+  // squash queued commands
+  history_.Squash();
 }
 void Network::UpdateMenu() noexcept {
   ImGui::MenuItem("shown", nullptr, &win_.shown());
@@ -1486,8 +1474,7 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
   const bool moved =
       pos_.x != prev_pos_.x || pos_.y != prev_pos_.y;
   if (moved && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-    owner_->QueueCommandSilently(
-        std::make_unique<Item::MoveCommand>(*this, prev_pos_));
+    owner_->history_.Add(std::make_unique<Item::MoveCommand>(*this, prev_pos_));
     prev_pos_ = pos_;
   }
 
@@ -1496,14 +1483,17 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
       ImGuiPopupFlags_NoOpenOverExistingPopup;
   if (ImGui::BeginPopupContextItem(nullptr, kFlags)) {
     if (ImGui::MenuItem("remove")) {
-      auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "removing existing node");
-      owner_->QueueCommand(ctx, std::make_unique<Item::SwapCommand>(*owner_, id_));
+      auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "removing existing node");
+      owner_->history_.
+          Add(std::make_unique<Item::SwapCommand>(*owner_, id_)).
+          ExecApply(ctx);
     }
     if (ImGui::MenuItem("clone")) {
       auto item = std::make_unique<Item>(owner_->next_++, file_->Clone(env()));
       auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "cloning existing node");
-      owner_->QueueCommand(
-          ctx, std::make_unique<Item::SwapCommand>(*owner_, std::move(item)));
+      owner_->history_.
+          Add(std::make_unique<Item::SwapCommand>(*owner_, std::move(item))).
+          ExecApply(ctx);
     }
     ImGui::EndPopup();
   }

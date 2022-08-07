@@ -82,6 +82,7 @@ target_sources(nf7
     common/node_link_store.hh
     common/ptr_selector.hh
     common/queue.hh
+    common/squashed_history.hh
     common/task.hh
     common/thread.hh
     common/value.hh
@@ -103,6 +104,7 @@ target_sources(nf7
     file/node_imm.cc
     file/node_network.cc
     file/node_ref.cc
+    file/sequencer_timeline.cc
     file/system_dir.cc
     file/system_imgui_config.cc
     file/system_logger.cc
