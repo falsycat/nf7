@@ -1097,7 +1097,7 @@ void Network::Update() noexcept {
 
   // node add popup
   if (ImGui::BeginPopup("AddPopup")) {
-    static nf7::gui::FileCreatePopup<0> p({"File_Factory",}, {"Node"});
+    static nf7::gui::FileFactory<0> p({"File_Factory",}, {"Node"});
 
     ImGui::TextUnformatted("Node/Network: adding new Node...");
     if (p.Update(*this)) {

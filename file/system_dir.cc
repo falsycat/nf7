@@ -150,7 +150,7 @@ void Dir::Update() noexcept {
 
   // new item popup
   if (ImGui::BeginPopup("NewItemPopup")) {
-    static nf7::gui::FileCreatePopup<
+    static nf7::gui::FileFactory<
         nf7::gui::kNameInput | nf7::gui::kNameDupCheck> p(
             {"File_Factory", "DirItem"});
     ImGui::TextUnformatted("System/Dir: adding new file...");

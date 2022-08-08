@@ -5,6 +5,9 @@
 #include <string_view>
 #include <vector>
 
+#include <imgui.h>
+#include <imgui_stdlib.h>
+
 #include "nf7.hh"
 
 #include "common/gui_dnd.hh"
@@ -12,16 +15,16 @@
 
 namespace nf7::gui {
 
-enum FileCreatePopupFlag : uint8_t {
+enum FileFactoryFlag : uint8_t {
   kNameInput    = 1 << 0,
   kNameDupCheck = 1 << 1,
 };
 template <uint8_t kFlags>
-struct FileCreatePopup final {
+struct FileFactory final {
  public:
-  FileCreatePopup(std::vector<std::string>&& type_flags_and,
-                  std::vector<std::string>&& type_flags_or = {},
-                  std::string_view           default_name  = "new_file") noexcept :
+  FileFactory(std::vector<std::string>&& type_flags_and,
+              std::vector<std::string>&& type_flags_or = {},
+              std::string_view           default_name  = "new_file") noexcept :
       type_flags_and_(std::move(type_flags_and)),
       type_flags_or_(std::move(type_flags_or)),
       default_name_(default_name) {
@@ -36,7 +39,7 @@ struct FileCreatePopup final {
       type_filter_ = "";
     }
 
-    if constexpr (kFlags & FileCreatePopupFlag::kNameInput) {
+    if constexpr (kFlags & FileFactoryFlag::kNameInput) {
       if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
       ImGui::InputText("name", &name_);
       ImGui::Spacing();
@@ -88,14 +91,14 @@ struct FileCreatePopup final {
       ImGui::Bullet(); ImGui::TextUnformatted("type is not selected");
       err = true;
     }
-    if constexpr (kFlags & FileCreatePopupFlag::kNameInput) {
+    if constexpr (kFlags & FileFactoryFlag::kNameInput) {
       try {
         nf7::File::Path::ValidateTerm(name_);
       } catch (Exception& e) {
         ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
         err = true;
       }
-      if constexpr ((kFlags & FileCreatePopupFlag::kNameDupCheck) != 0) {
+      if constexpr ((kFlags & FileFactoryFlag::kNameDupCheck) != 0) {
         if (owner.Find(name_)) {
           ImGui::Bullet(); ImGui::Text("name duplicated");
           err = true;
@@ -111,7 +114,7 @@ struct FileCreatePopup final {
       }
       if (ImGui::IsItemHovered()) {
         const auto path = owner.abspath().Stringify();
-        if constexpr (kFlags & FileCreatePopupFlag::kNameInput) {
+        if constexpr (kFlags & FileFactoryFlag::kNameInput) {
           ImGui::SetTooltip(
               "create %s as '%s' on '%s'", type_->name().c_str(), name_.c_str(), path.c_str());
         } else {
