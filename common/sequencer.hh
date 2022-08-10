@@ -13,8 +13,9 @@ namespace nf7 {
 
 class Sequencer : public nf7::File::Interface {
  public:
-  class Lambda;
   class Editor;
+  class Session;
+  class Lambda;
 
   struct Period { uint64_t begin, end; };
 
@@ -34,19 +35,14 @@ class Sequencer : public nf7::File::Interface {
   Sequencer& operator=(Sequencer&&) = delete;
 
   // Sequencer* is a dummy parameter to avoid issues of multi inheritance.
-  virtual std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept = 0;
+  virtual std::shared_ptr<Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Context>&) noexcept = 0;
 
   virtual void UpdateItem(Editor&) noexcept { }
   virtual void UpdateTooltip(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }
 
   Flags flags() const noexcept { return flags_; }
-
-  std::span<const std::string> input() const noexcept { return input_; }
-  std::span<const std::string> output() const noexcept { return output_; }
-
- protected:
-  std::vector<std::string> input_, output_;
 
  private:
   Flags flags_;
@@ -60,6 +56,51 @@ class Sequencer::Editor {
   Editor(Editor&&) = delete;
   Editor& operator=(const Editor&) = delete;
   Editor& operator=(Editor&&) = delete;
+};
+
+class Sequencer::Session {
+ public:
+  class UnknownNameException final : public nf7::Exception {
+   public:
+    using nf7::Exception::Exception;
+  };
+
+  Session() = default;
+  virtual ~Session() = default;
+  Session(const Session&) = delete;
+  Session(Session&&) = delete;
+  Session& operator=(const Session&) = delete;
+  Session& operator=(Session&&) = delete;
+
+  // these can throw UnknownNameException
+  virtual const nf7::Value& Peek(std::string_view) = 0;
+  virtual nf7::Value Receive(std::string_view) = 0;
+
+  virtual void Send(std::string_view, nf7::Value&&) noexcept = 0;
+
+  // thread-safe
+  virtual void Finish() noexcept = 0;
+
+  struct Info final {
+   public:
+    uint64_t time;
+    uint64_t begin;
+    uint64_t end;
+  };
+  virtual const Info& info() const noexcept = 0;
+};
+
+class Sequencer::Lambda : public nf7::Context {
+ public:
+  Lambda(nf7::File& f, const std::shared_ptr<Context>& ctx = nullptr) noexcept :
+      Lambda(f.env(), f.id(), ctx) {
+  }
+  Lambda(nf7::Env& env, nf7::File::Id id,
+         const std::shared_ptr<nf7::Context>& ctx = nullptr) noexcept :
+      Context(env, id, ctx) {
+  }
+
+  virtual void Run(const std::shared_ptr<Sequencer::Session>&) noexcept = 0;
 };
 
 }  // namespace nf7

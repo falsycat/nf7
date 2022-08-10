@@ -13,8 +13,12 @@ namespace nf7::gui {
 
 bool Timeline::Begin(uint64_t len) noexcept {
   assert(frame_state_ == kRoot);
-  layer_y_ = 0;
-  layer_h_ = 0;
+  layer_idx_ = 0;
+  layer_y_   = 0;
+  layer_h_   = 0;
+
+  layer_idx_first_display_ = 0;
+  layer_offset_y_.clear();
 
   len_               = len;
   scroll_size_.x     = GetXFromTime(len_) + 100;
@@ -57,14 +61,29 @@ void Timeline::End() noexcept {
 
 void Timeline::NextLayerHeader(Layer layer, float height) noexcept {
   assert(frame_state_ == kHeader);
+  assert(height > 0);
 
   const auto em = ImGui::GetFontSize();
 
   if (layer_h_ > 0) {
+    ++layer_idx_;
     layer_y_ += layer_h_+padding()*2;
   }
   layer_h_ = height*em;
   layer_   = layer;
+
+  // save Y offset of the layer if shown
+  if (layer_idx_first_display_) {
+    if (layer_y_ < scroll_.y+body_size_.y) {
+      layer_offset_y_.push_back(layer_y_);
+    }
+  } else {
+    const auto bottom = layer_y_+layer_h_;
+    if (bottom > scroll_.y) {
+      layer_idx_first_display_ = layer_idx_;
+      layer_offset_y_.push_back(layer_y_);
+    }
+  }
 
   const auto mouse = ImGui::GetMousePos().y;
   if (layerTopScreenY() <= mouse && mouse < layerBottomScreenY()) {
@@ -87,7 +106,9 @@ void Timeline::NextLayerHeader(Layer layer, float height) noexcept {
 bool Timeline::BeginBody() noexcept {
   assert(frame_state_ == kHeader);
 
-  const auto em = ImGui::GetFontSize();
+  const auto  em  = ImGui::GetFontSize();
+  const auto  ctx = ImGui::GetCurrentContext();
+  const auto& io  = ImGui::GetIO();
 
   // end of header group
   ImGui::EndGroup();
@@ -104,15 +125,34 @@ bool Timeline::BeginBody() noexcept {
     frame_state_ = kBody;
     body_screen_offset_ = ImGui::GetCursorScreenPos();
 
-    ImGui::InvisibleButton("viewport-grip", scroll_size_, ImGuiButtonFlags_MouseButtonMiddle);
+    ImGui::InvisibleButton(
+        "viewport-grip", scroll_size_,
+        ImGuiButtonFlags_MouseButtonMiddle |
+        ImGuiButtonFlags_MouseButtonLeft);
     ImGui::SetItemAllowOverlap();
     if (ImGui::IsItemActive()) {
-      scroll_ -= ImGui::GetIO().MouseDelta;
+      switch (ctx->ActiveIdMouseButton) {
+      case ImGuiMouseButton_Left:  // click timeline to set time
+        action_time_ = GetTimeFromScreenX(io.MousePos.x);
+        if (ImGui::IsItemActivated() || action_time_ != action_last_set_time_) {
+          action_               = kSetTime;
+          action_last_set_time_ = action_time_;
+        }
+        break;
+
+      case ImGuiMouseButton_Middle:  // easyscroll
+        scroll_ -= io.MouseDelta;
+        break;
+
+      default:
+        break;
+      }
     }
 
-    layer_   = nullptr;
-    layer_y_ = 0;
-    layer_h_ = 0;
+    layer_     = nullptr;
+    layer_idx_ = 0;
+    layer_y_   = 0;
+    layer_h_   = 0;
     return true;
   }
   return false;
@@ -177,16 +217,19 @@ void Timeline::EndBody() noexcept {
 }
 bool Timeline::NextLayer(Layer layer, float height) noexcept {
   assert(frame_state_ == kBody);
+  assert(height > 0);
 
   const auto em = ImGui::GetFontSize();
 
   if (layer_h_ > 0) {
+    ++layer_idx_;
     layer_y_ += layer_h_+padding()*2;
   }
   layer_h_ = height*em;
   layer_   = layer;
 
-  return true;  // TODO check if shown
+  // it's shown if y offset is saved
+  return !!layerTopY(layer_idx_);
 }
 
 bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
@@ -241,7 +284,7 @@ void Timeline::Cursor(const char* name, uint64_t t, uint32_t col) noexcept {
   const auto size   = ImGui::GetWindowSize();
   const auto grid_h = xgridHeight();
   const auto x      = GetScreenXFromTime(t);
-  if (x < body_offset_.x) return;
+  if (x < body_offset_.x || x > body_offset_.x+body_size_.x) return;
 
   d->AddLine({x, spos.y}, {x, spos.y+size.y}, col);
 
@@ -249,6 +292,19 @@ void Timeline::Cursor(const char* name, uint64_t t, uint32_t col) noexcept {
   const auto num = std::to_string(t);
   d->AddText({x, spos.y + grid_h*0.1f   }, col, num.c_str());
   d->AddText({x, spos.y + grid_h*0.1f+em}, col, name);
+}
+void Timeline::Arrow(uint64_t t, uint64_t layer, uint32_t col) noexcept {
+  const auto d = ImGui::GetWindowDrawList();
+
+  const auto em = ImGui::GetFontSize();
+
+  const auto x = GetScreenXFromTime(t);
+  if (x < body_offset_.x || x > body_offset_.x+body_size_.x) return;
+
+  const auto y = layerTopScreenY(layer);
+  if (!y || *y < scroll_.y) return;
+
+  d->AddTriangleFilled({x, *y}, {x+em, *y-em/2}, {x+em, *y+em/2}, col);
 }
 
 void Timeline::UpdateXGrid() noexcept {
@@ -295,7 +351,7 @@ void Timeline::HandleGrip(Item item, float off, Action ac, Action acdone, ImGuiM
     off += ImGui::GetCurrentContext()->ActiveIdClickOffset.x;
 
     const auto pos = ImGui::GetMousePos() - ImVec2{off, 0};
-    grip_time_ = GetTimeFromScreenX(pos.x);
+    action_time_ = GetTimeFromScreenX(pos.x);
 
     scroll_x_to_mouse_ = true;
     scroll_y_to_mouse_ = (ac == kMove);

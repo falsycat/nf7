@@ -59,8 +59,8 @@ class Env final : public nf7::Env {
       try {
         yas::load<yas::file|yas::binary>("root.nf7", root_);
         root_->MakeAsRoot();
-      } catch (yas::io_exception&) {
-        throw Exception("failed to read: "s+kFileName);
+      } catch (std::exception& e) {
+        throw Exception("failed to read: "s+kFileName+" ("+e.what()+")");
       }
     } catch (Exception&) {
       Panic();

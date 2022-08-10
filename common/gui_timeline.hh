@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 #include <imgui.h>
 
@@ -14,9 +15,9 @@
 namespace nf7::gui {
 
 // if (tl.Begin()) {
-//   tl.NextLayer(layer1, &layer1_height)
+//   tl.NextLayerHeader(layer1, &layer1_height)
 //   ImGui::Button("layer1");
-//   tl.NextLayer(layer2, &layer2_height)
+//   tl.NextLayerHeader(layer2, &layer2_height)
 //   ImGui::Button("layer2");
 //
 //   if (tl.BeginBody()) {
@@ -60,6 +61,7 @@ struct Timeline {
     kResizeEndDone,
     kMove,
     kMoveDone,
+    kSetTime,
   };
   using Layer = void*;
   using Item  = void*;
@@ -94,6 +96,7 @@ struct Timeline {
   void EndItem() noexcept;
 
   void Cursor(const char*, uint64_t t, uint32_t col) noexcept;
+  void Arrow(uint64_t t, uint64_t layer, uint32_t col) noexcept;
 
   uint64_t GetTimeFromX(float x) const noexcept {
     return static_cast<uint64_t>(std::max(0.f, x/ImGui::GetFontSize()/zoom_));
@@ -113,6 +116,22 @@ struct Timeline {
   float xgridHeight() const noexcept { return xgrid_height_*ImGui::GetFontSize(); }
   float padding() const noexcept { return padding_*ImGui::GetFontSize(); }
 
+  std::optional<float> layerTopY(size_t idx) noexcept {
+    if (!layer_idx_first_display_ || idx < *layer_idx_first_display_) {
+      return std::nullopt;
+    }
+    idx -= *layer_idx_first_display_;
+    if (idx >= layer_offset_y_.size()) {
+      return std::nullopt;
+    }
+    return layer_offset_y_[idx];
+  }
+
+  std::optional<float> layerTopScreenY(size_t idx) noexcept {
+    auto y = layerTopY(idx);
+    if (!y) return std::nullopt;
+    return *y + body_screen_offset_.y;
+  }
   float layerTopScreenY() noexcept {
     return body_screen_offset_.y + layer_y_;
   }
@@ -130,7 +149,7 @@ struct Timeline {
 
   Action action() const noexcept { return action_; }
   Item actionTarget() const noexcept { return action_target_; }
-  uint64_t gripTime() const noexcept { return grip_time_; }
+  uint64_t actionTime() const noexcept { return action_time_; }
 
  private:
   // immutable params
@@ -161,15 +180,21 @@ struct Timeline {
   float mouse_layer_y_;
   float mouse_layer_h_;
 
-  Layer layer_;
-  float layer_y_;
-  float layer_h_;
+  Layer  layer_;
+  size_t layer_idx_;
+  float  layer_y_;
+  float  layer_h_;
+
+  std::optional<size_t> layer_idx_first_display_;
+  std::vector<float>    layer_offset_y_;
 
   Item item_;
 
   Action   action_;
   Item     action_target_;
-  uint64_t grip_time_;
+  uint64_t action_time_;
+
+  uint64_t action_last_set_time_ = UINT64_MAX;  // for kSetTime
 
 
   void UpdateXGrid() noexcept;

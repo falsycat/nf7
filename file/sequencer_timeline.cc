@@ -1,9 +1,13 @@
 #include <algorithm>
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -20,6 +24,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_context.hh"
 #include "common/gui_file.hh"
 #include "common/gui_popup.hh"
 #include "common/gui_timeline.hh"
@@ -30,6 +35,10 @@
 #include "common/squashed_history.hh"
 #include "common/yas_nf7.hh"
 
+#include <thread>
+
+
+using namespace std::literals;
 
 namespace nf7 {
 namespace {
@@ -52,8 +61,20 @@ class Null final : public nf7::File, public nf7::Sequencer {
   }
 
   std::shared_ptr<Sequencer::Lambda> CreateLambda(
-      const std::shared_ptr<Sequencer::Lambda>&) noexcept override {
-    return nullptr;
+      const std::shared_ptr<nf7::Context>& parent) noexcept override {
+    class Emitter final : public Sequencer::Lambda,
+        public std::enable_shared_from_this<Emitter> {
+     public:
+      using Sequencer::Lambda::Lambda;
+
+      void Run(const std::shared_ptr<Sequencer::Session>& ss) noexcept override {
+        env().ExecAsync(shared_from_this(), [ss]() {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+          ss->Finish();
+        });
+      }
+    };
+    return std::make_shared<Emitter>(*this, parent);
   }
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::Sequencer>(t).Select(this);
@@ -78,25 +99,32 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   class Item;
   class Layer;
-  class Lambda;
   class Editor;
+
+  class Session;
+  class Lambda;
+
+  using ItemId = uint64_t;
 
   TL(Env& env,
      uint64_t                              length = 1000,
      std::vector<std::unique_ptr<Layer>>&& layers = {},
-     uint64_t                              next   = 1,
+     ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
       nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kMenu),
       length_(length), layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
-      popup_add_item_(*this) {
+      popup_add_item_(*this), popup_config_(*this) {
+    ApplySeqSocketChanges();
   }
 
+  void SetUpAfterDeserialize();
   TL(Env& env, Deserializer& ar) : TL(env) {
-    ar(length_, layers_, next_, win_, tl_);
+    ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
+    SetUpAfterDeserialize();
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(length_, layers_, next_, win_, tl_);
+    ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override;
 
@@ -107,7 +135,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
 
-  void UpdateEditor() noexcept;
+  void UpdateEditorWindow() noexcept;
+  void UpdateLambdaSelector() noexcept;
   void HandleTimelineAction() noexcept;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -117,11 +146,18 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
  private:
   nf7::SquashedHistory<History::Command> history_;
 
+  std::shared_ptr<TL::Lambda> lambda_;
+  std::vector<std::weak_ptr<TL::Lambda>> lambdas_running_;
+
   // permanentized params
   uint64_t length_;
+  uint64_t cursor_;
   std::vector<std::unique_ptr<Layer>> layers_;
 
-  uint64_t next_;
+  std::vector<std::string> seq_inputs_;
+  std::vector<std::string> seq_outputs_;
+
+  ItemId next_;
 
   nf7::gui::Window   win_;
   nf7::gui::Timeline tl_;
@@ -149,6 +185,27 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
     nf7::gui::FileFactory<0> factory_;
   } popup_add_item_;
+  struct ConfigPopup final : nf7::gui::Popup {
+   public:
+    ConfigPopup(TL& f) noexcept :
+        Popup("ConfigPopup"), owner_(&f) {
+    }
+
+    void Open() noexcept {
+      inputs_  = StringifySocketList(owner_->seq_inputs_);
+      outputs_ = StringifySocketList(owner_->seq_outputs_);
+      error_   = "";
+      Popup::Open();
+    }
+    void Update() noexcept;
+
+   private:
+    TL* const owner_;
+
+    std::string inputs_;
+    std::string outputs_;
+    std::string error_;
+  } popup_config_;
 
 
   // GUI temporary params
@@ -168,7 +225,6 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void ExecApplyLayerOfSelected() noexcept;
   void MoveDisplayLayerOfSelected(int64_t diff) noexcept;
 
-
   // history
   void ExecUnDo() {
     env().ExecMain(
@@ -179,6 +235,55 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "applying commands to redo"),
         [this]() { history_.ReDo(); });
+  }
+
+
+  // instant running
+  void MoveCursorTo(uint64_t t) noexcept;
+  void AttachLambda(const std::shared_ptr<TL::Lambda>&) noexcept;
+
+  // socket operation
+  void ApplySeqSocketChanges() noexcept {
+    input_  = seq_inputs_;
+    output_ = seq_outputs_;
+    output_.push_back("_cursor");
+    Touch();
+  }
+  static std::vector<std::string> ParseSocketSpecifier(std::string_view names) {
+    const auto n = names.size();
+
+    std::vector<std::string> ret;
+    size_t begin = 0;
+
+    for (size_t i = 0; i <= n; ++i) {
+      if (i == n || names[i] == '\n') {
+        const auto name = names.substr(begin, i-begin);
+        if (name.size() > 0) {
+          ret.push_back(std::string {name});
+        }
+        begin = i+1;
+        continue;
+      }
+    }
+    ValidateSocketList(ret);
+    return ret;
+  }
+  static void ValidateSocketList(const std::vector<std::string>& a) {
+    for (size_t i = 0; i < a.size(); ++i) {
+      File::Path::ValidateTerm(a[i]);
+      for (size_t j = i+1; j < a.size(); ++j) {
+        if (a[i] == a[j]) {
+          throw nf7::Exception {"name duplication: "+a[i]};
+        }
+      }
+    }
+  }
+  static std::string StringifySocketList(const std::vector<std::string>& a) noexcept {
+    std::stringstream st;
+    for (auto& name : a) {
+      st << name << '\n';
+    }
+    return st.str();
   }
 };
 
@@ -228,7 +333,7 @@ struct TL::Timing {
 class TL::Item final {
  public:
   Item() = delete;
-  Item(uint64_t id, std::unique_ptr<nf7::File>&& f, const Timing& t) :
+  Item(ItemId id, std::unique_ptr<nf7::File>&& f, const Timing& t) :
       id_(id), file_(std::move(f)),
       seq_(&file_->interfaceOrThrow<nf7::Sequencer>()),
       timing_(t), display_timing_(t) {
@@ -242,13 +347,13 @@ class TL::Item final {
     ar(id_, file_, timing_);
   }
   static std::unique_ptr<TL::Item> Load(auto& ar) noexcept {
-    uint64_t id;
+    ItemId id;
     std::unique_ptr<nf7::File> file;
     Timing timing;
     ar(id, file, timing);
     return std::make_unique<TL::Item>(id, std::move(file), timing);
   }
-  std::unique_ptr<TL::Item> Clone(nf7::Env& env, uint64_t id) const {
+  std::unique_ptr<TL::Item> Clone(nf7::Env& env, ItemId id) const {
     return std::make_unique<TL::Item>(id, file_->Clone(env), timing_);
   }
 
@@ -287,12 +392,8 @@ class TL::Item final {
   }
 
   void Update() noexcept;
-  bool UpdateResizer(uint64_t& target, float offset,
-                     const std::function<uint64_t()>& min,
-                     const std::function<uint64_t()>& max) noexcept;
-  void UpdateMover(float offset_x) noexcept;
 
-  uint64_t id() const noexcept { return id_; }
+  ItemId id() const noexcept { return id_; }
   nf7::File& file() const noexcept { return *file_; }
   TL::Layer& layer() const noexcept { return *layer_; }
   nf7::Sequencer& seq() const noexcept { return *seq_; }
@@ -304,7 +405,7 @@ class TL::Item final {
   TL* owner_ = nullptr;
   TL::Layer* layer_ = nullptr;
 
-  uint64_t id_;
+  ItemId id_;
   std::unique_ptr<nf7::File> file_;
   nf7::Sequencer* const seq_;
 
@@ -343,7 +444,7 @@ class TL::Layer final {
     ar(items, enabled, height);
     return std::make_unique<TL::Layer>(std::move(items), enabled, height);
   }
-  std::unique_ptr<TL::Layer> Clone(Env& env, uint64_t& id) const {
+  std::unique_ptr<TL::Layer> Clone(Env& env, ItemId& id) const {
     std::vector<std::unique_ptr<TL::Item>> items;
     items.reserve(items_.size());
     for (auto& item : items_) items.push_back(item->Clone(env, id++));
@@ -474,22 +575,255 @@ class TL::Layer final {
   size_t index_;
   float  offset_y_;
 };
+void TL::SetUpAfterDeserialize() {
+  next_ = 1;
+  std::unordered_set<ItemId> ids;
+  for (auto& layer : layers_) {
+    for (auto& item : layer->items()) {
+      if (item->id() == 0) {
+        throw nf7::DeserializeException {"item id cannot be zero"};
+      }
+      if (ids.contains(item->id())) {
+        throw nf7::DeserializeException {"id duplication"};
+      }
+      ids.insert(item->id());
+      next_ = std::max(next_, item->id()+1);
+    }
+  }
+  ApplySeqSocketChanges();
+}
 
 
-class TL::Lambda final : public Node::Lambda {
+class TL::Lambda final : public Node::Lambda,
+    public std::enable_shared_from_this<TL::Lambda> {
  public:
   Lambda() = delete;
   Lambda(TL& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
-      Node::Lambda(f, parent) {
+      Node::Lambda(f, parent), owner_(&f) {
   }
 
   void Handle(std::string_view, const nf7::Value&,
-              const std::shared_ptr<Node::Lambda>&) noexcept override {
+              const std::shared_ptr<Node::Lambda>&) noexcept override;
+
+  std::shared_ptr<TL::Session> CreateSession(uint64_t t) noexcept {
+    auto ss = std::make_shared<TL::Session>(shared_from_this(), last_session_, t, vars_);
+    last_session_ = ss;
+    sessions_.erase(
+        std::remove_if(
+            sessions_.begin(), sessions_.end(),
+            [](auto& x) { return x.expired(); }),
+        sessions_.end());
+    sessions_.push_back(ss);
+    return ss;
   }
+
+  std::pair<TL::Item*, std::shared_ptr<Sequencer::Lambda>> GetNext(
+      uint64_t& layer_idx, uint64_t layer_until, uint64_t t) noexcept {
+    if (aborted_ || !env().GetFile(initiator())) {
+      return {nullptr, nullptr};
+    }
+    layer_until = std::min(layer_until, owner_->layers_.size());
+    for (; layer_idx < layer_until; ++layer_idx) {
+      auto& layer = *owner_->layers_[layer_idx];
+      if (!layer.enabled()) {
+        continue;
+      }
+      if (auto item = layer.GetAt(t)) {
+        auto itr = lambdas_.find(item->id());
+        if (itr == lambdas_.end()) {
+          auto la = item->seq().CreateLambda(shared_from_this());
+          lambdas_.emplace(item->id(), la);
+          return {item, la};
+        } else {
+          return {item, itr->second};
+        }
+      }
+    }
+    return {nullptr, nullptr};
+  }
+
+  void EmitCursor(uint64_t t) noexcept {
+    if (auto p = parent()) {
+      p->Handle("_cursor", static_cast<nf7::Value::Integer>(t), shared_from_this());
+    }
+  }
+  void EmitResults(const std::unordered_map<std::string, nf7::Value>& vars) noexcept {
+    if (!env().GetFile(initiator())) {
+      return;
+    }
+    auto caller = parent();
+    for (const auto& name : owner_->seq_outputs_) {
+      auto itr = vars.find(name);
+      if (itr == vars.end()) continue;
+      caller->Handle(name, itr->second, shared_from_this());
+    }
+  }
+
+  void Abort() noexcept {
+    aborted_ = true;
+  }
+
+  std::span<const std::weak_ptr<TL::Session>> sessions() const noexcept {
+    return sessions_;
+  }
+
+ private:
+  TL* const owner_;
+
+  std::atomic<bool> aborted_ = false;
+
+  std::unordered_map<std::string, nf7::Value> vars_;
+  std::unordered_map<ItemId, std::shared_ptr<Sequencer::Lambda>> lambdas_;
+
+  std::weak_ptr<TL::Session> last_session_;
+  std::vector<std::weak_ptr<TL::Session>> sessions_;
 };
 std::shared_ptr<Node::Lambda> TL::CreateLambda(
     const std::shared_ptr<Node::Lambda>& parent) noexcept {
-  return std::make_shared<TL::Lambda>(*this, parent);
+  auto la = std::make_shared<TL::Lambda>(*this, parent);
+
+  lambdas_running_.erase(
+      std::remove_if(lambdas_running_.begin(), lambdas_running_.end(),
+                     [](auto& x) { return x.expired(); }),
+      lambdas_running_.end());;
+  lambdas_running_.emplace_back(la);
+  return la;
+}
+
+
+class TL::Session final : public Sequencer::Session,
+    public std::enable_shared_from_this<TL::Session> {
+ public:
+  Session(const std::shared_ptr<TL::Lambda>& initiator,
+          const std::weak_ptr<Session>&      leader,
+          uint64_t time, const std::unordered_map<std::string, nf7::Value>& vars) noexcept :
+      env_(&initiator->env()), last_active_(std::chrono::system_clock::now()),
+      initiator_(initiator), leader_(leader),
+      time_(time), vars_(vars) {
+  }
+
+  const nf7::Value& Peek(std::string_view name) override {
+    auto itr = vars_.find(std::string {name});
+    if (itr == vars_.end()) {
+      throw UnknownNameException {std::string {name}+" is unknown"};
+    }
+    return itr->second;
+  }
+  nf7::Value Receive(std::string_view name) override {
+    auto itr = vars_.find(std::string {name});
+    if (itr == vars_.end()) {
+      throw UnknownNameException {std::string {name}+" is unknown"};
+    }
+    auto ret = std::move(itr->second);
+    vars_.erase(itr);
+    return std::move(itr->second);
+  }
+
+  void Send(std::string_view name, nf7::Value&& v) noexcept override {
+    vars_[std::string {name}] = std::move(v);
+  }
+
+  void StartNext() noexcept {
+    auto leader = leader_.lock();
+
+    uint64_t layer_until = UINT64_MAX;
+    if (leader && !leader->done_) {
+      layer_until = leader->layer_;
+    } else {
+      leader = nullptr;
+    }
+
+    auto [item, lambda] = initiator_->GetNext(layer_, layer_until, time_);
+    if (item) {
+      assert(lambda);
+
+      const auto& t = item->timing();
+      info_.time  = time_;
+      info_.begin = t.begin();
+      info_.end   = t.end();
+      lambda->Run(shared_from_this());
+
+      last_active_ = std::chrono::system_clock::now();
+      ++layer_;
+
+    } else if (leader) {
+      assert(!leader->follower_);
+      leader->follower_ = shared_from_this();
+
+    } else {
+      done_ = true;
+      initiator_->EmitResults(vars_);
+    }
+
+    if (auto follower = std::exchange(follower_, nullptr)) {
+      follower->StartNext();
+    }
+  }
+  void Finish() noexcept override {
+    auto self = shared_from_this();
+    env_->ExecSub(initiator_, [self]() { self->StartNext(); });
+  }
+
+  const Info& info() const noexcept override { return info_; }
+
+  std::chrono::system_clock::time_point lastActive() const noexcept { return last_active_; }
+  bool done() const noexcept { return done_; }
+  uint64_t time() const noexcept { return time_; }
+  uint64_t layer() const noexcept { return layer_; }
+
+ private:
+  nf7::Env* const env_;
+  std::chrono::system_clock::time_point last_active_;
+
+  std::shared_ptr<TL::Lambda> initiator_;
+
+  std::weak_ptr<Session>   leader_;
+  std::shared_ptr<Session> follower_;
+
+  const uint64_t time_;
+  std::unordered_map<std::string, nf7::Value> vars_;
+
+  bool     done_  = false;
+  uint64_t layer_ = 0;
+  Info     info_;
+};
+void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
+                        const std::shared_ptr<Node::Lambda>&) noexcept {
+  if (name == "exec") {
+    if (!env().GetFile(initiator())) return;
+    const auto t_max = owner_->length_-1;
+
+    uint64_t t;
+    if (v.isInteger()) {
+      const auto ti = std::clamp(v.integer(), int64_t{0}, static_cast<int64_t>(t_max));
+      t = static_cast<uint64_t>(ti);
+    } else if (v.isScalar()) {
+      const auto tf = std::clamp(v.scalar(), 0., 1.)*static_cast<double>(t_max);
+      t = static_cast<uint64_t>(tf);
+    } else {
+      // TODO: error
+      return;
+    }
+    CreateSession(t)->StartNext();
+  } else {
+    vars_[std::string {name}] = v;
+  }
+}
+void TL::MoveCursorTo(uint64_t time) noexcept {
+  cursor_ = std::min(time, length_-1);
+
+  if (!lambda_) {
+    AttachLambda(std::make_shared<TL::Lambda>(*this, nullptr));
+  }
+  lambda_->CreateSession(time)->StartNext();
+  lambda_->EmitCursor(time);
+}
+void TL::AttachLambda(const std::shared_ptr<TL::Lambda>& la) noexcept {
+  if (la == lambda_) return;
+  if (lambda_ && lambda_->depth() == 0) {
+    lambda_->Abort();
+  }
+  lambda_ = la;
 }
 
 
@@ -825,7 +1159,7 @@ void TL::MoveDisplayLayerOfSelected(int64_t diff) noexcept {
 std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   std::vector<std::unique_ptr<TL::Layer>> layers;
   layers.reserve(layers_.size());
-  uint64_t next = 1;
+  ItemId next = 1;
   for (const auto& layer : layers_) layers.push_back(layer->Clone(env, next));
   return std::make_unique<TL>(env, length_, std::move(layers), next, &win_);
 }
@@ -861,19 +1195,25 @@ void TL::Handle(const Event& ev) noexcept {
 
 void TL::Update() noexcept {
   popup_add_item_.Update();
-  UpdateEditor();
+  popup_config_.Update();
+
+  UpdateEditorWindow();
+
   history_.Squash();
 }
 void TL::UpdateMenu() noexcept {
   ImGui::MenuItem("Editor", nullptr, &win_.shown());
 }
-void TL::UpdateEditor() noexcept {
+void TL::UpdateEditorWindow() noexcept {
   const auto kInit = []() {
     const auto em = ImGui::GetFontSize();
     ImGui::SetNextWindowSizeConstraints({24*em, 8*em}, {1e8, 1e8});
   };
 
   if (win_.Begin(kInit)) {
+    UpdateLambdaSelector();
+
+    // timeline
     if (tl_.Begin(length_)) {
       // layer headers
       for (size_t i = 0; i < layers_.size(); ++i) {
@@ -899,6 +1239,10 @@ void TL::UpdateEditor() noexcept {
           if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
             ExecReDo();
           }
+          ImGui::Separator();
+          if (ImGui::MenuItem("config")) {
+            popup_config_.Open();
+          }
           ImGui::EndPopup();
         }
 
@@ -922,54 +1266,134 @@ void TL::UpdateEditor() noexcept {
           ImGuiHoveredFlags_AllowWhenBlockedByPopup;
       if (ImGui::IsWindowHovered(kFlags)) {
         tl_.Cursor(
-            "cursor",
+            "mouse",
             std::min(length_-1, tl_.GetTimeFromScreenX(ImGui::GetMousePos().x)),
             ImGui::GetColorU32(ImGuiCol_TextDisabled, .5f));
       }
 
+      // frame cursor
+      tl_.Cursor("cursor", cursor_, ImGui::GetColorU32(ImGuiCol_Text, .5f));
+
       // end of timeline
       tl_.Cursor("END", length_, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+
+      // running sessions
+      if (lambda_) {
+        const auto now = std::chrono::system_clock::now();
+        for (auto& wss : lambda_->sessions()) {
+          auto ss = wss.lock();
+          if (!ss || ss->done()) continue;
+
+          const auto elapsed =
+              static_cast<float>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - ss->lastActive()).count()) / 1000;
+
+          const auto alpha = 1.f - std::clamp(elapsed, 0.f, 1.f)*0.6f;
+          const auto color = IM_COL32(255, 0, 0, static_cast<uint8_t>(alpha*255));
+
+          tl_.Cursor("S", ss->time(), color);
+          if (ss->layer() > 0) {
+            tl_.Arrow(ss->time(), ss->layer()-1, color);
+          }
+        }
+      }
 
       HandleTimelineAction();
     }
     tl_.End();
+
+    // key bindings
+    const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    if (focused && !ImGui::IsAnyItemFocused()) {
+      if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+        if (cursor_ > 0) MoveCursorTo(cursor_-1);
+      } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+        MoveCursorTo(cursor_+1);
+      }
+    }
   }
   win_.End();
 }
-void TL::HandleTimelineAction() noexcept {
-  auto item = reinterpret_cast<TL::Item*>(tl_.actionTarget());
-  if (!item) return;
+void TL::UpdateLambdaSelector() noexcept {
+  const auto current_lambda =
+      lambda_? nf7::gui::GetParentContextDisplayName(*lambda_): "(unselected)";
+  if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
+    if (lambda_) {
+      if (ImGui::Selectable("detach from current lambda")) {
+        AttachLambda(nullptr);
+      }
+      ImGui::Separator();
+    }
+    for (const auto& wptr : lambdas_running_) {
+      auto ptr = wptr.lock();
+      if (!ptr) continue;
 
-  const auto& t = item->displayTiming();
+      const auto name = nf7::gui::GetParentContextDisplayName(*ptr);
+      if (ImGui::Selectable(name.c_str(), ptr == lambda_)) {
+        AttachLambda(ptr);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted("call stack:");
+        ImGui::Indent();
+        nf7::gui::ContextStack(*ptr);
+        ImGui::Unindent();
+        ImGui::EndTooltip();
+      }
+    }
+    ImGui::EndCombo();
+  }
+}
+void TL::HandleTimelineAction() noexcept {
+  auto       item          = reinterpret_cast<TL::Item*>(tl_.actionTarget());
+  const auto action_time   = tl_.actionTime();
+  const auto action_time_i = static_cast<int64_t>(action_time);
+
   switch (tl_.action()) {
   case tl_.kSelect:
+    assert(item);
     item->Select();
     break;
 
   case tl_.kResizeBegin:
+    assert(item);
     ResizeDisplayTimingOfSelected(
-        static_cast<int64_t>(tl_.gripTime()) - static_cast<int64_t>(t.begin()), 0);
+        action_time_i - static_cast<int64_t>(item->displayTiming().begin()),
+        0);
     break;
   case tl_.kResizeEnd:
+    assert(item);
     ResizeDisplayTimingOfSelected(
-        0, static_cast<int64_t>(tl_.gripTime()+t.dur()) - static_cast<int64_t>(t.end()));
+        0,
+        action_time_i +
+        static_cast<int64_t>(item->displayTiming().dur()) -
+        static_cast<int64_t>(item->displayTiming().end()));
     break;
   case tl_.kResizeBeginDone:
   case tl_.kResizeEndDone:
+    assert(item);
     ExecApplyTimingOfSelected();
     break;
 
   case tl_.kMove:
+    assert(item);
     MoveDisplayTimingOfSelected(
-        static_cast<int64_t>(tl_.gripTime()) - static_cast<int64_t>(t.begin()));
+        action_time_i - static_cast<int64_t>(item->displayTiming().begin()));
     if (auto layer = reinterpret_cast<TL::Layer*>(tl_.mouseLayer())) {
       MoveDisplayLayerOfSelected(
-          static_cast<int64_t>(layer->index()) - static_cast<int64_t>(item->displayLayer().index()));
+          static_cast<int64_t>(layer->index()) -
+          static_cast<int64_t>(item->displayLayer().index()));
     }
     break;
   case tl_.kMoveDone:
+    assert(item);
     ExecApplyTimingOfSelected();
     ExecApplyLayerOfSelected();
+    break;
+
+  case tl_.kSetTime:
+    MoveCursorTo(action_time);
     break;
 
   case tl_.kNone:
@@ -1097,6 +1521,36 @@ void TL::AddItemPopup::Update() noexcept {
       auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
       auto  ctx    = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
       owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
+    }
+    ImGui::EndPopup();
+  }
+}
+void TL::ConfigPopup::Update() noexcept {
+  if (Popup::Begin()) {
+    ImGui::TextUnformatted("Sequencer/Timeline: updating config...");
+    ImGui::InputTextMultiline("inputs", &inputs_);
+    ImGui::InputTextMultiline("outputs", &outputs_);
+
+    if (ImGui::Button("ok")) {
+      try {
+        auto i = ParseSocketSpecifier(inputs_);
+        auto o = ParseSocketSpecifier(outputs_);
+        ImGui::CloseCurrentPopup();
+
+        auto ctx = std::make_shared<nf7::GenericContext>(
+            *owner_, "updating Sequencer/Timeline config");
+        owner_->env().ExecMain(ctx, [f = owner_, i = std::move(i), o = std::move(o)]() {
+          f->seq_inputs_  = std::move(i);
+          f->seq_outputs_ = std::move(o);
+          f->ApplySeqSocketChanges();
+        });
+      } catch (nf7::Exception& e) {
+        error_ = e.msg();
+      }
+    }
+    if (error_.size() > 0) {
+      ImGui::Bullet();
+      ImGui::TextUnformatted(error_.c_str());
     }
     ImGui::EndPopup();
   }
