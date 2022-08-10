@@ -217,8 +217,8 @@ class File::NotImplementedException : public Exception {
 class Context {
  public:
   Context() = delete;
-  Context(File&) noexcept;
-  Context(Env&, File::Id) noexcept;
+  Context(File&, const std::shared_ptr<Context>& = nullptr) noexcept;
+  Context(Env&, File::Id, const std::shared_ptr<Context>& = nullptr) noexcept;
   virtual ~Context() noexcept;
 
   virtual void CleanUp() noexcept { }
@@ -229,17 +229,14 @@ class Context {
 
   Env& env() const noexcept { return *env_; }
   File::Id initiator() const noexcept { return initiator_; }
-  std::span<const std::weak_ptr<Context>> children() const noexcept { return children_; }
-
- protected:
-  void AddChild(const std::shared_ptr<Context>&) noexcept;
+  std::shared_ptr<Context> parent() const noexcept { return parent_.lock(); }
 
  private:
   Env* const env_;
 
   const File::Id initiator_;
 
-  std::vector<std::weak_ptr<Context>> children_;
+  const std::weak_ptr<Context> parent_;
 };
 
 class Env {
@@ -280,10 +277,6 @@ class Env {
   friend class nf7::File;
   virtual File::Id AddFile(File&) noexcept = 0;
   virtual void RemoveFile(File::Id) noexcept = 0;
-
-  friend class nf7::Context;
-  virtual void AddContext(Context&) noexcept = 0;
-  virtual void RemoveContext(Context&) noexcept = 0;
 
   virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
   virtual void RemoveWatcher(Watcher&) noexcept = 0;

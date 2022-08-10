@@ -150,13 +150,6 @@ class Env final : public nf7::Env {
     files_.erase(id);
   }
 
-  void AddContext(Context& ctx) noexcept override {
-    ctxs_.push_back(&ctx);
-  }
-  void RemoveContext(Context& ctx) noexcept override {
-    ctxs_.erase(std::remove(ctxs_.begin(), ctxs_.end(), &ctx), ctxs_.end());
-  }
-
   void AddWatcher(File::Id id, Watcher& w) noexcept override {
     watchers_map_[id].push_back(&w);
     watchers_rmap_[&w].push_back(id);
@@ -177,8 +170,6 @@ class Env final : public nf7::Env {
 
   File::Id file_next_ = 1;
   std::unordered_map<File::Id, File*> files_;
-
-  std::vector<Context*> ctxs_;
 
   std::unordered_map<File::Id, std::vector<Watcher*>> watchers_map_;
   std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;

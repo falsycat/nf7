@@ -212,17 +212,13 @@ void File::Path::Validate() const {
   for (const auto& term : terms_) ValidateTerm(term);
 }
 
-Context::Context(File& f) noexcept : Context(f.env(), f.id()) {
+Context::Context(File& f, const std::shared_ptr<Context>& parent) noexcept :
+    Context(f.env(), f.id(), parent) {
 }
-Context::Context(Env& env, File::Id initiator) noexcept :
-    env_(&env), initiator_(initiator) {
-  env_->AddContext(*this);
+Context::Context(Env& env, File::Id initiator, const std::shared_ptr<Context>& parent) noexcept :
+    env_(&env), initiator_(initiator), parent_(parent) {
 }
 Context::~Context() noexcept {
-  env_->RemoveContext(*this);
-}
-void Context::AddChild(const std::shared_ptr<Context>& ctx) noexcept {
-  children_.emplace_back(ctx);
 }
 
 void Env::Push(Env& env) noexcept {
