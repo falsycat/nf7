@@ -11,7 +11,7 @@
 
 #include "nf7.hh"
 
-#include "common/lambda.hh"
+#include "common/value.hh"
 
 
 namespace nf7 {
@@ -19,6 +19,7 @@ namespace nf7 {
 class Node : public File::Interface {
  public:
   class Editor;
+  class Lambda;
 
   enum Flag : uint8_t {
     kUI   = 1 << 0,  // UpdateNode() is called to display node
@@ -32,9 +33,7 @@ class Node : public File::Interface {
   Node& operator=(const Node&) = default;
   Node& operator=(Node&&) = default;
 
-  // Node* is a dummy parameter to avoid issues of multi inheritance.
-  virtual std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, Node* = nullptr) noexcept = 0;
+  virtual std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept = 0;
 
   virtual void UpdateNode(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }
@@ -61,7 +60,7 @@ class Node::Editor {
   Editor& operator=(Editor&&) = delete;
 
   virtual void Emit(Node&, std::string_view, nf7::Value&&) noexcept = 0;
-  virtual std::shared_ptr<nf7::Lambda> GetLambda(Node& node) noexcept = 0;
+  virtual std::shared_ptr<Lambda> GetLambda(Node& node) noexcept = 0;
 
   virtual void AddLink(Node& src_node, std::string_view src_name,
                        Node& dst_node, std::string_view dst_name) noexcept = 0;
@@ -70,6 +69,24 @@ class Node::Editor {
 
   virtual std::vector<std::pair<Node*, std::string>> GetSrcOf(Node&, std::string_view) const noexcept = 0;
   virtual std::vector<std::pair<Node*, std::string>> GetDstOf(Node&, std::string_view) const noexcept = 0;
+};
+
+class Node::Lambda : public nf7::Context {
+ public:
+  Lambda(nf7::File& f, const std::shared_ptr<Lambda>& parent = nullptr) noexcept :
+      Lambda(f.env(), f.id(), parent) {
+  }
+  Lambda(nf7::Env& env, nf7::File::Id id, const std::shared_ptr<Lambda>& parent = nullptr) noexcept :
+      Context(env, id, parent), parent_(parent) {
+  }
+
+  virtual void Handle(
+      std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept = 0;
+
+  std::shared_ptr<Lambda> parent() const noexcept { return parent_.lock(); }
+
+ private:
+  const std::weak_ptr<Lambda> parent_;
 };
 
 }  // namespace nf7

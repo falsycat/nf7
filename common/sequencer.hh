@@ -8,8 +8,6 @@
 
 #include "nf7.hh"
 
-#include "common/lambda.hh"
-
 
 namespace nf7 {
 
@@ -36,8 +34,7 @@ class Sequencer : public nf7::File::Interface {
   Sequencer& operator=(Sequencer&&) = delete;
 
   // Sequencer* is a dummy parameter to avoid issues of multi inheritance.
-  virtual std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, Sequencer* = nullptr) noexcept = 0;
+  virtual std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept = 0;
 
   virtual void UpdateItem(Editor&) noexcept { }
   virtual void UpdateTooltip(Editor&) noexcept { }

@@ -67,7 +67,6 @@ target_sources(nf7
     common/gui_timeline.cc
     common/gui_window.hh
     common/history.hh
-    common/lambda.hh
     common/lock.hh
     common/logger.hh
     common/logger_ref.hh

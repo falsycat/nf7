@@ -20,7 +20,6 @@
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
 #include "common/gui_dnd.hh"
-#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
@@ -86,8 +85,8 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
         std::vector<std::string>(input_), std::vector<std::string>(output_));
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -182,16 +181,16 @@ class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>
   }
 };
 
-class Node::Lambda final : public nf7::Lambda,
+class Node::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
-  Lambda(Node& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
-      nf7::Lambda(f, parent),
+  Lambda(Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+      nf7::Node::Lambda(f, parent),
       file_(&f), log_(f.log_), handler_(f.FetchHandler()) {
   }
 
   void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
     auto self = shared_from_this();
     handler_.ThenSub(self, [self, name = std::string(name), v, caller](auto) mutable {
       self->CallHandler({{std::move(name), std::move(v)}}, caller);
@@ -219,7 +218,7 @@ class Node::Lambda final : public nf7::Lambda,
 
 
   using Param = std::pair<std::string, nf7::Value>;
-  void CallHandler(std::optional<Param>&& p, const std::shared_ptr<nf7::Lambda>& caller) noexcept
+  void CallHandler(std::optional<Param>&& p, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept
   try {
     auto self = shared_from_this();
     th_.erase(
@@ -271,11 +270,11 @@ class Node::Lambda final : public nf7::Lambda,
     }
   }
 
-  void PushCaller(lua_State* L, const std::shared_ptr<nf7::Lambda>& caller) noexcept {
+  void PushCaller(lua_State* L, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept {
     constexpr auto kTypeName = "nf7::File/LuaJIT/Node::Owner";
     struct D final {
-      std::weak_ptr<nf7::Lambda>   self;
-      std::shared_ptr<nf7::Lambda> caller;
+      std::weak_ptr<Lambda>              self;
+      std::shared_ptr<nf7::Node::Lambda> caller;
     };
     new (lua_newuserdata(L, sizeof(D))) D { .self = weak_from_this(), .caller = caller };
 
@@ -314,9 +313,9 @@ class Node::Lambda final : public nf7::Lambda,
 };
 
 
-std::shared_ptr<nf7::Lambda> Node::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
-  return std::make_shared<Node::Lambda>(*this, parent);
+std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
+    const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
+  return std::make_shared<Lambda>(*this, parent);
 }
 nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
   if (handler_) return handler_;

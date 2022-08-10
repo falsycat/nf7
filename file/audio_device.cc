@@ -22,7 +22,6 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
-#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -76,8 +75,7 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return std::make_unique<Device>(env, Selector {selector_}, cfg_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -286,19 +284,19 @@ class Device::Ring final {
   std::atomic<uint64_t> time_ = 0;
 };
 
-class Device::PlaybackLambda final : public nf7::Lambda,
+class Device::PlaybackLambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Device::PlaybackLambda> {
  public:
   static inline const std::vector<std::string> kInputs  = {"get_info", "mix"};
   static inline const std::vector<std::string> kOutputs = {"info", "mixed_size"};
 
   PlaybackLambda() = delete;
-  PlaybackLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+  PlaybackLambda(Device& f, const std::shared_ptr<Lambda>& parent) noexcept :
       Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Lambda>& caller) noexcept override {
     if (name == "get_info") {
       caller->Handle("info", nf7::Value {info_}, shared_from_this());
       return;
@@ -325,19 +323,19 @@ class Device::PlaybackLambda final : public nf7::Lambda,
 
   uint64_t time_ = 0;
 };
-class Device::CaptureLambda final : public nf7::Lambda,
+class Device::CaptureLambda final : public nf7::Node::Lambda,
     std::enable_shared_from_this<Device::CaptureLambda> {
  public:
   static inline const std::vector<std::string> kInputs  = {"get_info", "peek"};
   static inline const std::vector<std::string> kOutputs = {"info", "samples"};
 
   CaptureLambda() = delete;
-  CaptureLambda(Device& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
+  CaptureLambda(Device& f, const std::shared_ptr<Lambda>& parent) noexcept :
       Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
   }
 
   void Handle(std::string_view name, const nf7::Value&,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Lambda>& caller) noexcept override {
     if (name == "get_info") {
       caller->Handle("info", nf7::Value {info_}, shared_from_this());
       return;
@@ -361,8 +359,7 @@ class Device::CaptureLambda final : public nf7::Lambda,
 
   std::optional<uint64_t> time_;
 };
-std::shared_ptr<nf7::Lambda> Device::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
+std::shared_ptr<Node::Lambda> Device::CreateLambda(const std::shared_ptr<Lambda>& parent) noexcept {
   switch (cfg_.deviceType) {
   case ma_device_type_playback:
     return std::make_shared<Device::PlaybackLambda>(*this, parent);

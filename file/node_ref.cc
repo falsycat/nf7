@@ -20,7 +20,6 @@
 #include "common/generic_type_info.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_node.hh"
-#include "common/lambda.hh"
 #include "common/logger_ref.hh"
 #include "common/memento.hh"
 #include "common/node.hh"
@@ -69,7 +68,8 @@ class Ref final : public nf7::File, public nf7::Node {
         std::vector<std::string>{input_}, std::vector<std::string>{output_});
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   void Handle(const Event& ev) noexcept {
     const auto& d = mem_.data();
@@ -161,18 +161,18 @@ class Ref final : public nf7::File, public nf7::Node {
   }
 };
 
-class Ref::Lambda final : public nf7::Lambda,
+class Ref::Lambda final : public Node::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
-  Lambda(Ref& f, const std::shared_ptr<nf7::Lambda>& parent) :
-      nf7::Lambda(f, parent), ref_(&f), log_(f.log_) {
+  Lambda(Ref& f, const std::shared_ptr<Node::Lambda>& parent) :
+      Node::Lambda(f, parent), ref_(&f), log_(f.log_) {
   }
 
   void Handle(std::string_view name, const Value& v,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
     if (!env().GetFile(initiator())) return;
 
-    auto parent = this->parent().lock();
+    auto parent = this->parent();
     if (!parent) return;
 
     if (caller == base_) {
@@ -190,11 +190,11 @@ class Ref::Lambda final : public nf7::Lambda,
   Ref* const ref_;
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::shared_ptr<nf7::Lambda> base_;
+  std::shared_ptr<Node::Lambda> base_;
 };
 
-std::shared_ptr<nf7::Lambda> Ref::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept
+std::shared_ptr<Node::Lambda> Ref::CreateLambda(
+    const std::shared_ptr<Node::Lambda>& parent) noexcept
 try {
   return std::make_shared<Ref::Lambda>(*this, parent);
 } catch (nf7::Exception& e) {

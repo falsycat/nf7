@@ -24,7 +24,6 @@
 #include "common/gui_popup.hh"
 #include "common/gui_timeline.hh"
 #include "common/gui_window.hh"
-#include "common/lambda.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/sequencer.hh"
@@ -52,8 +51,8 @@ class Null final : public nf7::File, public nf7::Sequencer {
     return std::make_unique<Null>(env);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Sequencer*) noexcept override {
+  std::shared_ptr<Sequencer::Lambda> CreateLambda(
+      const std::shared_ptr<Sequencer::Lambda>&) noexcept override {
     return nullptr;
   }
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -101,8 +100,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override;
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   void Handle(const Event& ev) noexcept;
   void Update() noexcept override;
@@ -477,15 +476,19 @@ class TL::Layer final {
 };
 
 
-class TL::Lambda final : public nf7::Lambda {
+class TL::Lambda final : public Node::Lambda {
  public:
   Lambda() = delete;
-  Lambda(TL& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
-      nf7::Lambda(f, parent) {
+  Lambda(TL& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
+      Node::Lambda(f, parent) {
+  }
+
+  void Handle(std::string_view, const nf7::Value&,
+              const std::shared_ptr<Node::Lambda>&) noexcept override {
   }
 };
-std::shared_ptr<nf7::Lambda> TL::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
+std::shared_ptr<Node::Lambda> TL::CreateLambda(
+    const std::shared_ptr<Node::Lambda>& parent) noexcept {
   return std::make_shared<TL::Lambda>(*this, parent);
 }
 

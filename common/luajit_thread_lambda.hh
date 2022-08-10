@@ -50,7 +50,7 @@ class Thread::Lambda final : public Thread::RegistryItem,
 
   class Receiver;
   std::shared_ptr<Receiver> recv_;
-  std::shared_ptr<nf7::Lambda> la_;
+  std::shared_ptr<Node::Lambda> la_;
 
 
   std::shared_ptr<Thread> GetThread(lua_State* L) {
@@ -67,18 +67,18 @@ class Thread::Lambda final : public Thread::RegistryItem,
 
 
 // Receives an output from targetted lambda and Resumes the Thread.
-class Thread::Lambda::Receiver final : public nf7::Lambda,
+class Thread::Lambda::Receiver final : public Node::Lambda,
     public std::enable_shared_from_this<Thread::Lambda::Receiver> {
  public:
   static constexpr size_t kMaxQueue = 1024;
 
   Receiver() = delete;
   Receiver(nf7::Env& env, nf7::File::Id id) noexcept :
-      nf7::Lambda(env, id, nullptr) {
+      Node::Lambda(env, id, nullptr) {
   }
 
   void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<nf7::Lambda>&) noexcept override {
+              const std::shared_ptr<Node::Lambda>&) noexcept override {
     values_.emplace_back(name, v);
     if (values_.size() > kMaxQueue) {
       values_.pop_front();

@@ -230,6 +230,7 @@ class Context {
   Env& env() const noexcept { return *env_; }
   File::Id initiator() const noexcept { return initiator_; }
   std::shared_ptr<Context> parent() const noexcept { return parent_.lock(); }
+  size_t depth() const noexcept { return depth_; }
 
  private:
   Env* const env_;
@@ -237,6 +238,8 @@ class Context {
   const File::Id initiator_;
 
   const std::weak_ptr<Context> parent_;
+
+  const size_t depth_;
 };
 
 class Env {

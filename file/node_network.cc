@@ -25,7 +25,6 @@
 #include "common/gui_file.hh"
 #include "common/gui_node.hh"
 #include "common/gui_window.hh"
-#include "common/lambda.hh"
 #include "common/memento.hh"
 #include "common/node.hh"
 #include "common/node_link_store.hh"
@@ -121,8 +120,8 @@ class Network final : public nf7::File,
   void UpdateNode(Node::Editor&) noexcept override;
   void Handle(const Event& ev) noexcept override;
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -332,21 +331,21 @@ class Network::Item::Watcher final : public nf7::Env::Watcher {
 // Builds and holds network information independently from Node/Network.
 // When it receives an input from outside or an output from Nodes in the network,
 // propagates it to appropriate Nodes.
-class Network::Lambda : public nf7::Lambda,
-    public std::enable_shared_from_this<Lambda> {
+class Network::Lambda : public Node::Lambda,
+    public std::enable_shared_from_this<Network::Lambda> {
  public:
-  Lambda(Network& f, const std::shared_ptr<nf7::Lambda>& parent = nullptr) noexcept :
-      nf7::Lambda(f, parent), net_(&f), root_(parent == nullptr) {
+  Lambda(Network& f, const std::shared_ptr<Node::Lambda>& parent = nullptr) noexcept :
+      Node::Lambda(f, parent), net_(&f), root_(parent == nullptr) {
   }
 
   void Handle(std::string_view name, const Value& v,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
     env().ExecSub(shared_from_this(), [this, name = std::string(name), v, caller]() mutable {
       if (abort_) return;
       if (!env().GetFile(initiator())) {
         return;  // net_ is expired
       }
-      auto parent = this->parent().lock();
+      auto parent = this->parent();
 
       // send input from outer to input handlers
       if (caller == parent) {
@@ -390,25 +389,25 @@ class Network::Lambda : public nf7::Lambda,
   }
 
   // Ensure that net_ is alive before calling
-  const std::shared_ptr<nf7::Lambda>& FindOrCreateLambda(ItemId id) noexcept
+  const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(ItemId id) noexcept
   try {
     return FindLambda(id);
   } catch (nf7::Exception&) {
     return CreateLambda(net_->GetItem(id));
   }
-  const std::shared_ptr<nf7::Lambda>& FindOrCreateLambda(const Item& item) noexcept
+  const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(const Item& item) noexcept
   try {
     return FindLambda(item.id());
   } catch (nf7::Exception&) {
     return CreateLambda(item);
   }
-  const std::shared_ptr<nf7::Lambda>& CreateLambda(const Item& item) noexcept {
+  const std::shared_ptr<Node::Lambda>& CreateLambda(const Item& item) noexcept {
     auto la = item.node().CreateLambda(shared_from_this());
     idmap_[la.get()] = item.id();
     auto [itr, added] = lamap_.emplace(item.id(), std::move(la));
     return itr->second;
   }
-  const std::shared_ptr<nf7::Lambda>& FindLambda(ItemId id) {
+  const std::shared_ptr<Node::Lambda>& FindLambda(ItemId id) {
     auto itr = lamap_.find(id);
     if (itr == lamap_.end()) {
       throw nf7::Exception {"lambda is not registered"};
@@ -434,8 +433,8 @@ class Network::Lambda : public nf7::Lambda,
   Network* const net_;
   bool root_;
 
-  std::unordered_map<ItemId, std::shared_ptr<nf7::Lambda>> lamap_;
-  std::unordered_map<nf7::Lambda*, ItemId> idmap_;
+  std::unordered_map<ItemId, std::shared_ptr<Node::Lambda>> lamap_;
+  std::unordered_map<Node::Lambda*, ItemId> idmap_;
 
   std::atomic<bool> abort_ = false;
 };
@@ -459,7 +458,7 @@ class Network::Editor final : public nf7::Node::Editor {
       sub->Handle(name, v, main);
     });
   }
-  std::shared_ptr<nf7::Lambda> GetLambda(Node& node) noexcept override {
+  std::shared_ptr<Node::Lambda> GetLambda(Node& node) noexcept override {
     try {
       const auto& la = lambda()->FindOrCreateLambda(owner_->GetItem(node));
       assert(la);
@@ -718,15 +717,15 @@ class Network::Initiator final : public Network::ChildNode,
     return std::make_unique<Initiator>(env, enable_auto_);
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
     // TODO: use enable_auto_ value
-    class Emitter final : public nf7::Lambda,
+    class Emitter final : public Node::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
-      using Lambda::Lambda;
+      using Node::Lambda::Lambda;
       void Handle(std::string_view, const Value&,
-                  const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+                  const std::shared_ptr<Node::Lambda>& caller) noexcept override {
         if (!std::exchange(done_, true)) {
           caller->Handle("out", nf7::Value::Pulse {}, shared_from_this());
         }
@@ -848,16 +847,16 @@ class Network::Input final : public Network::InputOrOutput,
     return std::make_unique<Input>(env, mem_.data());
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
-    class Emitter final : public nf7::Lambda,
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
+    class Emitter final : public Node::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
-      Emitter(Input& f, const std::shared_ptr<nf7::Lambda>& parent, std::string_view name) noexcept :
-          nf7::Lambda(f, parent), name_(name) {
+      Emitter(Input& f, const std::shared_ptr<Node::Lambda>& parent, std::string_view name) noexcept :
+          Node::Lambda(f, parent), name_(name) {
       }
       void Handle(std::string_view name, const Value& v,
-                  const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+                  const std::shared_ptr<Node::Lambda>& caller) noexcept override {
         if (name != name_) return;
         caller->Handle("out", v, shared_from_this());
       }
@@ -906,17 +905,17 @@ class Network::Output final : public Network::InputOrOutput,
     return std::make_unique<Output>(env, mem_.data());
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept override {
-    class Emitter final : public nf7::Lambda,
+  std::shared_ptr<Node::Lambda> CreateLambda(
+      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
+    class Emitter final : public Node::Lambda,
         public std::enable_shared_from_this<Emitter> {
      public:
       Emitter(Output& f, const std::shared_ptr<Network::Lambda>& parent, std::string_view name) noexcept :
-          Lambda(f, parent), name_(name) {
+          Node::Lambda(f, parent), name_(name) {
         assert(parent);
       }
       void Handle(std::string_view name, const Value& v,
-                  const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+                  const std::shared_ptr<Node::Lambda>& caller) noexcept override {
         if (name != "in") return;
         caller->Handle(name_, std::move(v), shared_from_this());
       }
@@ -990,8 +989,8 @@ try {
 } catch (Exception&) {
   return nullptr;
 }
-std::shared_ptr<nf7::Lambda> Network::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
+std::shared_ptr<Node::Lambda> Network::CreateLambda(
+    const std::shared_ptr<Node::Lambda>& parent) noexcept {
   auto ret = std::make_shared<Network::Lambda>(*this, parent);
   lambdas_running_.emplace_back(ret);
   return ret;
@@ -1355,7 +1354,7 @@ void Network::Update() noexcept {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted("call stack:");
             ImGui::Indent();
-            for (auto p = ptr->parent().lock(); p; p = p->parent().lock()) {
+            for (auto p = ptr->parent(); p; p = p->parent()) {
               auto f = env().GetFile(p->initiator());
 
               const auto path = f? f->abspath().Stringify(): "[missing file]";

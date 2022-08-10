@@ -76,8 +76,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return std::make_unique<Imm>(env, data.type, nf7::Value{data.value});
   }
 
-  std::shared_ptr<nf7::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Lambda>&, nf7::Node*) noexcept override;
+  std::shared_ptr<Node::Lambda> CreateLambda(const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   void UpdateNode(Node::Editor&) noexcept override;
 
@@ -116,15 +115,15 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 };
 
-class Imm::Lambda final : public nf7::Lambda,
+class Imm::Lambda final : public Node::Lambda,
     public std::enable_shared_from_this<Imm::Lambda> {
  public:
-  Lambda(Imm& f, const std::shared_ptr<nf7::Lambda>& parent) noexcept :
-      nf7::Lambda(f, parent), imm_(&f) {
+  Lambda(Imm& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
+      Node::Lambda(f, parent), imm_(&f) {
   }
 
   void Handle(std::string_view name, const nf7::Value&,
-              const std::shared_ptr<nf7::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
     if (name == "in") {
       if (!env().GetFile(initiator())) return;
       caller->Handle("out", imm_->mem_.data().value, shared_from_this());
@@ -135,8 +134,8 @@ class Imm::Lambda final : public nf7::Lambda,
  private:
   Imm* const imm_;
 };
-std::shared_ptr<nf7::Lambda> Imm::CreateLambda(
-    const std::shared_ptr<nf7::Lambda>& parent, nf7::Node*) noexcept {
+std::shared_ptr<Node::Lambda> Imm::CreateLambda(
+    const std::shared_ptr<Node::Lambda>& parent) noexcept {
   return std::make_shared<Imm::Lambda>(*this, parent);
 }
 
