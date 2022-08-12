@@ -10,8 +10,7 @@
 
 namespace nf7 {
 
-template <typename T>
-class GenericHistory : public History {
+class GenericHistory : public nf7::History {
  public:
   GenericHistory() = default;
   GenericHistory(const GenericHistory&) = delete;
@@ -19,7 +18,7 @@ class GenericHistory : public History {
   GenericHistory& operator=(const GenericHistory&) = delete;
   GenericHistory& operator=(GenericHistory&&) = default;
 
-  T& Add(std::unique_ptr<T>&& cmd) noexcept {
+  Command& Add(std::unique_ptr<Command>&& cmd) noexcept override {
     cmds_.erase(cmds_.begin()+static_cast<intmax_t>(cursor_), cmds_.end());
     cmds_.push_back(std::move(cmd));
     cursor_++;
@@ -40,15 +39,15 @@ class GenericHistory : public History {
     ++cursor_;
   }
 
-  T* prev() const noexcept {
+  Command* prev() const noexcept {
     return cursor_ > 0? cmds_[cursor_-1].get(): nullptr;
   }
-  T* next() const noexcept {
+  Command* next() const noexcept {
     return cursor_ < cmds_.size()? cmds_[cursor_].get(): nullptr;
   }
 
  private:
-  std::vector<std::unique_ptr<T>> cmds_;
+  std::vector<std::unique_ptr<Command>> cmds_;
 
   size_t cursor_ = 0;
 };

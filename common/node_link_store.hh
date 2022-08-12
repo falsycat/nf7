@@ -63,7 +63,7 @@ class NodeLinkStore {
     links_.erase(std::remove(links_.begin(), links_.end(), lk), links_.end());
   }
 
-  inline std::unique_ptr<History::Command> CreateCommandToRemoveExpired(
+  inline std::unique_ptr<nf7::History::Command> CreateCommandToRemoveExpired(
       uint64_t id, std::span<const std::string> in, std::span<const std::string> out) noexcept;
 
   std::span<const Link> items() const noexcept { return links_; }
@@ -104,9 +104,9 @@ class NodeLinkStore::SwapCommand : public History::Command {
 };
 
 
-std::unique_ptr<History::Command> NodeLinkStore::CreateCommandToRemoveExpired(
+std::unique_ptr<nf7::History::Command> NodeLinkStore::CreateCommandToRemoveExpired(
     uint64_t id, std::span<const std::string> in, std::span<const std::string> out) noexcept {
-  std::vector<std::unique_ptr<History::Command>> cmds;
+  std::vector<std::unique_ptr<nf7::History::Command>> cmds;
   for (const auto& lk : links_) {
     const bool rm =
         (lk.src_id == id && std::find(out.begin(), out.end(), lk.src_name) == out.end()) ||
@@ -114,7 +114,7 @@ std::unique_ptr<History::Command> NodeLinkStore::CreateCommandToRemoveExpired(
     if (rm) cmds.push_back(SwapCommand::CreateToRemove(*this, Link(lk)));
   }
   if (cmds.empty()) return nullptr;
-  return std::make_unique<AggregateCommand<History::Command>>(std::move(cmds));
+  return std::make_unique<nf7::AggregateCommand>(std::move(cmds));
 }
 
 }  // namespace nf7

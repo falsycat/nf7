@@ -130,7 +130,7 @@ class Network final : public nf7::File,
  private:
   ItemId next_ = 1;
 
-  nf7::SquashedHistory<nf7::History::Command> history_;
+  nf7::SquashedHistory history_;
 
   std::unordered_map<ItemId,      Item*> item_map_;
   std::unordered_map<const Node*, Item*> node_map_;

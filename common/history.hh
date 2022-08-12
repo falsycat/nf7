@@ -1,6 +1,9 @@
 #pragma once
 
+#include <memory>
+
 #include "nf7.hh"
+
 
 namespace nf7 {
 
@@ -15,6 +18,8 @@ class History {
   History(History&&) = delete;
   History& operator=(const History&) = delete;
   History& operator=(History&&) = delete;
+
+  virtual Command& Add(std::unique_ptr<Command>&&) noexcept = 0;
 
   virtual void UnDo() = 0;
   virtual void ReDo() = 0;

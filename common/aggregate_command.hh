@@ -9,10 +9,9 @@
 
 namespace nf7 {
 
-template <typename T = History::Command>
-class AggregateCommand : public T {
+class AggregateCommand : public nf7::History::Command {
  public:
-  using CommandList = std::vector<std::unique_ptr<T>>;
+  using CommandList = std::vector<std::unique_ptr<Command>>;
 
   AggregateCommand(CommandList&& commands) noexcept :
       commands_(std::move(commands)) {
@@ -67,7 +66,7 @@ class AggregateCommand : public T {
     }
   }
 
-  std::span<const std::unique_ptr<T>> commands() const noexcept { return commands_; }
+  std::span<const std::unique_ptr<Command>> commands() const noexcept { return commands_; }
 
  private:
   CommandList commands_;

@@ -103,7 +103,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
  private:
-  nf7::SquashedHistory<History::Command> history_;
+  nf7::SquashedHistory history_;
 
   std::shared_ptr<TL::Lambda> lambda_;
   std::vector<std::weak_ptr<TL::Lambda>> lambdas_running_;
