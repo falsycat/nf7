@@ -70,14 +70,13 @@ void File::MakeAsRoot() noexcept {
 }
 void File::Isolate() noexcept {
   assert(id_ != 0);
-  const auto pid = id_;
+
+  Handle({ .id = id_, .type = File::Event::kRemove });
 
   env_->RemoveFile(id_);
   id_     = 0;
   parent_ = nullptr;
   name_   = "";
-
-  Handle({ .id = pid, .type = File::Event::kRemove });
 }
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;

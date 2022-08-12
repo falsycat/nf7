@@ -28,6 +28,7 @@
 
 
 namespace nf7 {
+namespace {
 
 class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
@@ -247,4 +248,5 @@ void Imm::ChangeType(Type t) noexcept {
   }
 }
 
+}
 }  // namespace nf7
