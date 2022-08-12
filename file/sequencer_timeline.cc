@@ -29,62 +29,19 @@
 #include "common/gui_popup.hh"
 #include "common/gui_timeline.hh"
 #include "common/gui_window.hh"
+#include "common/memento.hh"
+#include "common/memento_recorder.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/sequencer.hh"
 #include "common/squashed_history.hh"
 #include "common/yas_nf7.hh"
 
-#include <thread>
-
 
 using namespace std::literals;
 
 namespace nf7 {
 namespace {
-
-// TODO: for test use
-class Null final : public nf7::File, public nf7::Sequencer {
- public:
-  static inline const nf7::GenericTypeInfo<Null> kType =
-      {"Sequencer/Null", {"Sequencer"}};
-  Null(Env& env) noexcept :
-      File(kType, env), Sequencer(Sequencer::kTooltip) {
-  }
-
-  Null(Env& env, Deserializer&) : Null(env) {
-  }
-  void Serialize(Serializer&) const noexcept override {
-  }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Null>(env);
-  }
-
-  std::shared_ptr<Sequencer::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Context>& parent) noexcept override {
-    class Emitter final : public Sequencer::Lambda,
-        public std::enable_shared_from_this<Emitter> {
-     public:
-      using Sequencer::Lambda::Lambda;
-
-      void Run(const std::shared_ptr<Sequencer::Session>& ss) noexcept override {
-        env().ExecAsync(shared_from_this(), [ss]() {
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-          ss->Finish();
-        });
-      }
-    };
-    return std::make_shared<Emitter>(*this, parent);
-  }
-  File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::Sequencer>(t).Select(this);
-  }
-
-  void UpdateTooltip(Sequencer::Editor&) noexcept override {
-    ImGui::Text("hello");
-  }
-};
-
 
 class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
@@ -103,6 +60,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   class Session;
   class Lambda;
+
+  class ConfigModifyCommand;
 
   using ItemId = uint64_t;
 
@@ -226,12 +185,12 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void MoveDisplayLayerOfSelected(int64_t diff) noexcept;
 
   // history
-  void ExecUnDo() {
+  void ExecUnDo() noexcept {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting commands to undo"),
         [this]() { history_.UnDo(); });
   }
-  void ExecReDo() {
+  void ExecReDo() noexcept {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "applying commands to redo"),
         [this]() { history_.ReDo(); });
@@ -247,7 +206,6 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
     input_  = seq_inputs_;
     output_ = seq_outputs_;
     output_.push_back("_cursor");
-    Touch();
   }
   static std::vector<std::string> ParseSocketSpecifier(std::string_view names) {
     const auto n = names.size();
@@ -330,12 +288,14 @@ struct TL::Timing {
 };
 
 
-class TL::Item final {
+class TL::Item final : nf7::Env::Watcher {
  public:
   Item() = delete;
   Item(ItemId id, std::unique_ptr<nf7::File>&& f, const Timing& t) :
+      Watcher(f->env()),
       id_(id), file_(std::move(f)),
       seq_(&file_->interfaceOrThrow<nf7::Sequencer>()),
+      mem_(f->interface<nf7::Memento>()),
       timing_(t), display_timing_(t) {
   }
   Item(const Item&) = delete;
@@ -363,6 +323,7 @@ class TL::Item final {
     owner_ = &f;
     MoveTo(layer);
     file_->MoveUnder(f, std::to_string(id_));
+    Watch(file_->id()); 
   }
   void Detach() noexcept {
     assert(owner_);
@@ -408,11 +369,27 @@ class TL::Item final {
   ItemId id_;
   std::unique_ptr<nf7::File> file_;
   nf7::Sequencer* const seq_;
+  nf7::MementoRecorder  mem_;
 
   Timing timing_;
 
   Timing display_timing_;
   TL::Layer* display_layer_ = nullptr;
+
+  void Handle(const nf7::File::Event& ev) noexcept override {
+    switch (ev.type) {
+    case nf7::File::Event::kUpdate:
+      if (owner_) {
+        if (auto cmd = mem_.CreateCommandIf()) {
+          owner_->history_.Add(std::move(cmd));
+        }
+      }
+      break;
+
+    default:
+      break;
+    }
+  }
 };
 
 
@@ -1156,6 +1133,65 @@ void TL::MoveDisplayLayerOfSelected(int64_t diff) noexcept {
 }
 
 
+class TL::ConfigModifyCommand final : public nf7::History::Command {
+ public:
+  struct Builder final {
+   public:
+    Builder(TL& f) noexcept :
+        prod_(std::make_unique<ConfigModifyCommand>(f)) {
+    }
+
+    Builder& length(uint64_t v) noexcept {
+      prod_->length_ = v;
+      return *this;
+    }
+    Builder& inputs(std::vector<std::string>&& v) noexcept {
+      prod_->seq_inputs_ = std::move(v);
+      return *this;
+    }
+    Builder& outputs(std::vector<std::string>&& v) noexcept {
+      prod_->seq_outputs_ = std::move(v);
+      return *this;
+    }
+
+    std::unique_ptr<ConfigModifyCommand> Build() noexcept {
+      return std::move(prod_);
+    }
+
+   private:
+    std::unique_ptr<ConfigModifyCommand> prod_;
+  };
+
+  ConfigModifyCommand(TL& f) noexcept : owner_(&f) {
+  }
+
+  void Apply() override { Exec(); }
+  void Revert() override { Exec(); }
+
+ private:
+  TL* const owner_;
+
+  std::optional<uint64_t> length_;
+  std::optional<std::vector<std::string>> seq_inputs_, seq_outputs_;
+
+  void Exec() noexcept {
+    if (length_) {
+      std::swap(owner_->length_, *length_);
+    }
+    if (seq_inputs_) {
+      std::swap(owner_->seq_inputs_, *seq_inputs_);
+    }
+    if (seq_outputs_) {
+      std::swap(owner_->seq_outputs_, *seq_outputs_);
+    }
+
+    if (seq_inputs_ || seq_outputs_) {
+      owner_->ApplySeqSocketChanges();
+    }
+  }
+};
+
+
 std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   std::vector<std::unique_ptr<TL::Layer>> layers;
   layers.reserve(layers_.size());
@@ -1199,7 +1235,10 @@ void TL::Update() noexcept {
 
   UpdateEditorWindow();
 
-  history_.Squash();
+  if (history_.Squash()) {
+    env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
+                   [this]() { Touch(); });
+  }
 }
 void TL::UpdateMenu() noexcept {
   ImGui::MenuItem("Editor", nullptr, &win_.shown());
@@ -1533,17 +1572,14 @@ void TL::ConfigPopup::Update() noexcept {
 
     if (ImGui::Button("ok")) {
       try {
-        auto i = ParseSocketSpecifier(inputs_);
-        auto o = ParseSocketSpecifier(outputs_);
+        auto cmd = ConfigModifyCommand::Builder(*owner_).
+            inputs(ParseSocketSpecifier(inputs_)).
+            outputs(ParseSocketSpecifier(outputs_)).
+            Build();
         ImGui::CloseCurrentPopup();
 
-        auto ctx = std::make_shared<nf7::GenericContext>(
-            *owner_, "updating Sequencer/Timeline config");
-        owner_->env().ExecMain(ctx, [f = owner_, i = std::move(i), o = std::move(o)]() {
-          f->seq_inputs_  = std::move(i);
-          f->seq_outputs_ = std::move(o);
-          f->ApplySeqSocketChanges();
-        });
+        auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "updating config");
+        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
       } catch (nf7::Exception& e) {
         error_ = e.msg();
       }
