@@ -76,6 +76,9 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
       popup_add_item_(*this), popup_config_(*this) {
     ApplySeqSocketChanges();
   }
+  ~TL() noexcept {
+    history_.Clear();
+  }
 
   void SetUpAfterDeserialize();
   TL(Env& env, Deserializer& ar) : TL(env) {
@@ -679,21 +682,18 @@ class TL::Session final : public Sequencer::Session,
       time_(time), vars_(vars) {
   }
 
-  const nf7::Value& Peek(std::string_view name) override {
+  const nf7::Value* Peek(std::string_view name) noexcept override {
     auto itr = vars_.find(std::string {name});
-    if (itr == vars_.end()) {
-      throw UnknownNameException {std::string {name}+" is unknown"};
-    }
-    return itr->second;
+    return itr != vars_.end()? &itr->second: nullptr;
   }
-  nf7::Value Receive(std::string_view name) override {
+  std::optional<nf7::Value> Receive(std::string_view name) noexcept override {
     auto itr = vars_.find(std::string {name});
     if (itr == vars_.end()) {
-      throw UnknownNameException {std::string {name}+" is unknown"};
+      return std::nullopt;
     }
     auto ret = std::move(itr->second);
     vars_.erase(itr);
-    return std::move(itr->second);
+    return ret;
   }
 
   void Send(std::string_view name, nf7::Value&& v) noexcept override {

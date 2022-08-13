@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "nf7.hh"
@@ -72,9 +74,21 @@ class Sequencer::Session {
   Session& operator=(const Session&) = delete;
   Session& operator=(Session&&) = delete;
 
-  // these can throw UnknownNameException
-  virtual const nf7::Value& Peek(std::string_view) = 0;
-  virtual nf7::Value Receive(std::string_view) = 0;
+  virtual const nf7::Value* Peek(std::string_view) noexcept = 0;
+  virtual std::optional<nf7::Value> Receive(std::string_view) noexcept = 0;
+
+  const nf7::Value& PeekOrThrow(std::string_view name) {
+    if (auto v = Peek(name)) {
+      return *v;
+    }
+    throw UnknownNameException {std::string {name}+" is unknown"};
+  }
+  nf7::Value ReceiveOrThrow(std::string_view name) {
+    if (auto v = Receive(name)) {
+      return std::move(*v);
+    }
+    throw UnknownNameException {std::string {name}+" is unknown"};
+  }
 
   virtual void Send(std::string_view, nf7::Value&&) noexcept = 0;
 
