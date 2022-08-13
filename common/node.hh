@@ -73,20 +73,21 @@ class Node::Editor {
 
 class Node::Lambda : public nf7::Context {
  public:
-  Lambda(nf7::File& f, const std::shared_ptr<Lambda>& parent = nullptr) noexcept :
+  Lambda(nf7::File& f, const std::shared_ptr<nf7::Context>& parent = nullptr) noexcept :
       Lambda(f.env(), f.id(), parent) {
   }
-  Lambda(nf7::Env& env, nf7::File::Id id, const std::shared_ptr<Lambda>& parent = nullptr) noexcept :
-      Context(env, id, parent), parent_(parent) {
+  Lambda(nf7::Env& env, nf7::File::Id id, const std::shared_ptr<nf7::Context>& parent = nullptr) noexcept :
+      Context(env, id, parent),
+      parent_(std::dynamic_pointer_cast<Node::Lambda>(parent)) {
   }
 
   virtual void Handle(
       std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept = 0;
 
-  std::shared_ptr<Lambda> parent() const noexcept { return parent_.lock(); }
+  std::shared_ptr<Node::Lambda> parent() const noexcept { return parent_.lock(); }
 
  private:
-  const std::weak_ptr<Lambda> parent_;
+  std::weak_ptr<Node::Lambda> parent_;
 };
 
 }  // namespace nf7
