@@ -101,6 +101,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void UpdateLambdaSelector() noexcept;
   void HandleTimelineAction() noexcept;
 
+  void UpdateParamPanelWindow() noexcept;
+
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
   }
@@ -171,6 +173,9 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
 
   // GUI temporary params
+  bool      param_panel_request_focus_ = false;
+  TL::Item* param_panel_target_        = nullptr;
+
   std::unordered_set<TL::Item*> selected_;
 
 
@@ -206,7 +211,9 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   // socket operation
   void ApplySeqSocketChanges() noexcept {
-    input_  = seq_inputs_;
+    input_ = seq_inputs_;
+    input_.push_back("_exec");
+
     output_ = seq_outputs_;
     output_.push_back("_cursor");
   }
@@ -643,6 +650,7 @@ class TL::Lambda final : public Node::Lambda,
     aborted_ = true;
   }
 
+  bool aborted() const noexcept { return aborted_; }
   std::span<const std::weak_ptr<TL::Session>> sessions() const noexcept {
     return sessions_;
   }
@@ -701,16 +709,21 @@ class TL::Session final : public Sequencer::Session,
   }
 
   void StartNext() noexcept {
-    auto leader = leader_.lock();
+    auto leader    = leader_.lock();
+    auto initiator = initiator_.lock();
+
+    if (!initiator || initiator->aborted()) {
+      return;
+    }
 
     uint64_t layer_until = UINT64_MAX;
     if (leader && !leader->done_) {
-      layer_until = leader->layer_;
+      layer_until = leader->layer_? leader->layer_-1: 0;
     } else {
       leader = nullptr;
     }
 
-    auto [item, lambda] = initiator_->GetNext(layer_, layer_until, time_);
+    auto [item, lambda] = initiator->GetNext(layer_, layer_until, time_);
     if (item) {
       assert(lambda);
 
@@ -729,7 +742,7 @@ class TL::Session final : public Sequencer::Session,
 
     } else {
       done_ = true;
-      initiator_->EmitResults(vars_);
+      initiator->EmitResults(vars_);
     }
 
     if (auto follower = std::exchange(follower_, nullptr)) {
@@ -737,8 +750,10 @@ class TL::Session final : public Sequencer::Session,
     }
   }
   void Finish() noexcept override {
-    auto self = shared_from_this();
-    env_->ExecSub(initiator_, [self]() { self->StartNext(); });
+    if (auto initiator = initiator_.lock()) {
+      auto self = shared_from_this();
+      env_->ExecSub(initiator, [self]() { self->StartNext(); });
+    }
   }
 
   const Info& info() const noexcept override { return info_; }
@@ -752,7 +767,7 @@ class TL::Session final : public Sequencer::Session,
   nf7::Env* const env_;
   std::chrono::system_clock::time_point last_active_;
 
-  std::shared_ptr<TL::Lambda> initiator_;
+  std::weak_ptr<TL::Lambda> initiator_;
 
   std::weak_ptr<Session>   leader_;
   std::shared_ptr<Session> follower_;
@@ -766,7 +781,7 @@ class TL::Session final : public Sequencer::Session,
 };
 void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
                         const std::shared_ptr<Node::Lambda>&) noexcept {
-  if (name == "exec") {
+  if (name == "_exec") {
     if (!env().GetFile(initiator())) return;
     const auto t_max = owner_->length_-1;
 
@@ -1234,6 +1249,7 @@ void TL::Update() noexcept {
   popup_config_.Update();
 
   UpdateEditorWindow();
+  UpdateParamPanelWindow();
 
   if (history_.Squash()) {
     env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
@@ -1393,6 +1409,9 @@ void TL::HandleTimelineAction() noexcept {
   case tl_.kSelect:
     assert(item);
     item->Select();
+    if (item != std::exchange(param_panel_target_, item)) {
+      param_panel_request_focus_ = true;
+    }
     break;
 
   case tl_.kResizeBegin:
@@ -1438,6 +1457,29 @@ void TL::HandleTimelineAction() noexcept {
   case tl_.kNone:
     break;
   }
+}
+
+void TL::UpdateParamPanelWindow() noexcept {
+  if (!win_.shown()) return;
+
+  const auto name = abspath().Stringify() + " | Parameter Panel";
+
+  if (std::exchange(param_panel_request_focus_, false)) {
+    ImGui::SetNextWindowFocus();
+  }
+  if (ImGui::Begin(name.c_str())) {
+    if (auto item = param_panel_target_) {
+      if (item->seq().flags() & Sequencer::kParamPanel) {
+        TL::Editor ed {*item};
+        item->seq().UpdateParamPanel(ed);
+      } else {
+        ImGui::TextUnformatted("item doesn't have parameter panel");
+      }
+    } else {
+      ImGui::TextUnformatted("no item selected");
+    }
+  }
+  ImGui::End();
 }
 
 void TL::Layer::UpdateHeader(size_t idx) noexcept {

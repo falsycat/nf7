@@ -24,8 +24,9 @@ class Sequencer : public nf7::File::Interface {
   enum Flag : uint8_t {
     kNone = 0,
     kCustomItem = 1 << 0,  // uses UpdateItem() to draw an item on timeline if enable
-    kTooltip    = 1 << 1,
-    kMenu       = 1 << 2,
+    kParamPanel = 1 << 1,
+    kTooltip    = 1 << 2,
+    kMenu       = 1 << 3,
   };
   using Flags = uint8_t;
 
@@ -41,6 +42,7 @@ class Sequencer : public nf7::File::Interface {
       const std::shared_ptr<nf7::Context>&) noexcept = 0;
 
   virtual void UpdateItem(Editor&) noexcept { }
+  virtual void UpdateParamPanel(Editor&) noexcept { }
   virtual void UpdateTooltip(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }
 
