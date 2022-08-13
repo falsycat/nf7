@@ -10,7 +10,8 @@ namespace nf7 {
 
 class MementoRecorder final {
  public:
-  MementoRecorder(nf7::Memento* mem) noexcept : mem_(mem) {
+  MementoRecorder(nf7::Memento* mem) noexcept :
+      mem_(mem), tag_(mem? mem->Save(): nullptr) {
   }
   MementoRecorder(const MementoRecorder&) = delete;
   MementoRecorder(MementoRecorder&&) = delete;
