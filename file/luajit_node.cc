@@ -280,13 +280,18 @@ class Node::Lambda final : public nf7::Node::Lambda,
 
     if (luaL_newmetatable(L, kTypeName)) {
       lua_pushcfunction(L, [](auto L) {
-        const auto& d    = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
-        const auto  name = luaL_checkstring(L, 2);
+        const auto& d = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
 
         auto self = d.self.lock();
         if (!self) return luaL_error(L, "context expired");
 
-        d.caller->Handle(name, nf7::luajit::CheckValue(L, 3), self);
+        std::string n = luaL_checkstring(L, 2);
+        auto        v = nf7::luajit::CheckValue(L, 3);
+
+        auto caller = d.caller;
+        caller->env().ExecSub(self, [self, caller, n, v]() mutable {
+          caller->Handle(n, std::move(v), self);
+        });
         return 0;
       });
       lua_setfield(L, -2, "__call");

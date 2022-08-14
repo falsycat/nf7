@@ -121,7 +121,8 @@ class Call::Lambda final : public nf7::Sequencer::Lambda,
       Sequencer::Lambda(f, ctx), file_(f.life_) {
   }
 
-  void Run(const std::shared_ptr<Sequencer::Session>& ss) noexcept;
+  void Run(const std::shared_ptr<Sequencer::Session>& ss) noexcept override;
+  void Abort() noexcept override;
 
  private:
   nf7::Life<Call>::Ref file_;
@@ -130,16 +131,13 @@ class Call::Lambda final : public nf7::Sequencer::Lambda,
 
   nf7::Node* cached_node_ = nullptr;
   std::shared_ptr<Node::Lambda> la_;
+
+  bool abort_ = false;
 };
 class Call::SessionLambda final : public nf7::Node::Lambda {
  public:
   SessionLambda(Call& f, const std::shared_ptr<Call::Lambda>& parent) noexcept :
       nf7::Node::Lambda(f, parent) {
-  }
-  ~SessionLambda() noexcept {
-    if (ss_ && expects_.size() > 0) {
-      ss_->Finish();
-    }
   }
 
   void Listen(Call& f, const std::shared_ptr<Sequencer::Session>& ss) noexcept {
@@ -167,6 +165,13 @@ class Call::SessionLambda final : public nf7::Node::Lambda {
     expects_.erase(std::string {name});
     FinishIf();
   }
+  void Abort() noexcept override {
+    if (ss_) {
+      ss_->Finish();
+      ss_ = nullptr;
+      expects_.clear();
+    }
+  }
 
  private:
   std::shared_ptr<Sequencer::Session> ss_;
@@ -186,6 +191,7 @@ std::shared_ptr<Sequencer::Lambda> Call::CreateLambda(
 }
 void Call::Lambda::Run(const std::shared_ptr<Sequencer::Session>& ss) noexcept
 try {
+  if (abort_) return;
   file_.EnforceAlive();
 
   auto& data   = file_->data();
@@ -218,6 +224,16 @@ try {
   ss->Finish();
 } catch (nf7::File::NotImplementedException&) {
   ss->Finish();
+}
+void Call::Lambda::Abort() noexcept {
+  if (ssla_) {
+    ssla_->Abort();
+    ssla_ = nullptr;
+  }
+  if (la_) {
+    la_->Abort();
+    la_ = nullptr;
+  }
 }
 
 

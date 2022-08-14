@@ -164,6 +164,8 @@ class Ref final : public nf7::File, public nf7::Node {
 class Ref::Lambda final : public Node::Lambda,
     public std::enable_shared_from_this<Ref::Lambda> {
  public:
+  static constexpr size_t kMaxDepth = 1024;
+
   Lambda(Ref& f, const std::shared_ptr<Node::Lambda>& parent) :
       Node::Lambda(f, parent), ref_(&f), log_(f.log_) {
   }
@@ -180,9 +182,19 @@ class Ref::Lambda final : public Node::Lambda,
     }
     if (caller == parent) {
       if (!base_) {
+        if (depth() > kMaxDepth) {
+          log_->Error("stack overflow");
+          return;
+        }
         base_ = ref_->target().CreateLambda(shared_from_this());
       }
       base_->Handle(name, v, shared_from_this());
+    }
+  }
+
+  void Abort() noexcept override {
+    if (base_) {
+      base_->Abort();
     }
   }
 

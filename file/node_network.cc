@@ -421,6 +421,9 @@ class Network::Lambda : public Node::Lambda,
   }
   void Abort() noexcept override {
     abort_ = true;
+    for (auto& p : lamap_) {
+      p.second->Abort();
+    }
   }
   size_t GetMemoryUsage() const noexcept override {
     return 0;
@@ -438,7 +441,7 @@ class Network::Lambda : public Node::Lambda,
   std::unordered_map<ItemId, std::shared_ptr<Node::Lambda>> lamap_;
   std::unordered_map<Node::Lambda*, ItemId> idmap_;
 
-  std::atomic<bool> abort_ = false;
+  bool abort_ = false;
 };
 void Network::DetachLambda() noexcept {
   if (lambda_ && lambda_->isRoot()) {
@@ -727,9 +730,9 @@ class Network::Initiator final : public Network::ChildNode,
         public std::enable_shared_from_this<Emitter> {
      public:
       using Node::Lambda::Lambda;
-      void Handle(std::string_view, const Value&,
+      void Handle(std::string_view name, const Value&,
                   const std::shared_ptr<Node::Lambda>& caller) noexcept override {
-        if (!std::exchange(done_, true)) {
+        if (name == "_force" || !std::exchange(done_, true)) {
           caller->Handle("out", nf7::Value::Pulse {}, shared_from_this());
         }
       }
@@ -750,7 +753,7 @@ class Network::Initiator final : public Network::ChildNode,
 
     ImGui::SameLine();
     if (ImGui::Button("Z")) {
-      ed.Emit(*this, "out", nf7::Value::Pulse {});
+      ed.Emit(*this, "_force", nf7::Value::Pulse {});
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("generates a pulse manually on debug context");
