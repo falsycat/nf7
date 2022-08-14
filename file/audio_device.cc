@@ -35,7 +35,8 @@ namespace {
 
 class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<Device> kType = {"Audio/Device", {"DirItem",}};
+  static inline const GenericTypeInfo<Device> kType = {
+    "Audio/Device", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Manages ring buffer and sends PCM samples to actual device.");
     ImGui::Bullet();

@@ -36,11 +36,10 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Obj final : public nf7::File,
-    public nf7::DirItem,
-    public nf7::luajit::Obj {
+class Obj final : public nf7::File, public nf7::DirItem, public nf7::luajit::Obj {
  public:
-  static inline const GenericTypeInfo<Obj> kType = {"LuaJIT/Obj", {"DirItem",}};
+  static inline const GenericTypeInfo<Obj> kType = {
+    "LuaJIT/Obj", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted(
         "Compiles and runs LuaJIT script, and caches the object returned from the script.");

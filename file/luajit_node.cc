@@ -39,7 +39,7 @@ namespace {
 class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Node> kType =
-      {"LuaJIT/Node", {"DirItem",}};
+      {"LuaJIT/Node", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Defines new Node using LuaJIT/Obj.");
     ImGui::Bullet();

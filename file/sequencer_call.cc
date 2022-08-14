@@ -29,8 +29,8 @@ namespace {
 
 class Call final : public nf7::FileBase, public nf7::Sequencer {
  public:
-  static inline const nf7::GenericTypeInfo<Call> kType =
-      {"Sequencer/Call", {"Sequencer"}};
+  static inline const nf7::GenericTypeInfo<Call> kType = {
+    "Sequencer/Call", {"nf7::Sequencer"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Calls a Node.");
     ImGui::Bullet(); ImGui::TextUnformatted(
@@ -49,7 +49,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kParamPanel),
       life_(*this),
       callee_(*this, "callee", callee),
-      callee_editor_(*this, [](auto& t) { return t.flags().contains("Node"); }),
+      callee_editor_(*this, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       callee_popup_("CalleeEditorPopup", callee_editor_),
       mem_(*this, Data {*this, expects}){
     callee_.onChildMementoChange = [this]() {

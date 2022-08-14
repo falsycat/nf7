@@ -33,7 +33,7 @@ namespace {
 class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Imm> kType =
-      {"Node/Imm", {"DirItem", "Node"}};
+      {"Node/Imm", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Emits an immediate value when get an input.");
     ImGui::Bullet(); ImGui::TextUnformatted(

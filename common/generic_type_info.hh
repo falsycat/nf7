@@ -54,7 +54,9 @@ class GenericTypeInfo : public File::TypeInfo {
  private:
   static std::unordered_set<std::string> AddFlags(
       std::unordered_set<std::string>&& flags) noexcept {
-    if (std::is_constructible<T, Env&>::value) flags.insert("File_Factory");
+    if (std::is_constructible<T, Env&>::value) {
+      flags.insert("nf7::File::TypeInfo::Factory");
+    }
     return flags;
   }
 };

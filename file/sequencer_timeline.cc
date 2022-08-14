@@ -45,8 +45,8 @@ namespace {
 
 class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const nf7::GenericTypeInfo<TL> kType =
-      {"Sequencer/Timeline", {"DirItem"}};
+  static inline const nf7::GenericTypeInfo<TL> kType = {
+    "Sequencer/Timeline", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Timeline data");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
@@ -133,7 +133,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
     AddItemPopup(TL& f) noexcept :
         Popup("AddItemPopup"),
         owner_(&f),
-        factory_(f, [](auto& t) { return t.flags().contains("Sequencer"); }) {
+        factory_(f, [](auto& t) { return t.flags().contains("nf7::Sequencer"); }) {
     }
 
     void Open(uint64_t t, TL::Layer& l) noexcept {

@@ -17,10 +17,10 @@
 namespace nf7 {
 namespace {
 
-class LuaContext final : public nf7::File,
-    public nf7::DirItem {
+class LuaContext final : public nf7::File, public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<LuaContext> kType = {"LuaJIT/Context", {"DirItem",}};
+  static inline const GenericTypeInfo<LuaContext> kType = {
+    "LuaJIT/Context", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Drives LuaJIT thread and task queue.");
     ImGui::Bullet(); ImGui::TextUnformatted(

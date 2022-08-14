@@ -26,7 +26,8 @@ namespace {
 class Logger final : public nf7::File,
     public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<Logger> kType = {"System/Logger", {"DirItem"}};
+  static inline const GenericTypeInfo<Logger> kType = {
+    "System/Logger", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Records log output from other files.");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Logger");

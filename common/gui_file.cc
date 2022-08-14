@@ -25,11 +25,14 @@ bool FileFactory::Update() noexcept {
     for (const auto& reg : nf7::File::registry()) {
       const auto& t = *reg.second;
 
-      const bool name_match =
-          type_filter_.empty() || t.name().find(type_filter_) != std::string::npos;
+      const bool match =
+          t.flags().contains("nf7::File::TypeInfo::Factory") &&
+          (type_filter_.empty() ||
+           t.name().find(type_filter_) != std::string::npos) &&
+          filter_(t);
 
       const bool sel = (type_ == &t);
-      if (!name_match || !filter_(t)) {
+      if (!match) {
         if (sel) type_ = nullptr;
         continue;
       }

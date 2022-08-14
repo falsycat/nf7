@@ -31,8 +31,8 @@ namespace {
 
 class Ref final : public nf7::File, public nf7::Node {
  public:
-  static inline const nf7::GenericTypeInfo<Ref> kType =
-      {"Node/Ref", {"Node"}};
+  static inline const nf7::GenericTypeInfo<Ref> kType = {
+    "Node/Ref", {"nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Refers other Node.");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");

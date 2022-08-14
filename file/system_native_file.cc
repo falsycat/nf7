@@ -36,7 +36,7 @@ class NativeFile final : public File,
     public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<NativeFile> kType = {
-    "System/NativeFile", {"AsyncBuffer", "DirItem"}};
+    "System/NativeFile", {"nf7::AsyncBuffer", "nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Reads/Writes a file placed on native filesystem.");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::AsyncBuffer");

@@ -40,11 +40,10 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Network final : public nf7::File,
-    public nf7::DirItem,
-    public nf7::Node {
+class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<Network> kType = {"Node/Network", {"DirItem"}};
+  static inline const GenericTypeInfo<Network> kType = {
+    "Node/Network", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("A Node composed of multiple child Nodes, whose sockets are linked to each other");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
@@ -86,7 +85,7 @@ class Network final : public nf7::File,
           ItemList&&         items = {},
           NodeLinkStore&&    links = {}) noexcept :
       File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-      factory_(*this, [](auto& t) { return t.flags().contains("Node"); }),
+      factory_(*this, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       win_(*this, "Editor Node/Network", win),
       items_(std::move(items)), links_(std::move(links)) {
     Initialize();
@@ -697,7 +696,8 @@ class Network::Initiator final : public Network::ChildNode,
     public nf7::Node,
     public Network::InternalNode {
  public:
-  static inline const GenericTypeInfo<Initiator> kType = {"Node/Network/Initiator", {"Node"}};
+  static inline const GenericTypeInfo<Initiator> kType = {
+    "Node/Network/Initiator", {"nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted(
         "Emits a pulse immediately when Node/Network gets the first input.");

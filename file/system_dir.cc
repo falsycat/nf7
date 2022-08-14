@@ -32,7 +32,7 @@ class Dir final : public File,
     public nf7::Dir,
     public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"DirItem"}};
+  static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"nf7::DirItem"}};
   static constexpr const char* kTypeDescription = "generic directory";
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
@@ -43,7 +43,7 @@ class Dir final : public File,
               nf7::DirItem::kMenu |
               nf7::DirItem::kTooltip |
               nf7::DirItem::kDragDropTarget),
-      factory_(*this, [](auto& t) { return t.flags().contains("DirItem"); },
+      factory_(*this, [](auto& t) { return t.flags().contains("nf7::DirItem"); },
                nf7::gui::FileFactory::kNameInput |
                nf7::gui::FileFactory::kNameDupCheck),
       items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
