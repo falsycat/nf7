@@ -338,6 +338,8 @@ void Timeline::UpdateXGrid() noexcept {
   }
 }
 void Timeline::HandleGrip(Item item, float off, Action ac, Action acdone, ImGuiMouseCursor cur) noexcept {
+  auto ctx = ImGui::GetCurrentContext();
+
   if (ImGui::IsItemActive()) {
     if (ImGui::IsItemActivated()) {
       action_ = kSelect;
@@ -361,7 +363,7 @@ void Timeline::HandleGrip(Item item, float off, Action ac, Action acdone, ImGuiM
       action_        = acdone;
       action_target_ = item;
     }
-    if (ImGui::IsItemHovered()) {
+    if (ctx->LastItemData.ID == ctx->HoveredIdPreviousFrame) {
       ImGui::SetMouseCursor(cur);
     }
   }
