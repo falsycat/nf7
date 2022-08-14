@@ -193,6 +193,7 @@ struct Timeline {
   Action   action_;
   Item     action_target_;
   uint64_t action_time_;
+  bool     action_grip_moved_;
 
   uint64_t action_last_set_time_ = UINT64_MAX;  // for kSetTime
 

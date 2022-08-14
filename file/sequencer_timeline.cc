@@ -1427,12 +1427,14 @@ void TL::HandleTimelineAction() noexcept {
 
   case tl_.kResizeBegin:
     assert(item);
+    item->Select(false);
     ResizeDisplayTimingOfSelected(
         action_time_i - static_cast<int64_t>(item->displayTiming().begin()),
         0);
     break;
   case tl_.kResizeEnd:
     assert(item);
+    item->Select(false);
     ResizeDisplayTimingOfSelected(
         0,
         action_time_i +
@@ -1447,6 +1449,7 @@ void TL::HandleTimelineAction() noexcept {
 
   case tl_.kMove:
     assert(item);
+    item->Select(false);
     MoveDisplayTimingOfSelected(
         action_time_i - static_cast<int64_t>(item->displayTiming().begin()));
     if (auto layer = reinterpret_cast<TL::Layer*>(tl_.mouseLayer())) {

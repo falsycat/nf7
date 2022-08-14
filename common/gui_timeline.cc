@@ -338,19 +338,23 @@ void Timeline::UpdateXGrid() noexcept {
   }
 }
 void Timeline::HandleGrip(Item item, float off, Action ac, Action acdone, ImGuiMouseCursor cur) noexcept {
-  auto ctx = ImGui::GetCurrentContext();
+  auto  ctx = ImGui::GetCurrentContext();
+  auto& io  = ImGui::GetIO();
 
   if (ImGui::IsItemActive()) {
     if (ImGui::IsItemActivated()) {
-      action_ = kSelect;
+      action_grip_moved_ = false;
     } else {
       action_ = ac;
+      if (io.MouseDelta.x != 0 || io.MouseDelta.y != 0) {
+        action_grip_moved_ = true;
+      }
     }
     action_target_ = item;
     ImGui::SetMouseCursor(cur);
 
     off -= 1;
-    off += ImGui::GetCurrentContext()->ActiveIdClickOffset.x;
+    off += ctx->ActiveIdClickOffset.x;
 
     const auto pos = ImGui::GetMousePos() - ImVec2{off, 0};
     action_time_ = GetTimeFromScreenX(pos.x);
@@ -360,7 +364,7 @@ void Timeline::HandleGrip(Item item, float off, Action ac, Action acdone, ImGuiM
 
   } else {
     if (ImGui::IsItemDeactivated()) {
-      action_        = acdone;
+      action_        = action_grip_moved_? acdone: kSelect;
       action_target_ = item;
     }
     if (ctx->LastItemData.ID == ctx->HoveredIdPreviousFrame) {
