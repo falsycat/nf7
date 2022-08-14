@@ -211,7 +211,7 @@ void Call::UpdateParamPanel(Sequencer::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
   if (ImGui::CollapsingHeader("Sequencer/Call", ImGuiTreeNodeFlags_DefaultOpen)) {
-    callee_.UpdateLabel("callee");
+    callee_.UpdateButtonWithLabel("callee");
 
     ImGui::InputTextMultiline("expects", &data().expects, {0, 4.f*em});
     if (ImGui::IsItemDeactivatedAfterEdit()) {

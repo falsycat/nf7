@@ -1,11 +1,6 @@
 #include "common/file_holder.hh"
 
-#include <optional>
-
 #include <imgui.h>
-#include <imgui_stdlib.h>
-
-#include "common/generic_context.hh"
 
 
 using namespace std::literals;
@@ -13,7 +8,7 @@ using namespace std::literals;
 namespace nf7 {
 
 FileHolder::FileHolder(nf7::File& owner, std::string_view id, const FileHolder* src) :
-    owner_(&owner), id_(id), popup_config_(*this) {
+    owner_(&owner), id_(id) {
   if (src) {
     if (src->own()) {
       entity_ = src->file()->Clone(owner.env());
@@ -49,7 +44,6 @@ void FileHolder::Update() noexcept {
     file_->Update();
     ImGui::PopID();
   }
-  popup_config_.Update();
 }
 
 std::string FileHolder::GetDisplayText() const noexcept {
@@ -63,26 +57,16 @@ std::string FileHolder::GetDisplayText() const noexcept {
   }
   return text;
 }
-void FileHolder::UpdateButton(bool small) noexcept {
-  ImGui::PushID(this);
-
+bool FileHolder::UpdateButton(bool small) const noexcept {
   const auto text = GetDisplayText();
-  if (small? ImGui::SmallButton(text.c_str()): ImGui::Button(text.c_str())) {
-    popup_config_.Open();
-  }
-
-  ImGui::PopID();
+  return small? ImGui::SmallButton(text.c_str()): ImGui::Button(text.c_str());
 }
-void FileHolder::UpdateLabel(const char* name) noexcept {
-  ImGui::PushID(this);
-
-  if (ImGui::Button(GetDisplayText().c_str(), {ImGui::CalcItemWidth(), 0})) {
-    popup_config_.Open();
-  }
+bool FileHolder::UpdateButtonWithLabel(const char* name) const noexcept {
+  const bool ret = ImGui::Button(
+      GetDisplayText().c_str(), {ImGui::CalcItemWidth(), 0});
   ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::TextUnformatted(name);
-
-  ImGui::PopID();
+  return ret;
 }
 
 void FileHolder::SetUp() noexcept {
@@ -145,68 +129,6 @@ FileHolder::Tag& FileHolder::Tag::operator=(const Tag& src) noexcept {
   target_->SetUp();
 
   return *this;
-}
-
-
-void FileHolder::ConfigPopup::Open() noexcept {
-  if (h_->ref()) {
-    type_ = 1;
-    path_ = h_->path().Stringify();
-  } else {
-    type_ = 0;
-    path_ = "";
-  }
-  nf7::gui::Popup::Open();
-}
-void FileHolder::ConfigPopup::Update() noexcept {
-  ImGui::PushID(this);
-
-  auto& owner = *h_->owner_;
-
-  if (Begin()) {
-    if (ImGui::RadioButton("own", type_ == 0)) { type_ = 0; }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("ref", type_ == 1)) { type_ = 1; }
-
-    if (type_ == 0) {
-      if (factory_.Update()) {
-        // TODO
-      }
-
-    } else if (type_ == 1) {
-      ImGui::InputText("path", &path_);
-
-      bool missing = false;
-      try {
-        auto path = nf7::File::Path::Parse(path_);
-        try {
-          owner.ResolveOrThrow(path);
-        } catch (nf7::File::NotFoundException&) {
-          missing = true;
-        }
-
-        if (ImGui::Button("ok")) {
-          ImGui::CloseCurrentPopup();
-
-          auto ctx = std::make_shared<nf7::GenericContext>(
-              owner, "emplacing reference to file holder '"+h_->id_+"'");
-          owner.env().ExecMain(
-              ctx, [this, p = std::move(path)]() mutable {
-                h_->Emplace(std::move(p));
-                h_->onChange();
-              });
-        }
-      } catch (nf7::Exception& e) {
-        ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
-      }
-      if (missing) {
-        ImGui::Bullet(); ImGui::TextUnformatted("the file is missing :(");
-      }
-    }
-    ImGui::EndPopup();
-  }
-
-  ImGui::PopID();
 }
 
 }  // namespace nf7

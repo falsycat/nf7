@@ -16,8 +16,6 @@
 
 #include "common/file_base.hh"
 #include "common/generic_watcher.hh"
-#include "common/gui_file.hh"
-#include "common/gui_popup.hh"
 #include "common/memento.hh"
 #include "common/yas_nf7.hh"
 #include "common/yas_std_variant.hh"
@@ -75,8 +73,8 @@ class FileHolder : public nf7::FileBase::Feature {
   void Update() noexcept override;
 
   std::string GetDisplayText() const noexcept;
-  void UpdateButton(bool small = false) noexcept;
-  void UpdateLabel(const char* name) noexcept;
+  bool UpdateButton(bool small = false) const noexcept;
+  bool UpdateButtonWithLabel(const char* id) const noexcept;
 
   bool own() const noexcept {
     return std::holds_alternative<std::shared_ptr<nf7::File>>(entity_);
@@ -110,27 +108,6 @@ class FileHolder : public nf7::FileBase::Feature {
   nf7::File* file_ = nullptr;
 
   std::optional<nf7::GenericWatcher> watcher_;
-
-
-  // GUI popup
-  struct ConfigPopup final : nf7::gui::Popup {
-   public:
-    ConfigPopup(FileHolder& h) noexcept :
-        nf7::gui::Popup("ConfigPopup"),
-        h_(&h),
-        factory_(*h.owner_, [](auto&) { return true; }) {
-    }
-
-    void Open() noexcept;
-    void Update() noexcept;
-
-   private:
-    FileHolder* const h_;
-
-    uint32_t              type_;
-    std::string           path_;
-    nf7::gui::FileFactory factory_;
-  } popup_config_;
 
 
   void SetUp() noexcept;

@@ -1,5 +1,6 @@
 #include "common/gui_file.hh"
 
+#include <imgui.h>
 #include <imgui_stdlib.h>
 
 
@@ -87,6 +88,66 @@ bool FileFactory::Update() noexcept {
         ImGui::SetTooltip("create %s on '%s'", type_->name().c_str(), path.c_str());
       }
     }
+  }
+  return ret;
+}
+
+
+void FileHolderEditor::Reset(nf7::FileHolder& h) noexcept {
+  if (h.ref()) {
+    type_ = kRef;
+    path_ = h.path().Stringify();
+  } else {
+    type_ = kOwn;
+    path_ = {};
+  }
+}
+void FileHolderEditor::Apply(nf7::FileHolder& h) noexcept {
+  switch (type_) {
+  case kOwn:
+    h.Emplace(factory_.Create(owner_->env()));
+    break;
+  case kRef:
+    h.Emplace(std::move(nf7::File::Path::Parse(path_)));
+    break;
+  }
+}
+
+bool FileHolderEditor::Update() noexcept {
+  bool ret = false;
+
+  if (ImGui::RadioButton("own", type_ == kOwn)) { type_ = kOwn; }
+  ImGui::SameLine();
+  if (ImGui::RadioButton("ref", type_ == kRef)) { type_ = kRef; }
+
+  switch (type_) {
+  case kOwn:
+    if (factory_.Update()) {
+      // TODO
+    }
+    break;
+  case kRef:
+    ImGui::InputText("path", &path_);
+
+    bool missing = false;
+    try {
+      auto path = nf7::File::Path::Parse(path_);
+      try {
+        owner_->ResolveOrThrow(path);
+      } catch (nf7::File::NotFoundException&) {
+        missing = true;
+      }
+
+      if (ImGui::Button("apply")) {
+        ret = true;
+      }
+    } catch (nf7::Exception& e) {
+      ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
+    }
+    if (missing) {
+      ImGui::Bullet(); ImGui::TextUnformatted("the file is missing :(");
+    }
+    break;
   }
   return ret;
 }
