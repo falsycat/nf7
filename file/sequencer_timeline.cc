@@ -305,7 +305,7 @@ class TL::Item final : nf7::Env::Watcher {
       Watcher(f->env()),
       id_(id), file_(std::move(f)),
       seq_(&file_->interfaceOrThrow<nf7::Sequencer>()),
-      mem_(f->interface<nf7::Memento>()),
+      mem_(file_->interface<nf7::Memento>()),
       timing_(t), display_timing_(t) {
   }
   Item(const Item&) = delete;
@@ -648,6 +648,9 @@ class TL::Lambda final : public Node::Lambda,
 
   void Abort() noexcept {
     aborted_ = true;
+    for (auto& p : lambdas_) {
+      p.second->Abort();
+    }
   }
 
   bool aborted() const noexcept { return aborted_; }
@@ -1245,6 +1248,12 @@ void TL::Handle(const Event& ev) noexcept {
 }
 
 void TL::Update() noexcept {
+  for (const auto& layer : layers_) {
+    for (const auto& item : layer->items()) {
+      item->file().Update();
+    }
+  }
+
   popup_add_item_.Update();
   popup_config_.Update();
 

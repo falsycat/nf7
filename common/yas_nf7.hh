@@ -38,6 +38,29 @@ struct serializer<
     type_prop::not_a_fundamental,
     ser_case::use_internal_serializer,
     F,
+    std::shared_ptr<nf7::File>> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive& ar, const std::shared_ptr<nf7::File>& f) {
+    std::unique_ptr<nf7::File> uf(f.get());
+    ar(uf);
+    uf.release();
+    return ar;
+  }
+  template <typename Archive>
+  static Archive& load(Archive& ar, std::shared_ptr<nf7::File>& f) {
+    std::unique_ptr<nf7::File> uf;
+    ar(uf);
+    f = std::move(uf);
+    return ar;
+  }
+};
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
     nf7::File::Path> {
  public:
   template <typename Archive>

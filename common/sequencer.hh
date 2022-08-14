@@ -10,6 +10,8 @@
 
 #include "nf7.hh"
 
+#include "common/value.hh"
+
 
 namespace nf7 {
 

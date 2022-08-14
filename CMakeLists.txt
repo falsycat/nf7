@@ -51,6 +51,9 @@ target_sources(nf7
     common/buffer.hh
     common/dir.hh
     common/dir_item.hh
+    common/file_base.hh
+    common/file_holder.hh
+    common/file_holder.cc
     common/file_ref.hh
     common/future.hh
     common/generic_context.hh
@@ -68,6 +71,7 @@ target_sources(nf7
     common/gui_timeline.cc
     common/gui_window.hh
     common/history.hh
+    common/life.hh
     common/lock.hh
     common/logger.hh
     common/logger_ref.hh
@@ -98,6 +102,7 @@ target_sources(nf7
     common/yas_nf7.hh
     common/yas_std_atomic.hh
     common/yas_std_filesystem.hh
+    common/yas_std_variant.hh
 
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
 
@@ -109,6 +114,7 @@ target_sources(nf7
     file/node_imm.cc
     file/node_network.cc
     file/node_ref.cc
+    file/sequencer_call.cc
     file/sequencer_timeline.cc
     file/system_dir.cc
     file/system_imgui_config.cc
