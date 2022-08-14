@@ -58,8 +58,15 @@ std::string FileHolder::GetDisplayText() const noexcept {
   return text;
 }
 bool FileHolder::UpdateButton(bool small) const noexcept {
+  ImGui::BeginGroup();
   const auto text = GetDisplayText();
-  return small? ImGui::SmallButton(text.c_str()): ImGui::Button(text.c_str());
+  const bool ret  =
+      small? ImGui::SmallButton(text.c_str()): ImGui::Button(text.c_str());
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", text.c_str());
+  }
+  ImGui::EndGroup();
+  return ret;
 }
 bool FileHolder::UpdateButtonWithLabel(const char* name) const noexcept {
   const bool ret = ImGui::Button(
@@ -72,6 +79,7 @@ bool FileHolder::UpdateButtonWithLabel(const char* name) const noexcept {
 void FileHolder::SetUp() noexcept {
   if (!ready_ || file_) return;
   if (own()) {
+    file_ = std::get<std::shared_ptr<nf7::File>>(entity_).get();
     file_->MoveUnder(*owner_, id_);
   } else if (ref()) {
     try {
@@ -91,7 +99,7 @@ void FileHolder::SetUp() noexcept {
       watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
         auto ptag = std::exchange(tag_, mem->Save());
         if (ptag != tag_) {
-          onChange();
+          onChildMementoChange();
         }
       });
     }

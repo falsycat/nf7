@@ -25,7 +25,7 @@ class FileFactory final {
       owner_(&owner), filter_(std::move(filter)), flags_(flags) {
   }
   FileFactory(const FileFactory&) = delete;
-  FileFactory(FileFactory&&) = delete;
+  FileFactory(FileFactory&&) = default;
   FileFactory& operator=(const FileFactory&) = delete;
   FileFactory& operator=(FileFactory&&) = delete;
 
@@ -58,7 +58,7 @@ class FileHolderEditor final {
       owner_(&owner), factory_(owner, std::move(filter)) {
   }
   FileHolderEditor(const FileHolderEditor&) = delete;
-  FileHolderEditor(FileHolderEditor&&) = delete;
+  FileHolderEditor(FileHolderEditor&&) = default;
   FileHolderEditor& operator=(const FileHolderEditor&) = delete;
   FileHolderEditor& operator=(FileHolderEditor&&) = delete;
 
@@ -66,10 +66,6 @@ class FileHolderEditor final {
   void Apply(nf7::FileHolder& h) noexcept;
 
   bool Update() noexcept;
-  bool UpdateButton(bool small) noexcept;
-  bool UpdateButtonWithLabel(const char* id) noexcept;
-
-  std::string GetDisplayText() const noexcept;
 
  private:
   nf7::File* const owner_;

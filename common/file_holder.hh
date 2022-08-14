@@ -92,9 +92,7 @@ class FileHolder : public nf7::FileBase::Feature {
     return own()? nf7::File::Path {{id_}}: std::get<nf7::File::Path>(entity_);
   }
 
-  // called when memento of owned file is changed, or target is changed by GUI.
-  // Emplace() doesn't.
-  std::function<void(void)> onChange = [](){};
+  std::function<void(void)> onChildMementoChange = [](){};
 
  private:
   nf7::File* const  owner_;

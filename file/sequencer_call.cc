@@ -13,8 +13,11 @@
 
 #include "common/file_base.hh"
 #include "common/file_holder.hh"
+#include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_file.hh"
+#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -40,15 +43,28 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   class SessionLambda;
 
   Call(Env& env, const nf7::FileHolder* callee = nullptr, std::string_view expects = "") noexcept :
-      FileBase(kType, env, {&callee_}),
+      FileBase(kType, env, {&callee_, &callee_popup_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
       callee_(*this, "callee", callee),
+      callee_editor_(*this, [](auto& t) { return t.flags().contains("Node"); }),
+      callee_popup_("CalleeEditorPopup", callee_editor_),
       mem_(*this, Data {*this, expects}){
-    callee_.onChange = [this]() {
+    callee_.onChildMementoChange = [this]() {
       mem_.Commit();
+    };
+
+    callee_popup_.onOpen = [this]() {
+      callee_editor_.Reset(callee_);
+    };
+    callee_popup_.onDone = [this]() {
+      auto ctx = std::make_shared<nf7::GenericContext>(*this, "updating callee");
+      this->env().ExecMain(ctx, [this]() {
+        callee_editor_.Apply(callee_);
+        mem_.Commit();
+      });
     };
   }
 
@@ -78,8 +94,12 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   nf7::Life<Call> life_;
   nf7::FileHolder callee_;
 
+  nf7::gui::FileHolderEditor                         callee_editor_;
+  nf7::gui::PopupWrapper<nf7::gui::FileHolderEditor> callee_popup_;
+
   struct Data {
-    Data(Call& f, std::string_view ex) noexcept : callee(f.callee_), expects(ex) {
+    Data(Call& f, std::string_view ex) noexcept :
+        callee(f.callee_), expects(ex) {
     }
 
     nf7::FileHolder::Tag callee;
@@ -201,17 +221,18 @@ try {
 }
 
 
-
 void Call::UpdateItem(Sequencer::Editor&) noexcept {
-  const auto em = ImGui::GetFontSize();
-  ImGui::SetCursorPos({.25f*em, .25f*em});
-  callee_.UpdateButton(true);
+  if (callee_.UpdateButton(true)) {
+    callee_popup_.Open();
+  }
 }
 void Call::UpdateParamPanel(Sequencer::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
   if (ImGui::CollapsingHeader("Sequencer/Call", ImGuiTreeNodeFlags_DefaultOpen)) {
-    callee_.UpdateButtonWithLabel("callee");
+    if (callee_.UpdateButtonWithLabel("callee")) {
+      callee_popup_.Open();
+    }
 
     ImGui::InputTextMultiline("expects", &data().expects, {0, 4.f*em});
     if (ImGui::IsItemDeactivatedAfterEdit()) {

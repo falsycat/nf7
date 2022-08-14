@@ -123,7 +123,7 @@ bool FileHolderEditor::Update() noexcept {
   switch (type_) {
   case kOwn:
     if (factory_.Update()) {
-      // TODO
+      ret = true;
     }
     break;
   case kRef:

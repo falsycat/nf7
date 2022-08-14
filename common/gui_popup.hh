@@ -1,7 +1,10 @@
+#include <functional>
 #include <optional>
 #include <utility>
 
 #include <imgui.h>
+
+#include "common/file_base.hh"
 
 
 namespace nf7::gui {
@@ -28,6 +31,38 @@ class Popup {
   ImGuiWindowFlags flags_;
 
   std::optional<ImGuiPopupFlags> open_flags_;
+};
+
+template <typename T>
+class PopupWrapper : public nf7::FileBase::Feature, private nf7::gui::Popup {
+ public:
+  PopupWrapper(const char* name, T& content, ImGuiWindowFlags flags = 0) noexcept :
+      nf7::gui::Popup(name, flags), content_(&content) {
+  }
+  PopupWrapper(const PopupWrapper&) = delete;
+  PopupWrapper(PopupWrapper&&) = delete;
+  PopupWrapper& operator=(const PopupWrapper&) = delete;
+  PopupWrapper& operator=(PopupWrapper&&) = delete;
+
+  void Open() noexcept {
+    onOpen();
+    nf7::gui::Popup::Open();
+  }
+  void Update() noexcept override {
+    if (nf7::gui::Popup::Begin()) {
+      if (content_->Update()) {
+        ImGui::CloseCurrentPopup();
+        onDone();
+      }
+      ImGui::EndPopup();
+    }
+  }
+
+  std::function<void()> onOpen = []() { };
+  std::function<void()> onDone = []() { };
+
+ private:
+  T* const content_;
 };
 
 }  // namespace nf7::gui
