@@ -131,7 +131,9 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   struct AddItemPopup final : nf7::gui::Popup {
    public:
     AddItemPopup(TL& f) noexcept :
-        Popup("AddItemPopup"), owner_(&f), factory_({"Sequencer"}) {
+        Popup("AddItemPopup"),
+        owner_(&f),
+        factory_(f, [](auto& t) { return t.flags().contains("Sequencer"); }) {
     }
 
     void Open(uint64_t t, TL::Layer& l) noexcept {
@@ -147,7 +149,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
     uint64_t   target_time_  = 0;
     TL::Layer* target_layer_ = nullptr;
 
-    nf7::gui::FileFactory<0> factory_;
+    nf7::gui::FileFactory factory_;
   } popup_add_item_;
   struct ConfigPopup final : nf7::gui::Popup {
    public:
@@ -1595,7 +1597,7 @@ void TL::Item::Update() noexcept {
 void TL::AddItemPopup::Update() noexcept {
   if (Popup::Begin()) {
     ImGui::TextUnformatted("Sequencer/Timeline: adding new item...");
-    if (factory_.Update(*owner_)) {
+    if (factory_.Update()) {
       ImGui::CloseCurrentPopup();
 
       auto& layer = *target_layer_;

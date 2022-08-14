@@ -86,6 +86,7 @@ class Network final : public nf7::File,
           ItemList&&         items = {},
           NodeLinkStore&&    links = {}) noexcept :
       File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
+      factory_(*this, [](auto& t) { return t.flags().contains("Node"); }),
       win_(*this, "Editor Node/Network", win),
       items_(std::move(items)), links_(std::move(links)) {
     Initialize();
@@ -140,6 +141,8 @@ class Network final : public nf7::File,
 
   const char* popup_ = nullptr;
   ImVec2 canvas_action_pos_;
+
+  nf7::gui::FileFactory factory_;
 
   // persistent params
   gui::Window                        win_;
@@ -1096,11 +1099,9 @@ void Network::Update() noexcept {
 
   // node add popup
   if (ImGui::BeginPopup("AddPopup")) {
-    static nf7::gui::FileFactory<0> p({"File_Factory",}, {"Node"});
-
     ImGui::TextUnformatted("Node/Network: adding new Node...");
-    if (p.Update(*this)) {
-      auto item = std::make_unique<Item>(next_++, p.type().Create(env()));
+    if (factory_.Update()) {
+      auto item = std::make_unique<Item>(next_++, factory_.Create(env()));
       auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new node");
 
       auto& item_ref = *item;

@@ -6,7 +6,7 @@
 
 namespace nf7::gui {
 
-struct Popup {
+class Popup {
  public:
   Popup(const char* name, ImGuiWindowFlags flags = 0) noexcept :
       name_(name), flags_(flags) {

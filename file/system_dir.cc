@@ -39,10 +39,13 @@ class Dir final : public File,
 
   Dir(Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
       File(kType, env),
-      DirItem(DirItem::kTree |
-              DirItem::kMenu |
-              DirItem::kTooltip |
-              DirItem::kDragDropTarget),
+      DirItem(nf7::DirItem::kTree |
+              nf7::DirItem::kMenu |
+              nf7::DirItem::kTooltip |
+              nf7::DirItem::kDragDropTarget),
+      factory_(*this, [](auto& t) { return t.flags().contains("DirItem"); },
+               nf7::gui::FileFactory::kNameInput |
+               nf7::gui::FileFactory::kNameDupCheck),
       items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
   }
 
@@ -118,6 +121,8 @@ class Dir final : public File,
 
   std::string rename_target_;
 
+  nf7::gui::FileFactory factory_;
+
   // persistent params
   ItemMap     items_;
   gui::Window win_;
@@ -150,15 +155,10 @@ void Dir::Update() noexcept {
 
   // new item popup
   if (ImGui::BeginPopup("NewItemPopup")) {
-    static nf7::gui::FileFactory<
-        nf7::gui::kNameInput | nf7::gui::kNameDupCheck> p(
-            {"File_Factory", "DirItem"});
     ImGui::TextUnformatted("System/Dir: adding new file...");
-    if (p.Update(*this)) {
+    if (factory_.Update()) {
       auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new item");
-      auto task = [this, name = p.name(), &type = p.type()]() {
-        Add(name, type.Create(env()));
-      };
+      auto task = [this]() { Add(factory_.name(), factory_.Create(env())); };
       env().ExecMain(ctx, std::move(task));
     }
     ImGui::EndPopup();

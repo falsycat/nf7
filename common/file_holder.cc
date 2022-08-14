@@ -12,9 +12,8 @@ using namespace std::literals;
 
 namespace nf7 {
 
-FileHolder::FileHolder(
-    nf7::File& owner, std::string_view id, std::string_view iface, const FileHolder* src) :
-    owner_(&owner), id_(id), popup_config_(*this, iface) {
+FileHolder::FileHolder(nf7::File& owner, std::string_view id, const FileHolder* src) :
+    owner_(&owner), id_(id), popup_config_(*this) {
   if (src) {
     if (src->own()) {
       entity_ = src->file()->Clone(owner.env());
@@ -170,7 +169,7 @@ void FileHolder::ConfigPopup::Update() noexcept {
     if (ImGui::RadioButton("ref", type_ == 1)) { type_ = 1; }
 
     if (type_ == 0) {
-      if (factory_.Update(owner)) {
+      if (factory_.Update()) {
         // TODO
       }
 

@@ -64,6 +64,7 @@ target_sources(nf7
     common/gui_dnd.hh
     common/gui_context.hh
     common/gui_file.hh
+    common/gui_file.cc
     common/gui_node.hh
     common/gui_popup.hh
     common/gui_resizer.hh

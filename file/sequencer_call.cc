@@ -45,7 +45,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      callee_(*this, "callee", "Node", callee),
+      callee_(*this, "callee", callee),
       mem_(*this, Data {*this, expects}){
     callee_.onChange = [this]() {
       mem_.Commit();

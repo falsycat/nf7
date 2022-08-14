@@ -37,8 +37,7 @@ class FileHolder : public nf7::FileBase::Feature {
   using Entity = std::variant<
       std::monostate, nf7::File::Path, std::shared_ptr<nf7::File>>;
 
-  FileHolder(nf7::File& owner, std::string_view id, std::string_view iface,
-             const FileHolder* src = nullptr);
+  FileHolder(nf7::File& owner, std::string_view id, const FileHolder* src = nullptr);
   FileHolder(const FileHolder&) = delete;
   FileHolder(FileHolder&&) = delete;
   FileHolder& operator=(const FileHolder&) = delete;
@@ -116,8 +115,10 @@ class FileHolder : public nf7::FileBase::Feature {
   // GUI popup
   struct ConfigPopup final : nf7::gui::Popup {
    public:
-    ConfigPopup(FileHolder& h, std::string_view iface) noexcept :
-        nf7::gui::Popup("ConfigPopup"), h_(&h), factory_({std::string {iface}}) {
+    ConfigPopup(FileHolder& h) noexcept :
+        nf7::gui::Popup("ConfigPopup"),
+        h_(&h),
+        factory_(*h.owner_, [](auto&) { return true; }) {
     }
 
     void Open() noexcept;
@@ -126,9 +127,9 @@ class FileHolder : public nf7::FileBase::Feature {
    private:
     FileHolder* const h_;
 
-    uint32_t                 type_;
-    std::string              path_;
-    nf7::gui::FileFactory<0> factory_;
+    uint32_t              type_;
+    std::string           path_;
+    nf7::gui::FileFactory factory_;
   } popup_config_;
 
 
