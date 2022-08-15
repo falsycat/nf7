@@ -115,6 +115,7 @@ target_sources(nf7
     file/node_imm.cc
     file/node_network.cc
     file/node_ref.cc
+    file/sequencer_adaptor.cc
     file/sequencer_call.cc
     file/sequencer_timeline.cc
     file/system_dir.cc
