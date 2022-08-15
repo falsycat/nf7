@@ -29,6 +29,7 @@
 #include "common/gui_popup.hh"
 #include "common/gui_timeline.hh"
 #include "common/gui_window.hh"
+#include "common/life.hh"
 #include "common/memento.hh"
 #include "common/memento_recorder.hh"
 #include "common/node.hh"
@@ -71,6 +72,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
       nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kMenu),
+      life_(*this),
       length_(length), layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
       popup_add_item_(*this), popup_config_(*this) {
@@ -108,6 +110,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
  private:
+  nf7::Life<TL> life_;
+
   nf7::SquashedHistory history_;
 
   std::shared_ptr<TL::Lambda> lambda_;
@@ -588,7 +592,7 @@ class TL::Lambda final : public Node::Lambda,
  public:
   Lambda() = delete;
   Lambda(TL& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
-      Node::Lambda(f, parent), owner_(&f) {
+      Node::Lambda(f, parent), owner_(f.life_) {
   }
 
   void Handle(std::string_view, const nf7::Value&,
@@ -608,7 +612,7 @@ class TL::Lambda final : public Node::Lambda,
 
   std::pair<TL::Item*, std::shared_ptr<Sequencer::Lambda>> GetNext(
       uint64_t& layer_idx, uint64_t layer_until, uint64_t t) noexcept {
-    if (aborted_ || !env().GetFile(initiator())) {
+    if (aborted_ || !owner_) {
       return {nullptr, nullptr};
     }
     layer_until = std::min(layer_until, owner_->layers_.size());
@@ -637,9 +641,7 @@ class TL::Lambda final : public Node::Lambda,
     }
   }
   void EmitResults(const std::unordered_map<std::string, nf7::Value>& vars) noexcept {
-    if (!env().GetFile(initiator())) {
-      return;
-    }
+    if (!owner_) return;
     auto caller = parent();
     for (const auto& name : owner_->seq_outputs_) {
       auto itr = vars.find(name);
@@ -661,7 +663,7 @@ class TL::Lambda final : public Node::Lambda,
   }
 
  private:
-  TL* const owner_;
+  nf7::Life<TL>::Ref const owner_;
 
   std::atomic<bool> aborted_ = false;
 
@@ -787,7 +789,7 @@ class TL::Session final : public Sequencer::Session,
 void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
                         const std::shared_ptr<Node::Lambda>&) noexcept {
   if (name == "_exec") {
-    if (!env().GetFile(initiator())) return;
+    if (!owner_) return;
     const auto t_max = owner_->length_-1;
 
     uint64_t t;

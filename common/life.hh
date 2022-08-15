@@ -61,14 +61,14 @@ class Life<T>::Ref final {
     }
   }
 
-  operator bool() noexcept {
-    return !!data_;
+  operator bool() const noexcept {
+    return !!data_->ptr;
   }
-  T& operator*() noexcept {
+  T& operator*() const noexcept {
     assert(data_->ptr);
     return *data_->ptr;
   }
-  T* operator->() noexcept {
+  T* operator->() const noexcept {
     return &**this;
   }
 

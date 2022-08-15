@@ -10,7 +10,7 @@
 
 namespace nf7::gui {
 
-std::string GetContextDisplayName(const nf7::Context& ctx) noexcept {
+inline std::string GetContextDisplayName(const nf7::Context& ctx) noexcept {
   auto f = ctx.env().GetFile(ctx.initiator());
 
   const auto initiator =
@@ -22,7 +22,7 @@ std::string GetContextDisplayName(const nf7::Context& ctx) noexcept {
   return initiator + " " + buf;
 }
 
-std::string GetParentContextDisplayName(const nf7::Context& ctx) noexcept {
+inline std::string GetParentContextDisplayName(const nf7::Context& ctx) noexcept {
   if (auto parent = ctx.parent()) {
     return nf7::gui::GetContextDisplayName(*parent);
   } else if (ctx.depth() == 0) {
@@ -32,7 +32,7 @@ std::string GetParentContextDisplayName(const nf7::Context& ctx) noexcept {
   }
 }
 
-void ContextStack(const nf7::Context& ctx) noexcept {
+inline void ContextStack(const nf7::Context& ctx) noexcept {
   for (auto p = ctx.parent(); p; p = p->parent()) {
     auto f = ctx.env().GetFile(p->initiator());
 

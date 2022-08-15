@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <typeinfo>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,13 +20,18 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_context.hh"
 #include "common/gui_file.hh"
 #include "common/gui_node.hh"
+#include "common/gui_popup.hh"
 #include "common/gui_window.hh"
+#include "common/life.hh"
 #include "common/memento.hh"
+#include "common/memento_recorder.hh"
 #include "common/node.hh"
 #include "common/node_link_store.hh"
 #include "common/ptr_selector.hh"
@@ -40,7 +46,7 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Network> kType = {
     "Node/Network", {"nf7::DirItem"}};
@@ -66,28 +72,19 @@ class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
   class Input;
   class Output;
 
-  using ItemId  = uint64_t;
+  using ItemId   = uint64_t;
   using ItemList = std::vector<std::unique_ptr<Item>>;
-
-  struct Socket {
-    static inline const char* kTypeString[] = {"INPUT", "OUTPUT"};
-    enum Type : uint8_t { kInput, kOutput, };
-
-    bool operator==(const std::string& str) const noexcept { return name == str; }
-
-    Type        type;
-    std::string name;
-    std::string desc;
-  };
 
   Network(Env& env,
           const gui::Window* win   = nullptr,
           ItemList&&         items = {},
-          NodeLinkStore&&    links = {}) noexcept :
-      File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-      factory_(*this, [](auto& t) { return t.flags().contains("nf7::Node"); }),
+          NodeLinkStore&&    links = {}) :
+      nf7::FileBase(kType, env, {&add_popup_, &socket_popup_}),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+      life_(*this),
       win_(*this, "Editor Node/Network", win),
-      items_(std::move(items)), links_(std::move(links)) {
+      items_(std::move(items)), links_(std::move(links)),
+      add_popup_(*this), socket_popup_(*this) {
     Initialize();
     win_.shown() = true;
   }
@@ -96,11 +93,11 @@ class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   Network(Env& env, Deserializer& ar) : Network(env) {
-    ar(win_, items_, links_, canvas_, socks_);
+    ar(win_, items_, links_, canvas_, input_, output_);
     Initialize();
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(win_, items_, links_, canvas_, socks_);
+    ar(win_, items_, links_, canvas_, input_, output_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
     ItemList items;
@@ -128,6 +125,8 @@ class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
  private:
+  nf7::Life<Network> life_;
+
   ItemId next_ = 1;
 
   nf7::SquashedHistory history_;
@@ -138,34 +137,62 @@ class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
   std::shared_ptr<Network::Lambda> lambda_;
   std::vector<std::weak_ptr<Network::Lambda>> lambdas_running_;
 
-  const char* popup_ = nullptr;
-  ImVec2 canvas_action_pos_;
-
-  nf7::gui::FileFactory factory_;
-
   // persistent params
   gui::Window                        win_;
   std::vector<std::unique_ptr<Item>> items_;
   NodeLinkStore                      links_;
-  std::vector<Socket>                socks_;
   ImNodes::CanvasState               canvas_;
+
+  // GUI popup
+  class AddPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
+   public:
+    AddPopup(Network& owner) noexcept :
+        nf7::gui::Popup("AddPopup"),
+        owner_(&owner),
+        factory_(owner, [](auto& t) { return t.flags().contains("nf7::Node"); }) {
+    }
+
+    void Open(const ImVec2& pos) noexcept;
+    void Update() noexcept override;
+
+   private:
+    Network* const        owner_;
+    nf7::gui::FileFactory factory_;
+    ImVec2                pos_;
+  } add_popup_;
+  class SocketPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
+   public:
+    SocketPopup(Network& owner) noexcept :
+        nf7::gui::Popup("SocketPopup"), owner_(&owner) {
+    }
+
+    void Open() noexcept;
+    void Update() noexcept override;
+
+    static std::string Join(std::span<const std::string>) noexcept;
+    static std::vector<std::string> Parse(std::string_view);
+
+   private:
+    Network* const owner_;
+
+    std::string input_;
+    std::string output_;
+  } socket_popup_;
 
 
   void Initialize();
-  void DetachLambda() noexcept;
-  void ApplySockets() noexcept;
-  void ApplyNetworkChanges() noexcept;
+  void AttachLambda(const std::shared_ptr<Network::Lambda>&) noexcept;
 
 
   void UnDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting command to undo"),
-        [this]() { history_.UnDo(); });
+        [this]() { history_.UnDo(); Touch(); });
   }
   void ReDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "applying command to redo"),
-        [this]() { history_.ReDo(); });
+        [this]() { history_.ReDo(); Touch(); });
   }
 
   Item& GetItem(ItemId id) const {
@@ -183,6 +210,7 @@ class Network final : public nf7::File, public nf7::DirItem, public nf7::Node {
     return *itr->second;
   }
 };
+
 
 // InternalNode is an interface which provides additional parameters.
 class Network::InternalNode : public nf7::File::Interface {
@@ -231,15 +259,13 @@ class Network::ChildNode : public nf7::File {
   Network* owner_;
 };
 
+
 // Item holds an entity of File, and its watcher
 // to manage a Node owned by Node/Network.
 class Network::Item final {
  public:
-  class Watcher;
-
   class SwapCommand;
   class MoveCommand;
-  class RestoreCommand;
 
   Item(ItemId id, std::unique_ptr<nf7::File>&& file) :
       id_(id), file_(std::move(file)) {
@@ -289,46 +315,41 @@ class Network::Item final {
   ItemId id_;
 
   std::unique_ptr<nf7::File> file_;
-  nf7::Memento* memento_;
   nf7::Node*    node_;
   InternalNode* inode_;
 
-  Network* owner_ = nullptr;
-  std::unique_ptr<Watcher> watcher_;
+  std::optional<nf7::MementoRecorder> mem_;
 
-  std::shared_ptr<nf7::Memento::Tag> tag_;
+  Network* owner_ = nullptr;
 
   ImVec2 prev_pos_;
   ImVec2 pos_;
   bool   select_;
 
 
+  class Watcher final : private nf7::Env::Watcher {
+   public:
+    Watcher(Item& owner) noexcept :
+        nf7::Env::Watcher(owner.env()), owner_(&owner) {
+      assert(owner.fileId());
+      Watch(owner.fileId());
+    }
+    void Handle(const nf7::File::Event&) noexcept override;
+   private:
+    Item* const owner_;
+  };
+  std::optional<Watcher> watcher_;
+
+
   void Initialize() {
     node_ = &file_->interfaceOrThrow<nf7::Node>();
-
-    memento_ = file_->interface<nf7::Memento>();
-    if (memento_) {
-      tag_ = memento_->Save();
-    }
+    mem_.emplace(file_->interface<nf7::Memento>());
 
     inode_    = file_->interface<Network::InternalNode>();
     prev_pos_ = pos_;
   }
 };
 
-// Watches the child Node to propagate update signal to Node/Network
-// and detect memento changes.
-class Network::Item::Watcher final : public nf7::Env::Watcher {
- public:
-  Watcher(Item& owner) noexcept : nf7::Env::Watcher(owner.env()), owner_(&owner) {
-    assert(owner.fileId());
-    Watch(owner.fileId());
-  }
- private:
-  Item* const owner_;
-
-  void Handle(const nf7::File::Event&) noexcept override;
-};
 
 // Builds and holds network information independently from Node/Network.
 // When it receives an input from outside or an output from Nodes in the network,
@@ -337,21 +358,20 @@ class Network::Lambda : public Node::Lambda,
     public std::enable_shared_from_this<Network::Lambda> {
  public:
   Lambda(Network& f, const std::shared_ptr<Node::Lambda>& parent = nullptr) noexcept :
-      Node::Lambda(f, parent), net_(&f), root_(parent == nullptr) {
+      Node::Lambda(f, parent), f_(f.life_) {
   }
 
   void Handle(std::string_view name, const Value& v,
               const std::shared_ptr<Node::Lambda>& caller) noexcept override {
     env().ExecSub(shared_from_this(), [this, name = std::string(name), v, caller]() mutable {
       if (abort_) return;
-      if (!env().GetFile(initiator())) {
-        return;  // net_ is expired
-      }
+      f_.EnforceAlive();
+
       auto parent = this->parent();
 
       // send input from outer to input handlers
       if (caller == parent) {
-        for (auto& item : net_->items_) {
+        for (auto& item : f_->items_) {
           if (item->iflags() & InternalNode::kInputHandler) {
             auto la = FindOrCreateLambda(item->id());
             la->Handle(name, v, shared_from_this());
@@ -367,14 +387,14 @@ class Network::Lambda : public Node::Lambda,
           throw nf7::Exception {"called by unknown lambda"};
         }
         const auto  src_id   = itr->second;
-        const auto& src_item = net_->GetItem(src_id);
+        const auto& src_item = f_->GetItem(src_id);
         const auto& src_name = name;
 
         if (parent && src_item.iflags() & InternalNode::kOutputEmitter) {
           parent->Handle(src_name, v, shared_from_this());
         }
 
-        for (auto& lk : net_->links_.items()) {
+        for (auto& lk : f_->links_.items()) {
           if (lk.src_id == src_id && lk.src_name == src_name) {
             try {
               const auto& dst_name = lk.dst_name;
@@ -390,12 +410,12 @@ class Network::Lambda : public Node::Lambda,
     });
   }
 
-  // Ensure that net_ is alive before calling
+  // Ensure that the Network is alive before calling
   const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(ItemId id) noexcept
   try {
     return FindLambda(id);
   } catch (nf7::Exception&) {
-    return CreateLambda(net_->GetItem(id));
+    return CreateLambda(f_->GetItem(id));
   }
   const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(const Item& item) noexcept
   try {
@@ -432,23 +452,21 @@ class Network::Lambda : public Node::Lambda,
     return "executing Node/Network";
   }
 
-  bool isRoot() const noexcept { return root_; }
-
  private:
-  Network* const net_;
-  bool root_;
+  nf7::Life<Network>::Ref f_;
 
   std::unordered_map<ItemId, std::shared_ptr<Node::Lambda>> lamap_;
   std::unordered_map<Node::Lambda*, ItemId> idmap_;
 
   bool abort_ = false;
 };
-void Network::DetachLambda() noexcept {
-  if (lambda_ && lambda_->isRoot()) {
+void Network::AttachLambda(const std::shared_ptr<Network::Lambda>& la) noexcept {
+  if (lambda_ && lambda_->depth() == 0) {
     lambda_->Abort();
   }
-  lambda_ = nullptr;
+  lambda_ = la;
 }
+
 
 // An generic implementation of Node::Editor for Node/Network.
 class Network::Editor final : public nf7::Node::Editor {
@@ -552,56 +570,23 @@ class Network::Editor final : public nf7::Node::Editor {
 // A command that add or remove a Node socket.
 class Network::SocketSwapCommand final : public nf7::History::Command {
  public:
-  SocketSwapCommand(Network& owner, size_t idx) noexcept :
-      owner_(&owner), idx_(idx), insert_(true) {
-  }
-  SocketSwapCommand(Network& owner, size_t idx, Network::Socket&& sock, bool insert) noexcept :
-      owner_(&owner), idx_(idx), sock_(std::move(sock)), insert_(insert) {
+  struct Pair {
+    std::vector<std::string> in, out;
+  };
+  SocketSwapCommand(Network& owner, Pair&& p) noexcept :
+      owner_(&owner), pair_(std::move(p)) {
   }
 
-  void Apply() override { Exec(); }
-  void Revert() override { Exec(); }
+  void Apply() noexcept override { Exec(); }
+  void Revert() noexcept override { Exec(); }
 
  private:
   Network* const owner_;
+  Pair pair_;
 
-  size_t idx_;
-
-  std::optional<Network::Socket> sock_;
-
-  bool insert_;
-
-  void Exec() {
-    auto& socks = owner_->socks_;
-
-    const auto idx = static_cast<intmax_t>(idx_);
-    if (sock_) {
-      if (idx_ > socks.size()) {
-        throw nf7::History::CorruptException("SocketSwapCommand: index overflow");
-      }
-
-      auto dup = std::find(socks.begin(), socks.end(), sock_->name);
-      if (insert_) {
-        if (dup != socks.end()) {
-          throw nf7::History::CorruptException("SocketSwapCommand: name duplication while insertion");
-        }
-        socks.insert(socks.begin()+idx, std::move(*sock_));
-        sock_ = std::nullopt;
-      } else {
-        if (dup != socks.end() && dup != socks.begin()+idx) {
-          throw nf7::History::CorruptException("SocketSwapCommand: name duplication while swapping");
-        }
-        std::swap(*sock_, socks[idx_]);
-      }
-    } else {
-      if (idx_ >= socks.size()) {
-        throw nf7::History::CorruptException("SocketSwapCommand: index overflow");
-      }
-      sock_ = std::move(socks[idx_]);
-      socks.erase(socks.begin()+idx);
-    }
-    owner_->ApplySockets();
-    owner_->ApplyNetworkChanges();
+  void Exec() noexcept {
+    std::swap(owner_->input_,  pair_.in);
+    std::swap(owner_->output_, pair_.out);
   }
 };
 
@@ -645,7 +630,6 @@ class Network::Item::SwapCommand final : public nf7::History::Command {
       item_ = std::move(*itr);
       owner_->items_.erase(itr);
     }
-    owner_->ApplyNetworkChanges();
   }
 };
 
@@ -669,28 +653,6 @@ class Network::Item::MoveCommand final : public nf7::History::Command {
   }
 };
 
-// A command that restores Node's memento by its tag instance.
-class Network::Item::RestoreCommand final : public nf7::History::Command {
- public:
-  RestoreCommand(Network::Item& item, const std::shared_ptr<nf7::Memento::Tag>& tag) noexcept :
-      target_(&item), tag_(tag) {
-    assert(target_->memento_);
-  }
-
-  void Apply() noexcept override { Exec(); }
-  void Revert() noexcept override { Exec(); }
-
- private:
-  Network::Item* const target_;
-  std::shared_ptr<nf7::Memento::Tag> tag_;
-
-  void Exec() noexcept {
-    auto& mem = *target_->memento_;
-    target_->tag_ = tag_;
-    mem.Restore(std::exchange(tag_, mem.Save()));
-    target_->owner_->ApplyNetworkChanges();
-  }
-};
 
 // An implementation of ChildNode that emits a pulse
 // when Network lambda receives the first input.
@@ -788,36 +750,33 @@ class Network::Initiator final : public Network::ChildNode,
 // that has useful methods for Input or Output Node on Node/Network.
 class Network::InputOrOutput : public Network::ChildNode {
  public:
-  InputOrOutput(const TypeInfo& type, Env& env, std::string_view name, Socket::Type st) noexcept :
-      ChildNode(type, env), mem_(*this, std::string(name)), type_(st) {
+  enum Type {
+    kInput,
+    kOutput,
+  };
+  InputOrOutput(const TypeInfo& type, Env& env, std::string_view name, Type stype) noexcept :
+      ChildNode(type, env), mem_(*this, std::string(name)), type_(stype) {
   }
 
   void UpdateSelector() noexcept {
+    const auto& socks = type_ == kInput? owner().input_: owner().output_;
+
     auto& name = mem_.data();
     ImGui::BeginGroup();
     ImGui::SetNextItemWidth(8*ImGui::GetFontSize());
     if (ImGui::BeginCombo("##name", mem_.data().c_str())) {
-      for (const auto& sock : owner().socks_) {
-        if (sock.type != type_) continue;
-        if (ImGui::Selectable(sock.name.c_str())) {
-          if (name != sock.name) {
-            name = sock.name;
+      for (const auto& sock : socks) {
+        if (ImGui::Selectable(sock.c_str())) {
+          if (name != sock) {
+            name = sock;
             mem_.Commit();
             env().Handle({ .id = id(), .type = Event::kUpdate, });
           }
         }
-        if (sock.desc.size() > 0 && ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("%s", sock.desc.c_str());
-        }
       }
       ImGui::EndCombo();
     }
-    auto itr = std::find(owner().socks_.begin(), owner().socks_.end(), name);
-    if (itr != owner().socks_.end()) {
-      if (itr->desc.size() > 0 && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", itr->desc.c_str());
-      }
-    } else {
+    if (socks.end() == std::find(socks.begin(), socks.end(), name)) {
       ImGui::TextUnformatted("SOCKET MISSING X(");
     }
     ImGui::EndGroup();
@@ -827,7 +786,7 @@ class Network::InputOrOutput : public Network::ChildNode {
   nf7::GenericMemento<std::string> mem_;
 
  private:
-  Socket::Type type_;
+  Type type_;
 };
 
 // An implementation of ChildNode that emits an input value when Node/Network receives.
@@ -838,7 +797,7 @@ class Network::Input final : public Network::InputOrOutput,
   static inline const GenericTypeInfo<Input> kType = {"Node/Network/Input", {}};
 
   Input(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, Socket::kInput),
+      InputOrOutput(kType, env, name, kInput),
       InternalNode(InternalNode::kInputHandler) {
     output_ = {"out"};
   }
@@ -896,7 +855,7 @@ class Network::Output final : public Network::InputOrOutput,
   static inline const GenericTypeInfo<Output> kType = {"Node/Network/Output", {}};
 
   Output(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, Socket::kOutput),
+      InputOrOutput(kType, env, name, kOutput),
       InternalNode(InternalNode::kOutputEmitter) {
     input_ = {"in"};
   }
@@ -961,27 +920,14 @@ void Network::Initialize() {
     next_ = std::max(next_, id+1);
   }
 
-  // TODO: remove expired links
-
-  ApplySockets();
-}
-void Network::ApplySockets() noexcept {
-  input_.clear();
-  output_.clear();
-  for (const auto& sock : socks_) {
-    switch (sock.type) {
-    case Socket::kInput:
-      input_.push_back(sock.name);
-      break;
-    case Socket::kOutput:
-      output_.push_back(sock.name);
-      break;
-    }
+  for (auto& name : input_) {
+    nf7::File::Path::ValidateTerm(name);
   }
-}
-void Network::ApplyNetworkChanges() noexcept {
-  DetachLambda();
-  Touch();
+  for (auto& name : output_) {
+    nf7::File::Path::ValidateTerm(name);
+  }
+
+  // TODO: remove expired links
 }
 File* Network::Find(std::string_view name) const noexcept
 try {
@@ -1002,6 +948,8 @@ std::shared_ptr<Node::Lambda> Network::CreateLambda(
   return ret;
 }
 void Network::Handle(const Event& ev) noexcept {
+  nf7::FileBase::Handle(ev);
+
   switch (ev.type) {
   case Event::kAdd:
     for (const auto& item : items_) item->Attach(*this);
@@ -1032,8 +980,7 @@ void Network::Item::Attach(Network& owner) noexcept {
   assert(node_inserted);
 
   file_->MoveUnder(owner, std::to_string(id_));
-  watcher_ = std::make_unique<Watcher>(*this);
-  watcher_->Watch(file_->id());
+  watcher_.emplace(*this);
 }
 void Network::Item::Detach() noexcept {
   assert(owner_);
@@ -1041,7 +988,7 @@ void Network::Item::Detach() noexcept {
   owner_->node_map_.erase(node_);
 
   owner_   = nullptr;
-  watcher_ = nullptr;
+  watcher_ = std::nullopt;
   file_->Isolate();
 }
 void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
@@ -1050,25 +997,20 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 
   switch (ev.type) {
   case File::Event::kUpdate:
-    if (item.memento_) {
-      auto ptag = item.tag_;
-      item.tag_ = item.memento_->Save();
-      if (ptag == item.tag_) return;
+    if (item.owner_) {
+      auto& net  = *item.owner_;
 
-      if (item.owner_) {
-        auto& net  = *item.owner_;
+      // check expired sockets
+      if (auto cmd = net.links_.CreateCommandToRemoveExpired(item.id(), node.input(), node.output())) {
+        auto ctx = std::make_shared<nf7::GenericContext>(net, "removing expired node links");
+        net.history_.Add(std::move(cmd)).ExecApply(ctx);
+      }
 
-        // check expired sockets
-        if (auto cmd = net.links_.CreateCommandToRemoveExpired(item.id(), node.input(), node.output())) {
-          auto ctx = std::make_shared<nf7::GenericContext>(net, "removing expired node links");
-          net.history_.Add(std::move(cmd)).ExecApply(ctx);
-        }
-
-        // tag change history
-        net.history_.Add(std::make_unique<Item::RestoreCommand>(*owner_, ptag));
+      // tag change history
+      if (auto cmd = item.mem_->CreateCommandIf()) {
+        net.history_.Add(std::move(cmd));
       }
     }
-    if (item.owner_) item.owner_->ApplyNetworkChanges();
     return;
 
   case File::Event::kReqFocus:
@@ -1082,6 +1024,8 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 
 
 void Network::Update() noexcept {
+  nf7::FileBase::Update();
+
   const auto em = ImGui::GetFontSize();
 
   // forget expired lambdas
@@ -1095,236 +1039,6 @@ void Network::Update() noexcept {
     item->Update();
   }
 
-  // show popup
-  if (const auto name = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(name);
-  }
-
-  // node add popup
-  if (ImGui::BeginPopup("AddPopup")) {
-    ImGui::TextUnformatted("Node/Network: adding new Node...");
-    if (factory_.Update()) {
-      auto item = std::make_unique<Item>(next_++, factory_.Create(env()));
-      auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new node");
-
-      auto& item_ref = *item;
-      history_.
-          Add(std::make_unique<Item::SwapCommand>(*this, std::move(item))).
-          ExecApply(ctx);
-      history_.
-          Add(std::make_unique<Item::MoveCommand>(item_ref, canvas_action_pos_)).
-          ExecApply(ctx);
-    }
-    ImGui::EndPopup();
-  }
-
-  // ---- I/O socket editor
-  if (ImGui::BeginPopup("SocketEditorPopup")) {
-    static std::unordered_set<size_t> select;
-
-    if (ImGui::IsWindowAppearing()) {
-      select.clear();
-    }
-
-    ImGui::TextUnformatted("Node/Network: modifying sockets...");
-
-    if (ImGui::BeginListBox("##input", {16*em, 8*em})) {
-      for (size_t i = 0; i < socks_.size(); ++i) {
-        ImGui::PushID(reinterpret_cast<void*>(i));
-        const auto& sock = socks_[i];
-
-        constexpr auto kFlags =
-            ImGuiSelectableFlags_SpanAllColumns   |
-            ImGuiSelectableFlags_AllowDoubleClick |
-            ImGuiSelectableFlags_AllowItemOverlap;
-        auto itr = select.find(i);
-        if (ImGui::Selectable("##selection", itr != select.end(), kFlags)) {
-          if (itr != select.end()) {
-            select.erase(i);
-          } else {
-            select.insert(i);
-          }
-        }
-        if (sock.desc.size() > 0 && ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("%s", sock.desc.c_str());
-        }
-        ImGui::SameLine();
-        switch (sock.type) {
-        case Socket::kInput:
-          ImGui::Text("I>: %s", sock.name.c_str());
-          break;
-        case Socket::kOutput:
-          ImGui::Text("O<: %s", sock.name.c_str());
-          break;
-        }
-
-        ImGui::PopID();
-      }
-      ImGui::EndListBox();
-    }
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    {
-      if (ImGui::Button("+")) {
-        ImGui::OpenPopup("AddPopup");
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("add new I/O socket");
-      }
-
-      ImGui::BeginDisabled(select.size() != 1);
-      if (ImGui::Button("*")) {
-        ImGui::OpenPopup("ModifyPopup");
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("modify I/O socket");
-      }
-      ImGui::EndDisabled();
-
-      ImGui::BeginDisabled(select.size() == 0);
-      if (ImGui::Button("-")) {
-        for (const auto idx : select) {
-          auto cmd = std::make_unique<SocketSwapCommand>(*this, idx);
-          auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing existing socket");
-          history_.Add(std::move(cmd)).ExecApply(ctx);
-        }
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("remove selected %zu sockets", select.size());
-      }
-      ImGui::EndDisabled();
-
-      ImGui::BeginDisabled(select.size() == 0);
-      if (ImGui::Button("V")) {
-        for (const auto idx : select) {
-          const auto& sock = socks_[idx];
-
-          std::unique_ptr<File> f;
-          switch (sock.type) {
-          case Socket::kInput:
-            f = std::make_unique<Input>(env(), sock.name);
-            break;
-          case Socket::kOutput:
-            f = std::make_unique<Output>(env(), sock.name);
-            break;
-          }
-          auto cmd = std::make_unique<Item::SwapCommand>(
-              *this, std::make_unique<Item>(next_++, std::move(f)));
-          auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new socket node");
-          history_.Add(std::move(cmd)).ExecApply(ctx);
-        }
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("add selected %zu sockets on network", select.size());
-      }
-      ImGui::EndDisabled();
-    }
-    ImGui::EndGroup();
-
-    // ---- I/O socket editor popup / socket add popup
-    if (ImGui::BeginPopup("AddPopup")) {
-      static int         new_type = 0;
-      static std::string new_name;
-      static std::string new_desc;
-
-      ImGui::TextUnformatted("Node/Network: adding new socket...");
-
-      if (ImGui::IsWindowAppearing()) {
-        new_type = 0;
-        new_name = "new_socket";
-        new_desc = "";
-      }
-
-      if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-      ImGui::InputText("name", &new_name);
-
-      ImGui::Combo("type", &new_type, Socket::kTypeString,
-                   sizeof(Socket::kTypeString)/sizeof(Socket::kTypeString[0]));
-
-      ImGui::InputTextMultiline("description", &new_desc);
-
-      bool err = false;
-      for (const auto& sock : socks_) {
-        if (sock.name == new_name) {
-          ImGui::Bullet(); ImGui::TextUnformatted("name is duplicated");
-          err = true;
-          break;
-        }
-      }
-      try {
-        Path::ValidateTerm(new_name);
-      } catch (Exception& e) {
-        ImGui::Bullet(); ImGui::Text("invalid name: %s", e.msg().c_str());
-        err = true;
-      }
-
-      if (!err) {
-        if (ImGui::Button("ok")) {
-          ImGui::CloseCurrentPopup();
-
-          Socket sock {
-            .type = new_type == 0? Socket::kInput: Socket::kOutput,
-            .name = new_name,
-            .desc = new_desc,
-          };
-          const auto index = select.size() == 1? *select.begin(): socks_.size();
-
-          auto cmd = std::make_unique<SocketSwapCommand>(*this, index, std::move(sock), true);
-          auto ctx = std::make_shared<nf7::GenericContext>(env(), id(), "adding new socket");
-          history_.Add(std::move(cmd)).ExecApply(ctx);
-        }
-        if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("add new %s socket named '%s'",
-                            Socket::kTypeString[new_type], new_name.c_str());
-        }
-      }
-      ImGui::EndPopup();
-    }
-    // ---- I/O socket editor popup / mod popup
-    if (ImGui::BeginPopup("ModifyPopup")) {
-      static int         new_type;
-      static std::string new_desc;
-
-      assert(select.size() == 1);
-      const auto  mod_idx  = *select.begin();
-      const auto& mod_sock = socks_[mod_idx];
-
-      if (ImGui::IsWindowAppearing()) {
-        new_type = static_cast<int>(mod_sock.type);
-        new_desc = mod_sock.desc;
-      }
-
-      ImGui::TextUnformatted("Node/Network: adding new socket...");
-
-      ImGui::AlignTextToFramePadding();
-      ImGui::LabelText("name", "%s", mod_sock.name.c_str());
-
-      ImGui::Combo("type", &new_type, Socket::kTypeString,
-                   sizeof(Socket::kTypeString)/sizeof(Socket::kTypeString[0]));
-
-      ImGui::InputTextMultiline("description", &new_desc);
-
-      if (ImGui::Button("ok")) {
-        ImGui::CloseCurrentPopup();
-
-        Socket sock {
-          .type = new_type == 0? Socket::kInput: Socket::kOutput,
-          .name = mod_sock.name,
-          .desc = new_desc,
-        };
-        auto cmd = std::make_unique<SocketSwapCommand>(*this, mod_idx, std::move(sock), false);
-        auto ctx = std::make_shared<nf7::GenericContext>(*this, "modifying socket");
-        history_.Add(std::move(cmd)).ExecApply(ctx);
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("modify socket named '%s'", mod_sock.name.c_str());
-      }
-      ImGui::EndPopup();
-    }
-
-    ImGui::EndPopup();
-  }
-
   // ---- editor window
   const auto kInit = [em]() {
     ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
@@ -1335,13 +1049,13 @@ void Network::Update() noexcept {
     {
       // ---- editor window / toolbar / attached lambda combo
       const auto current_lambda =
-          !lambda_?          "(unselected)"s:
-          lambda_->isRoot()? "(isolated)"s:
-          std::to_string(reinterpret_cast<uintptr_t>(lambda_.get()));
+          !lambda_?              "(unselected)"s:
+          lambda_->depth() == 0? "(isolated)"s:
+          nf7::gui::GetContextDisplayName(*lambda_);
       if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
         if (lambda_) {
           if (ImGui::Selectable("detach from current lambda")) {
-            DetachLambda();
+            AttachLambda(nullptr);
           }
           ImGui::Separator();
         }
@@ -1349,22 +1063,16 @@ void Network::Update() noexcept {
           auto ptr = wptr.lock();
           if (!ptr) continue;
 
-          const auto name = std::to_string(reinterpret_cast<uintptr_t>(ptr.get()));
+          const auto name = nf7::gui::GetContextDisplayName(*ptr);
           if (ImGui::Selectable(name.c_str(), ptr == lambda_)) {
-            DetachLambda();
+            AttachLambda(nullptr);
             lambda_ = ptr;
           }
           if (ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted("call stack:");
             ImGui::Indent();
-            for (auto p = ptr->parent(); p; p = p->parent()) {
-              auto f = env().GetFile(p->initiator());
-
-              const auto path = f? f->abspath().Stringify(): "[missing file]";
-              ImGui::TextUnformatted(path.c_str());
-              ImGui::TextDisabled("%s", p->GetDescription().c_str());
-            }
+            nf7::gui::ContextStack(*ptr);
             ImGui::Unindent();
             ImGui::EndTooltip();
           }
@@ -1424,15 +1132,13 @@ void Network::Update() noexcept {
           ImGuiPopupFlags_MouseButtonRight |
           ImGuiPopupFlags_NoOpenOverExistingPopup;
       if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
-        if (ImGui::IsWindowAppearing()) {
-          canvas_action_pos_ =
-              (ImGui::GetMousePos() - canvas_pos - canvas_.Offset)/canvas_.Zoom;
-        }
+        const auto mouse = ImGui::GetMousePosOnOpeningCurrentPopup();
         if (ImGui::MenuItem("add")) {
-          popup_ = "AddPopup";
+          const auto pos = mouse - canvas_pos - canvas_.Offset/canvas_.Zoom;
+          add_popup_.Open(pos);
         }
         if (ImGui::MenuItem("I/O sockets")) {
-          popup_ = "SocketEditorPopup";
+          socket_popup_.Open();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
@@ -1453,7 +1159,9 @@ void Network::Update() noexcept {
   win_.End();
 
   // squash queued commands
-  history_.Squash();
+  if (history_.Squash()) {
+    Touch();
+  }
 }
 void Network::UpdateMenu() noexcept {
   ImGui::MenuItem("shown", nullptr, &win_.shown());
@@ -1504,42 +1212,94 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
   ImGui::PopID();
 }
 
+
+void Network::AddPopup::Open(const ImVec2& pos) noexcept {
+  nf7::gui::Popup::Open();
+  pos_ = pos;
+}
+void Network::AddPopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    ImGui::TextUnformatted("Node/Network: adding new Node...");
+    if (factory_.Update()) {
+      auto item = std::make_unique<Item>(owner_->next_++, factory_.Create(owner_->env()));
+      auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "adding new node");
+
+      auto& item_ref = *item;
+      owner_->history_.
+          Add(std::make_unique<Item::SwapCommand>(*owner_, std::move(item))).
+          ExecApply(ctx);
+      owner_->history_.
+          Add(std::make_unique<Item::MoveCommand>(item_ref, pos_)).
+          ExecApply(ctx);
+    }
+    ImGui::EndPopup();
+  }
+}
+
+
+void Network::SocketPopup::Open() noexcept {
+  nf7::gui::Popup::Open();
+  input_  = Join(owner_->input_);
+  output_ = Join(owner_->output_);
+}
+void Network::SocketPopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    ImGui::InputTextMultiline("input",  &input_);
+    ImGui::InputTextMultiline("output", &output_);
+    try {
+      auto p = Network::SocketSwapCommand::Pair {
+        .in  = Parse(input_),
+        .out = Parse(output_),
+      };
+      if (ImGui::Button("ok")) {
+        ImGui::CloseCurrentPopup();
+        auto cmd = std::make_unique<Network::SocketSwapCommand>(*owner_, std::move(p));
+        auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "updating IO sockets");
+        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
+      }
+    } catch (nf7::Exception& e) {
+      ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
+    }
+    ImGui::EndPopup();
+  }
+}
+std::string Network::SocketPopup::Join(std::span<const std::string> items) noexcept {
+  std::stringstream st;
+  for (const auto& item : items) {
+    st << item << '\n';
+  }
+  return st.str();
+}
+std::vector<std::string> Network::SocketPopup::Parse(std::string_view str) {
+  if (str.size() > 10*1024) {
+    throw nf7::Exception {"too long text"};
+  }
+
+  std::vector<std::string> ret;
+  std::string_view::size_type pos = 0;
+  while (pos < str.size()) {
+    auto next = str.find('\n', pos);
+    if (next == std::string_view::npos) {
+      next = str.size();
+    }
+    const auto name = str.substr(pos, next-pos);
+    pos = next+1;
+
+    nf7::File::Path::ValidateTerm(name);
+    if (ret.end() != std::find(ret.begin(), ret.end(), name)) {
+      throw nf7::Exception {"name duplication ("+std::string{name}+")"};
+    }
+
+    ret.push_back(std::string {name});
+  }
+  return ret;
+}
+
 }
 }  // namespace nf7
 
 
 namespace yas::detail {
-
-template <size_t F>
-struct serializer<
-    type_prop::not_a_fundamental,
-    ser_case::use_internal_serializer,
-    F,
-    nf7::Network::Socket> {
- public:
-  template <typename Archive>
-  static Archive& save(Archive& ar, const nf7::Network::Socket& sock) {
-    char type;
-    switch (sock.type) {
-    case nf7::Network::Socket::kInput : type = 'I';  break;
-    case nf7::Network::Socket::kOutput: type = 'O';  break;
-    }
-    ar(type, sock.name, sock.desc);
-    return ar;
-  }
-  template <typename Archive>
-  static Archive& load(Archive& ar, nf7::Network::Socket& sock) {
-    char type;
-    ar(type, sock.name, sock.desc);
-    switch (type) {
-    case 'I': sock.type = nf7::Network::Socket::kInput;  break;
-    case 'O': sock.type = nf7::Network::Socket::kOutput; break;
-    default:
-      throw nf7::DeserializeException("unknown type specifier: "s+type);
-    }
-    return ar;
-  }
-};
 
 template <size_t F>
 struct serializer<

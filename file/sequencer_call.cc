@@ -49,8 +49,11 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kParamPanel),
       life_(*this),
       callee_(*this, "callee", callee),
-      callee_editor_(*this, [](auto& t) { return t.flags().contains("nf7::Node"); }),
-      callee_popup_("CalleeEditorPopup", callee_editor_),
+      callee_editor_(*this,
+                     [](auto& t) { return t.flags().contains("nf7::Node"); }),
+      callee_popup_("CalleeEditorPopup",
+                    "Sequencer/Call: replacing callee...",
+                    callee_editor_),
       mem_(*this, Data {*this, expects}){
     callee_.onChildMementoChange = [this]() {
       mem_.Commit();

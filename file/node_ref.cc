@@ -20,6 +20,7 @@
 #include "common/generic_type_info.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_node.hh"
+#include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/memento.hh"
 #include "common/node.hh"
@@ -48,7 +49,8 @@ class Ref final : public nf7::File, public nf7::Node {
   Ref(Env& env, Path&& path = {"initial", "path"},
       std::vector<std::string>&& in  = {},
       std::vector<std::string>&& out = {}) noexcept :
-      File(kType, env),
+      nf7::File(kType, env),
+      life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
       mem_(*this, {*this, std::move(path), std::move(in), std::move(out)}) {
   }
@@ -98,6 +100,8 @@ class Ref final : public nf7::File, public nf7::Node {
   }
 
  private:
+  nf7::Life<Ref> life_;
+
   std::shared_ptr<nf7::LoggerRef> log_;
 
   const char* popup_ = nullptr;
@@ -167,12 +171,12 @@ class Ref::Lambda final : public Node::Lambda,
   static constexpr size_t kMaxDepth = 1024;
 
   Lambda(Ref& f, const std::shared_ptr<Node::Lambda>& parent) :
-      Node::Lambda(f, parent), ref_(&f), log_(f.log_) {
+      Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
   }
 
   void Handle(std::string_view name, const Value& v,
               const std::shared_ptr<Node::Lambda>& caller) noexcept override {
-    if (!env().GetFile(initiator())) return;
+    if (!f_) return;
 
     auto parent = this->parent();
     if (!parent) return;
@@ -186,7 +190,7 @@ class Ref::Lambda final : public Node::Lambda,
           log_->Error("stack overflow");
           return;
         }
-        base_ = ref_->target().CreateLambda(shared_from_this());
+        base_ = f_->target().CreateLambda(shared_from_this());
       }
       base_->Handle(name, v, shared_from_this());
     }
@@ -199,7 +203,8 @@ class Ref::Lambda final : public Node::Lambda,
   }
 
  private:
-  Ref* const ref_;
+  nf7::Life<Ref>::Ref f_;
+
   std::shared_ptr<nf7::LoggerRef> log_;
 
   std::shared_ptr<Node::Lambda> base_;

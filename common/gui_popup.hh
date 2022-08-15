@@ -36,8 +36,10 @@ class Popup {
 template <typename T>
 class PopupWrapper : public nf7::FileBase::Feature, private nf7::gui::Popup {
  public:
-  PopupWrapper(const char* name, T& content, ImGuiWindowFlags flags = 0) noexcept :
-      nf7::gui::Popup(name, flags), content_(&content) {
+  PopupWrapper() = delete;
+  PopupWrapper(const char* name, const char* title, T& content,
+               ImGuiWindowFlags flags = 0) noexcept :
+      nf7::gui::Popup(name, flags), title_(title), content_(&content) {
   }
   PopupWrapper(const PopupWrapper&) = delete;
   PopupWrapper(PopupWrapper&&) = delete;
@@ -50,6 +52,7 @@ class PopupWrapper : public nf7::FileBase::Feature, private nf7::gui::Popup {
   }
   void Update() noexcept override {
     if (nf7::gui::Popup::Begin()) {
+      ImGui::TextUnformatted(title_);
       if (content_->Update()) {
         ImGui::CloseCurrentPopup();
         onDone();
@@ -62,6 +65,8 @@ class PopupWrapper : public nf7::FileBase::Feature, private nf7::gui::Popup {
   std::function<void()> onDone = []() { };
 
  private:
+  const char* title_;
+
   T* const content_;
 };
 

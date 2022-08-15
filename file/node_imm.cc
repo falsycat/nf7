@@ -21,6 +21,7 @@
 #include "common/generic_type_info.hh"
 #include "common/gui_node.hh"
 #include "common/gui_resizer.hh"
+#include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/value.hh"
@@ -54,7 +55,8 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   };
 
   Imm(Env& env, Type type = kInteger, nf7::Value&& v = nf7::Value::Integer {0}) noexcept :
-      File(kType, env), DirItem(DirItem::kNone), mem_(*this, {type, std::move(v)}) {
+      nf7::File(kType, env), nf7::DirItem(DirItem::kNone),
+      life_(*this), mem_(*this, {type, std::move(v)}) {
     input_  = {"in"};
     output_ = {"out"};
   }
@@ -80,6 +82,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   std::shared_ptr<Node::Lambda> CreateLambda(const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   void UpdateNode(Node::Editor&) noexcept override;
+  void UpdateEditor(Node::Editor&, float w) noexcept;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
@@ -87,6 +90,8 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
  private:
+  nf7::Life<Imm> life_;
+
   struct Data final {
    public:
     Data(Type t, nf7::Value&& v) noexcept : type(t), value(std::move(v)) {
@@ -97,7 +102,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   };
   nf7::GenericMemento<Data> mem_;
 
-  void UpdateEditor(Node::Editor&, float w) noexcept;
+
   void ChangeType(Type) noexcept;
 
   static const char* StringifyType(Type t) noexcept {
@@ -120,20 +125,20 @@ class Imm::Lambda final : public Node::Lambda,
     public std::enable_shared_from_this<Imm::Lambda> {
  public:
   Lambda(Imm& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
-      Node::Lambda(f, parent), imm_(&f) {
+      Node::Lambda(f, parent), f_(f.life_) {
   }
 
   void Handle(std::string_view name, const nf7::Value&,
               const std::shared_ptr<Node::Lambda>& caller) noexcept override {
+    if (!f_) return;
     if (name == "in") {
-      if (!env().GetFile(initiator())) return;
-      caller->Handle("out", imm_->mem_.data().value, shared_from_this());
+      caller->Handle("out", f_->mem_.data().value, shared_from_this());
       return;
     }
   }
 
  private:
-  Imm* const imm_;
+  nf7::Life<Imm>::Ref f_;
 };
 std::shared_ptr<Node::Lambda> Imm::CreateLambda(
     const std::shared_ptr<Node::Lambda>& parent) noexcept {

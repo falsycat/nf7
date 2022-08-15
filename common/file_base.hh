@@ -31,7 +31,7 @@ class FileBase : public nf7::File {
       nf7::File(t, env), feats_(std::move(feats)) {
   }
 
-  nf7::File* Find(std::string_view name) const noexcept override final {
+  nf7::File* Find(std::string_view name) const noexcept override {
     for (auto feat : feats_) {
       if (auto ret = feat->Find(name)) {
         return ret;
@@ -39,12 +39,12 @@ class FileBase : public nf7::File {
     }
     return nullptr;
   }
-  void Handle(const nf7::File::Event& ev) noexcept override final {
+  void Handle(const nf7::File::Event& ev) noexcept override {
     for (auto feat : feats_) {
       feat->Handle(ev);
     }
   }
-  void Update() noexcept override final {
+  void Update() noexcept override {
     for (auto feat : feats_) {
       feat->Update();
     }
