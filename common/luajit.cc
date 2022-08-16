@@ -39,7 +39,16 @@ void PushGlobalTable(lua_State* L) noexcept {
     lua_setfield(L, -2, "table");
 
     lua_pushcfunction(L, [](auto L) {
-      PushValue(L, CheckValue(L, 1));
+      if (lua_isstring(L, 2)) {
+        const char* type = lua_tostring(L, 2);
+        if (std::string_view {"integer"} == type) {
+          PushValue(L, static_cast<nf7::Value::Integer>(luaL_checkinteger(L, 1)));
+        } else {
+          return luaL_error(L, "unknown type specifier: %s", type);
+        }
+      } else {
+        PushValue(L, CheckValue(L, 1));
+      }
       return 1;
     });
     lua_setfield(L, -2, "nf7_Value");
@@ -52,14 +61,14 @@ void PushGlobalTable(lua_State* L) noexcept {
         PushVector(L, std::make_shared<std::vector<uint8_t>>(std::move(*mut)));
         return 1;
       }
-      return luaL_error(L, "expected nf7::Value::MutableVector or nf7::Value::Vector");
+      return luaL_error(L, "expected nf7::Value::MutableVector or nf7::Value::ConstVector");
     });
     lua_setfield(L, -2, "nf7_Vector");
 
     lua_pushcfunction(L, [](auto L) {
       if (auto imm = ToVector(L, 1)) {
         if (imm->use_count() == 1) {
-          PushMutableVector(L, std::move(**imm));
+          PushMutableVector(L, std::move(const_cast<std::vector<uint8_t>&>(**imm)));
         } else {
           PushMutableVector(L, std::vector<uint8_t> {**imm});
         }
@@ -111,7 +120,7 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
           auto operator()(Value::Integer) noexcept { lua_pushinteger(L, v.integer()); }
           auto operator()(Value::Scalar)  noexcept { lua_pushnumber(L, v.scalar()); }
           auto operator()(Value::String)  noexcept { lua_pushstring(L, v.string().c_str()); }
-          auto operator()(Value::Vector)  noexcept { lua_pushnil(L); }
+          auto operator()(Value::Vector)  noexcept { PushVector(L, v.vector()); }
           auto operator()(Value::DataPtr) noexcept { lua_pushnil(L); }
 
           auto operator()(Value::Tuple) noexcept {
@@ -142,14 +151,14 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
   }
   lua_setmetatable(L, -2);
 }
-void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
+void PushVector(lua_State* L, const nf7::Value::ConstVector& v) noexcept {
   assert(v);
-  new (lua_newuserdata(L, sizeof(v))) nf7::Value::Vector(v);
+  new (lua_newuserdata(L, sizeof(v))) nf7::Value::ConstVector(v);
 
-  if (luaL_newmetatable(L, "nf7::Value::Vector")) {
+  if (luaL_newmetatable(L, "nf7::Value::ConstVector")) {
     lua_createtable(L, 0, 0);
       lua_pushcfunction(L, [](auto L) {
-        const auto& v = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
+        const auto& v = CheckRef<nf7::Value::ConstVector>(L, 1, "nf7::Value::ConstVector");
         const auto offset = luaL_checkinteger(L, 2);
         if (offset < 0) {
           return luaL_error(L, "negative offset");
@@ -229,7 +238,7 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
       lua_setfield(L, -2, "get");
 
       lua_pushcfunction(L, [](auto L) {
-        const auto& v = CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector");
+        const auto& v = CheckRef<nf7::Value::ConstVector>(L, 1, "nf7::Value::ConstVector");
         lua_pushinteger(L, static_cast<lua_Integer>(v->size()));
         return 1;
       });
@@ -237,7 +246,7 @@ void PushVector(lua_State* L, const nf7::Value::Vector& v) noexcept {
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
-      CheckRef<nf7::Value::Vector>(L, 1, "nf7::Value::Vector").~shared_ptr();
+      CheckRef<nf7::Value::ConstVector>(L, 1, "nf7::Value::ConstVector").~shared_ptr();
       return 0;
     });
     lua_setfield(L, -2, "__gc");
@@ -301,6 +310,37 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
         return 0;
       });
       lua_setfield(L, -2, "resize");
+
+      lua_pushcfunction(L, [](auto L) {
+        auto&      dst     = CheckRef<std::vector<uint8_t>>(L, 1, "nf7::Value::MutableVector");
+        const auto dst_off = luaL_checkinteger(L, 2);
+
+        const std::vector<uint8_t>* src;
+        if (const auto& v = ToVector(L, 3)) {
+          src = &**v;
+        } else if (const auto& mv = ToMutableVector(L, 3)) {
+          src = &*mv;
+        } else {
+          return luaL_error(L, "#2 argument must be vector or mutable vector");
+        }
+        const auto src_off = luaL_checkinteger(L, 4);
+
+        const lua_Integer size = luaL_checkinteger(L, 5);
+        if (size < 0) {
+          return luaL_error(L, "negative size");
+        }
+        if (dst_off < 0 || static_cast<size_t>(dst_off+size) > dst.size()) {
+          return luaL_error(L, "dst out of bounds");
+        }
+        if (src_off < 0 || static_cast<size_t>(src_off+size) > src->size()) {
+          return luaL_error(L, "src out of bounds");
+        }
+        std::memcpy(dst. data()+static_cast<size_t>(dst_off),
+                    src->data()+static_cast<size_t>(src_off),
+                    static_cast<size_t>(size));
+        return 0;
+      });
+      lua_setfield(L, -2, "blit");
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
@@ -319,8 +359,7 @@ std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
   }
   if (lua_isnumber(L, idx)) {
     const double n = lua_tonumber(L, idx);
-    const auto   i = static_cast<nf7::Value::Integer>(n);
-    return n == static_cast<double>(i)? nf7::Value {i}: nf7::Value{n};
+    return nf7::Value {n};
   }
   if (lua_isboolean(L, idx)) {
     return nf7::Value {bool {!!lua_toboolean(L, idx)}};
@@ -356,8 +395,8 @@ std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
   }
   return std::nullopt;
 }
-std::optional<nf7::Value::Vector> ToVector(lua_State* L, int idx) noexcept {
-  auto ptr = ToRef<nf7::Value::Vector>(L, idx, "nf7::Value::Vector");
+std::optional<nf7::Value::ConstVector> ToVector(lua_State* L, int idx) noexcept {
+  auto ptr = ToRef<nf7::Value::ConstVector>(L, idx, "nf7::Value::ConstVector");
   if (!ptr) return std::nullopt;
   return *ptr;
 }

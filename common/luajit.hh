@@ -17,11 +17,11 @@ namespace nf7::luajit {
 void PushGlobalTable(lua_State*) noexcept;
 void PushImmEnv(lua_State*) noexcept;
 void PushValue(lua_State*, const nf7::Value&) noexcept;
-void PushVector(lua_State*, const nf7::Value::Vector&) noexcept;
+void PushVector(lua_State*, const nf7::Value::ConstVector&) noexcept;
 void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
 
 std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
-std::optional<nf7::Value::Vector> ToVector(lua_State*, int) noexcept;
+std::optional<nf7::Value::ConstVector> ToVector(lua_State*, int) noexcept;
 std::optional<std::vector<uint8_t>> ToMutableVector(lua_State*, int) noexcept;
 
 

@@ -223,10 +223,12 @@ class Device::Ring final {
   }
 
   // for playback mode: mix samples into this ring
-  uint64_t Mix(const float* ptr, size_t n, uint64_t time) noexcept {
+  std::pair<uint64_t, uint64_t> Mix(const float* ptr, size_t n, uint64_t time) noexcept {
     std::unique_lock<std::mutex> k(mtx_);
     if (time < time_) time = time_;
-    if (time-time_ > buf_.size()) return time_+buf_.size();
+    if (time-time_ > buf_.size()) {
+      return {time_+buf_.size(), 0};
+    }
 
     const size_t vn     = std::min(n, buf_.size());
     const size_t offset = (time-time_begin_)%buf_.size();
@@ -234,7 +236,7 @@ class Device::Ring final {
       if (dsti >= buf_.size()) dsti = 0;
       buf_[dsti] += ptr[srci];
     }
-    return time+vn;
+    return {time+vn, vn};
   }
   // for playback mode: consume samples in this ring
   void Consume(float* dst, size_t n) noexcept {
@@ -307,12 +309,11 @@ class Device::PlaybackLambda final : public nf7::Node::Lambda,
       const auto  ptr = reinterpret_cast<const float*>(vec->data());
       const auto  n   = vec->size()/sizeof(float);
 
-      auto ptime = time_;
-      time_ = data_->ring->Mix(ptr, n, time_);
-      if (time_ < ptime) ptime = time_;
+      const auto [time, mixed] = data_->ring->Mix(ptr, n, time_);
+      time_ = time;
 
-      const auto mixed = static_cast<nf7::Value::Integer>(time_-ptime);
-      caller->Handle("mixed_size", mixed, shared_from_this());
+      const auto ret = static_cast<nf7::Value::Integer>(mixed);
+      caller->Handle("mixed_size", ret, shared_from_this());
       return;
     }
     data_->log.Warn("got unknown input");

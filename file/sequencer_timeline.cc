@@ -643,6 +643,8 @@ class TL::Lambda final : public Node::Lambda,
   void EmitResults(const std::unordered_map<std::string, nf7::Value>& vars) noexcept {
     if (!owner_) return;
     auto caller = parent();
+    if (!caller) return;
+
     for (const auto& name : owner_->seq_outputs_) {
       auto itr = vars.find(name);
       if (itr == vars.end()) continue;

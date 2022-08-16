@@ -69,6 +69,8 @@ class Value {
   Value& operator=(const Vector& v) noexcept { value_ = v; return *this; }
   Value(Vector&& v) noexcept { value_ = std::move(v); }
   Value& operator=(Vector&& v) noexcept { value_ = std::move(v); return *this; }
+  Value(const ConstVector& v) noexcept { value_ = std::const_pointer_cast<std::vector<uint8_t>>(v); }
+  Value& operator=(const ConstVector& v) noexcept { value_ = std::const_pointer_cast<std::vector<uint8_t>>(v); return *this; }
   Value(std::vector<uint8_t>&& v) noexcept { value_ = std::make_shared<std::vector<uint8_t>>(std::move(v)); }
   Value& operator=(std::vector<uint8_t>&& v) noexcept { value_ = std::make_shared<std::vector<uint8_t>>(std::move(v)); return *this; }
   Value(const Tuple& v) noexcept : value_(v) { }
