@@ -76,16 +76,17 @@ class Thread::Lock final : public Thread::RegistryItem,
 
 template <>
 void Thread::Lock<nf7::AsyncBuffer>::PushMeta(lua_State* L) noexcept {
-  constexpr const char* kTypeName = "nf7::luajit::Thread::Lock<nf7::AsyncBuffer>";
+  constexpr const char* kCustomTypeName =
+      "nf7::luajit::Thread::Lock<nf7::AsyncBuffer>";
 
   constexpr size_t kBufferSizeMax = 1024 * 1024 * 64;
 
-  if (luaL_newmetatable(L, kTypeName)) {
+  if (luaL_newmetatable(L, kCustomTypeName)) {
     lua_createtable(L, 0, 0);
 
     // lock:read(offset, bytes [, mutable vector]) -> MutableVector
     lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kTypeName)->Validate(L);
+      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kCustomTypeName)->Validate(L);
 
       auto off  = luaL_checkinteger(L, 2);
       auto size = luaL_checkinteger(L, 3);
@@ -127,7 +128,7 @@ void Thread::Lock<nf7::AsyncBuffer>::PushMeta(lua_State* L) noexcept {
 
     // lock:write(offset, vector) -> size
     lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kTypeName)->Validate(L);
+      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kCustomTypeName)->Validate(L);
 
       auto off    = luaL_checkinteger(L, 2);
       auto optvec = luajit::ToVector(L, 3);
@@ -155,7 +156,7 @@ void Thread::Lock<nf7::AsyncBuffer>::PushMeta(lua_State* L) noexcept {
 
     // lock:truncate(size) -> size
     lua_pushcfunction(L, ([](auto L) {
-      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kTypeName)->Validate(L);
+      auto [th, buf, lock] = CheckWeakPtr<Lock>(L, 1, kCustomTypeName)->Validate(L);
 
       auto size = luaL_checkinteger(L, 2);
       if (size < 0) {

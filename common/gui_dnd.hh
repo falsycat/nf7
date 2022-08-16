@@ -77,7 +77,7 @@ inline void DrawRect() noexcept {
   ImGui::GetForegroundDrawList()->AddRect(
       r.Min - ImVec2 {3.5f, 3.5f},
       r.Max + ImVec2 {3.5f, 3.5f},
-      ImGui::GetColorU32(ImGuiCol_DragDropTarget), 0.0f, 2.0f);
+      ImGui::GetColorU32(ImGuiCol_DragDropTarget), 0.0f, 0, 2.0f);
 }
 
 }  // namespace nf7::gui::dnd
