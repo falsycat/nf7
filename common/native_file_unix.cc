@@ -8,8 +8,6 @@ extern "C" {
 #include <unistd.h>
 }
 
-#include <thread>
-
 
 namespace nf7 {
 
@@ -27,7 +25,6 @@ void NativeFile::Lock() {
     flags |= O_WRONLY;
   }
   if (nflags_ & kCreateIf) flags |= O_CREAT;
-  if (nflags_ & kTrunc)    flags |= O_TRUNC;
 
   int fd = open(path_.string().c_str(), flags, 0600);
   if (fd < 0) {

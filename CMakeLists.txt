@@ -106,6 +106,7 @@ target_sources(nf7
     common/yas_std_variant.hh
 
     $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
+    $<$<PLATFORM_ID:Windows>:common/native_file_win.cc>
 
     file/audio_context.cc
     file/audio_device.cc

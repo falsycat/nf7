@@ -18,7 +18,6 @@ class NativeFile final : public nf7::Buffer, public nf7::Context {
   enum Flag : uint8_t {
     kCreateIf  = 1 << 0,
     kExclusive = 1 << 1,
-    kTrunc     = 1 << 2,
   };
   using Flags = uint8_t;
 
@@ -56,7 +55,7 @@ class NativeFile final : public nf7::Buffer, public nf7::Context {
   const Buffer::Flags     flags_;
   const NativeFile::Flags nflags_;
 
-  std::optional<uint64_t> handle_;
+  std::optional<uintptr_t> handle_;
 };
 
 }  // namespace nf7
