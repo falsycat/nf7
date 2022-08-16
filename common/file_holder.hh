@@ -51,12 +51,16 @@ class FileHolder : public nf7::FileBase::Feature {
     entity_ = std::move(path);
     tag_    = nullptr;
     SetUp();
+
+    onEmplace();
   }
   void Emplace(std::unique_ptr<nf7::File>&& f) noexcept {
     TearDown();
     entity_ = std::move(f);
     tag_    = nullptr;
     SetUp();
+
+    onEmplace();
   }
 
   nf7::File& GetFileOrThrow() {
@@ -72,10 +76,6 @@ class FileHolder : public nf7::FileBase::Feature {
   void Handle(const nf7::File::Event&) noexcept override;
   void Update() noexcept override;
 
-  std::string GetDisplayText() const noexcept;
-  bool UpdateButton(bool small = false) const noexcept;
-  bool UpdateButtonWithLabel(const char* id) const noexcept;
-
   bool own() const noexcept {
     return std::holds_alternative<std::shared_ptr<nf7::File>>(entity_);
   }
@@ -86,13 +86,19 @@ class FileHolder : public nf7::FileBase::Feature {
     return std::holds_alternative<std::monostate>(entity_);
   }
 
+  nf7::File& owner() const noexcept { return *owner_; }
+
   nf7::File* file() const noexcept { return file_; }
   nf7::File::Path path() const noexcept {
     assert(!empty());
     return own()? nf7::File::Path {{id_}}: std::get<nf7::File::Path>(entity_);
   }
 
+  // called when child's memento tag id is changed
   std::function<void(void)> onChildMementoChange = [](){};
+
+  // called right before returning from Emplace()
+  std::function<void(void)> onEmplace = [](){};
 
  private:
   nf7::File* const  owner_;

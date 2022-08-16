@@ -34,8 +34,8 @@ class Value {
     case kInteger:          return "Integer";
     case kScalar:           return "Scalar";
     case kNormalizedScalar: return "NormalizedScalar";
-    case kString:           return "kString";
-    case kMultilineString:  return "kMultilineString";
+    case kString:           return "String";
+    case kMultilineString:  return "MultilineString";
     }
     assert(false);
     return nullptr;
@@ -115,6 +115,7 @@ class Value {
 
   bool UpdateEditor() noexcept {
     bool ret = false;
+    const auto w = ImGui::CalcItemWidth();
 
     ImGui::Button("T");
     if (ImGui::BeginPopupContextItem(nullptr, ImGuiPopupFlags_MouseButtonLeft)) {
@@ -141,8 +142,7 @@ class Value {
     ImGui::SameLine();
 
     const auto em = ImGui::GetFontSize();
-    const auto w  = ImGui::CalcItemWidth();
-    ImGui::PushItemWidth(w);
+    ImGui::PushItemWidth(w-ImGui::GetItemRectSize().x);
     switch (type_) {
     case kPulse:
       ImGui::BeginDisabled();

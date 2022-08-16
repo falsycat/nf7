@@ -46,36 +46,6 @@ void FileHolder::Update() noexcept {
   }
 }
 
-std::string FileHolder::GetDisplayText() const noexcept {
-  std::string text;
-  if (own()) {
-    text = "OWN: " + file_->type().name();
-  } else if (empty()) {
-    text = "NULL:";
-  } else {
-    text = "REF: "s + path().Stringify();
-  }
-  return text;
-}
-bool FileHolder::UpdateButton(bool small) const noexcept {
-  ImGui::BeginGroup();
-  const auto text = GetDisplayText();
-  const bool ret  =
-      small? ImGui::SmallButton(text.c_str()): ImGui::Button(text.c_str());
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s", text.c_str());
-  }
-  ImGui::EndGroup();
-  return ret;
-}
-bool FileHolder::UpdateButtonWithLabel(const char* name) const noexcept {
-  const bool ret = ImGui::Button(
-      GetDisplayText().c_str(), {ImGui::CalcItemWidth(), 0});
-  ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
-  ImGui::TextUnformatted(name);
-  return ret;
-}
-
 void FileHolder::SetUp() noexcept {
   if (!ready_ || file_) return;
   if (own()) {

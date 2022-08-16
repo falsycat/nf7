@@ -1,8 +1,14 @@
 #include "common/gui_file.hh"
 
+#include <cassert>
+
 #include <imgui.h>
 #include <imgui_stdlib.h>
 
+#include "common/generic_context.hh"
+
+
+using namespace std::literals;
 
 namespace nf7::gui {
 
@@ -96,63 +102,112 @@ bool FileFactory::Update() noexcept {
 }
 
 
-void FileHolderEditor::Reset(nf7::FileHolder& h) noexcept {
-  if (h.ref()) {
-    type_ = kRef;
-    path_ = h.path().Stringify();
+std::string FileHolderEditor::GetDisplayText() const noexcept {
+  std::string text;
+  if (holder_->own()) {
+    text = "OWN: " + holder_->file()->type().name();
+  } else if (holder_->ref()) {
+    text = "REF: "s + holder_->path().Stringify();
+  } else if (holder_->empty()) {
+    text = "(NULL)";
   } else {
-    type_ = kOwn;
-    path_ = {};
+    assert(false);
   }
-}
-void FileHolderEditor::Apply(nf7::FileHolder& h) noexcept {
-  switch (type_) {
-  case kOwn:
-    h.Emplace(factory_.Create(owner_->env()));
-    break;
-  case kRef:
-    h.Emplace(std::move(nf7::File::Path::Parse(path_)));
-    break;
-  }
+  return text;
 }
 
-bool FileHolderEditor::Update() noexcept {
-  bool ret = false;
+void FileHolderEditor::Button(bool small) noexcept {
+  ImGui::PushID(this);
 
-  if (ImGui::RadioButton("own", type_ == kOwn)) { type_ = kOwn; }
-  ImGui::SameLine();
-  if (ImGui::RadioButton("ref", type_ == kRef)) { type_ = kRef; }
+  ImGui::BeginGroup();
+  const auto text = GetDisplayText();
 
-  switch (type_) {
-  case kOwn:
-    if (factory_.Update()) {
-      ret = true;
+  const bool open = small?
+      ImGui::SmallButton(text.c_str()):
+      ImGui::Button(text.c_str());
+  if (open) {
+    ImGui::OpenPopup("FileHolderEditorPopup");
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", text.c_str());
+  }
+  ImGui::EndGroup();
+
+  UpdatePopup();
+  ImGui::PopID();
+}
+void FileHolderEditor::ButtonWithLabel(const char* name) noexcept {
+  ImGui::PushID(this);
+
+  ImGui::BeginGroup();
+  if (ImGui::Button(GetDisplayText().c_str(), {ImGui::CalcItemWidth(), 0})) {
+    ImGui::OpenPopup("FileHolderEditorPopup");
+  }
+  ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+  ImGui::TextUnformatted(name);
+  ImGui::EndGroup();
+
+  UpdatePopup();
+  ImGui::PopID();
+}
+void FileHolderEditor::UpdatePopup() noexcept {
+  if (ImGui::BeginPopup("FileHolderEditorPopup")) {
+    if (ImGui::IsWindowAppearing()) {
+      if (holder_->ref()) {
+        type_ = kRef;
+        path_ = holder_->path().Stringify();
+      } else {
+        type_ = kOwn;
+        path_ = {};
+      }
     }
-    break;
-  case kRef:
-    ImGui::InputText("path", &path_);
 
-    bool missing = false;
-    try {
-      auto path = nf7::File::Path::Parse(path_);
+    if (ImGui::RadioButton("own", type_ == kOwn)) { type_ = kOwn; }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("ref", type_ == kRef)) { type_ = kRef; }
+
+    switch (type_) {
+    case kOwn:
+      if (factory_.Update()) {
+        auto& f = holder_->owner();
+        f.env().ExecMain(
+            std::make_shared<nf7::GenericContext>(f),
+            [this]() {
+              holder_->Emplace(factory_.Create(holder_->owner().env()));
+            });
+      }
+      break;
+
+    case kRef:
+      ImGui::InputText("path", &path_);
+
+      bool missing = false;
       try {
-        owner_->ResolveOrThrow(path);
-      } catch (nf7::File::NotFoundException&) {
-        missing = true;
+        auto path = nf7::File::Path::Parse(path_);
+        try {
+          holder_->owner().ResolveOrThrow(path);
+        } catch (nf7::File::NotFoundException&) {
+          missing = true;
+        }
+        if (ImGui::Button("apply")) {
+          ImGui::CloseCurrentPopup();
+          auto& f = holder_->owner();
+          f.env().ExecMain(
+              std::make_shared<nf7::GenericContext>(f),
+              [this, p = std::move(path)]() mutable {
+                holder_->Emplace(std::move(p));
+              });
+        }
+      } catch (nf7::Exception& e) {
+        ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
       }
-
-      if (ImGui::Button("apply")) {
-        ret = true;
+      if (missing) {
+        ImGui::Bullet(); ImGui::TextUnformatted("the file is missing :(");
       }
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
+      break;
     }
-    if (missing) {
-      ImGui::Bullet(); ImGui::TextUnformatted("the file is missing :(");
-    }
-    break;
+    ImGui::EndPopup();
   }
-  return ret;
 }
 
 }  // namespace nf7::gui

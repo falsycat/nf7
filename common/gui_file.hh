@@ -54,25 +54,28 @@ class FileHolderEditor final {
     kRef,
   };
 
-  FileHolderEditor(nf7::File& owner, FileFactory::Filter&& filter) noexcept :
-      owner_(&owner), factory_(owner, std::move(filter)) {
+  FileHolderEditor(nf7::FileHolder& h, FileFactory::Filter&& filter) noexcept :
+      holder_(&h), factory_(h.owner(), std::move(filter)) {
   }
   FileHolderEditor(const FileHolderEditor&) = delete;
   FileHolderEditor(FileHolderEditor&&) = default;
   FileHolderEditor& operator=(const FileHolderEditor&) = delete;
   FileHolderEditor& operator=(FileHolderEditor&&) = delete;
 
-  void Reset(nf7::FileHolder& h) noexcept;
-  void Apply(nf7::FileHolder& h) noexcept;
+  std::string GetDisplayText() const noexcept;
 
-  bool Update() noexcept;
+  void Button(bool = false) noexcept;
+  void SmallButton() noexcept { Button(true); }
+  void ButtonWithLabel(const char* id) noexcept;
 
  private:
-  nf7::File* const owner_;
+  nf7::FileHolder* const holder_;
 
-  Type        type_ = kOwn;
+  Type        type_;
   FileFactory factory_;
   std::string path_;
+
+  void UpdatePopup() noexcept;
 };
 
 }  // namespace nf7::gui

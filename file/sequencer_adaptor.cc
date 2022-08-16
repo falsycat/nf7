@@ -6,14 +6,12 @@
 #include <string_view>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
 
 #include <yas/types/std/string.hpp>
-#include <yas/types/std/variant.hpp>
 #include <yas/types/std/vector.hpp>
 
 #include "common/file_base.hh"
@@ -47,7 +45,7 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
 
   class Session;
   class Lambda;
-  class SessionLambda;
+  class Editor;
 
   struct Var {
     std::string name;
@@ -74,30 +72,17 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
   };
 
   Adaptor(Env& env, const nf7::FileHolder* target = nullptr, const Data* data = nullptr) noexcept :
-      nf7::FileBase(kType, env, {&target_, &target_popup_}),
+      nf7::FileBase(kType, env, {&target_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
       target_(*this, "target", target),
-      target_editor_(*this,
+      target_editor_(target_,
                      [](auto& t) { return t.flags().contains("nf7::Sequencer"); }),
-      target_popup_("TargetEditorPopup",
-                    "Sequencer/Adaptor: replacing target...",
-                    target_editor_),
       mem_(*this, Data {*this, data}) {
     target_.onChildMementoChange = [this]() { mem_.Commit(); };
-
-    target_popup_.onOpen = [this]() {
-      target_editor_.Reset(target_);
-    };
-    target_popup_.onDone = [this]() {
-      auto ctx = std::make_shared<nf7::GenericContext>(*this, "updating target");
-      this->env().ExecMain(ctx, [this]() {
-        target_editor_.Apply(target_);
-        mem_.Commit();
-      });
-    };
+    target_.onEmplace            = [this]() { mem_.Commit(); };
   }
 
   Adaptor(Env& env, Deserializer& ar) : Adaptor(env) {
@@ -126,8 +111,7 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
   nf7::Life<Adaptor> life_;
   nf7::FileHolder    target_;
 
-  nf7::gui::FileHolderEditor                         target_editor_;
-  nf7::gui::PopupWrapper<nf7::gui::FileHolderEditor> target_popup_;
+  nf7::gui::FileHolderEditor target_editor_;
 
   nf7::GenericMemento<Data> mem_;
 
@@ -139,7 +123,7 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
 class Adaptor::Session final : public nf7::Sequencer::Session {
  public:
   // ensure that Adaptor is alive
-  Session(Adaptor& f, const std::shared_ptr<nf7::Sequencer::Session>& parent) noexcept {
+  Session(Adaptor& f, const std::shared_ptr<nf7::Sequencer::Session>& parent) noexcept : parent_(parent) {
     for (auto& p : f.data().input_imm) {
       vars_[p.first] = p.second.entity();
     }
@@ -186,6 +170,7 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
   }
 
   void Finish() noexcept override {
+    assert(parent_);
     parent_->Finish();
     parent_ = nullptr;
   }
@@ -232,12 +217,16 @@ std::shared_ptr<nf7::Sequencer::Lambda> Adaptor::CreateLambda(
 }
 
 
+class Adaptor::Editor final : public nf7::Sequencer::Editor {
+ public:
+  using nf7::Sequencer::Editor::Editor;
+};
+
+
 void Adaptor::UpdateItem(Sequencer::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
   ImGui::SetCursorPos({.25f*em, .25f*em});
-  if (target_.UpdateButton(true)) {
-    target_popup_.Open();
-  }
+  target_editor_.SmallButton();
 }
 void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
   bool commit = false;
@@ -248,9 +237,7 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
 
   const auto em = ImGui::GetFontSize();
   if (ImGui::CollapsingHeader("Sequencer/Adaptor", ImGuiTreeNodeFlags_DefaultOpen)) {
-    if (target_.UpdateButtonWithLabel("target")) {
-      target_popup_.Open();
-    }
+    target_editor_.ButtonWithLabel("target");
 
     if (ImGui::BeginTable("table", 3)) {
       ImGui::TableSetupColumn("left", ImGuiTableColumnFlags_WidthStretch, 1.f);
@@ -261,8 +248,8 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
       ImGui::PushID("imm");
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      ImGui::AlignTextToFramePadding();
       ImGui::Spacing();
+      ImGui::AlignTextToFramePadding();
       ImGui::TextUnformatted("imm input");
       ImGui::SameLine();
       if (ImGui::Button("+")) {
@@ -300,8 +287,8 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
       ImGui::PushID("input");
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      ImGui::AlignTextToFramePadding();
       ImGui::Spacing();
+      ImGui::AlignTextToFramePadding();
       ImGui::TextUnformatted("input");
       ImGui::SameLine();
       if (ImGui::Button("+")) {
@@ -346,8 +333,8 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
       ImGui::PushID("output");
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      ImGui::AlignTextToFramePadding();
       ImGui::Spacing();
+      ImGui::AlignTextToFramePadding();
       ImGui::TextUnformatted("output");
       ImGui::SameLine();
       if (ImGui::Button("+")) {
@@ -384,7 +371,6 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
       ImGui::EndTable();
     }
   }
-
   if (commit) {
     imm.erase(
         std::remove_if(
@@ -402,6 +388,18 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
             [](auto& x) { return x.first.size() == 0; }),
         outputs.end());
     mem_.Commit();
+  }
+
+  ImGui::Spacing();
+  try {
+    auto& seq = target_.GetFileOrThrow().interfaceOrThrow<nf7::Sequencer>();
+    if (seq.flags() & nf7::Sequencer::kParamPanel) {
+      Adaptor::Editor ed;
+      seq.UpdateParamPanel(ed);
+    }
+  } catch (nf7::Exception&) {
+    ImGui::Separator();
+    ImGui::TextUnformatted("TARGET HAS NO SEQUENCER INTERFACE");
   }
 }
 void Adaptor::UpdateTooltip(Sequencer::Editor&) noexcept {
