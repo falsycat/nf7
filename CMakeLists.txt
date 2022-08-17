@@ -95,8 +95,8 @@ target_sources(nf7
     common/squashed_history.hh
     common/task.hh
     common/thread.hh
+    common/timed_queue.hh
     common/value.hh
-    common/wait_queue.hh
     common/yas_audio.hh
     common/yas_imgui.hh
     common/yas_imnodes.hh

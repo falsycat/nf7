@@ -93,7 +93,8 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   };
 
   Queue() = delete;
-  Queue(Env& env) : env_(&env), th_(std::make_shared<Thread>(env, Runner {*this})) {
+  Queue(AudioContext& f) noexcept :
+      env_(&f.env()), th_(std::make_shared<Thread>(f, Runner {*this})) {
   }
   ~Queue() noexcept {
     th_->Push(
@@ -106,9 +107,9 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   Queue& operator=(const Queue&) = delete;
   Queue& operator=(Queue&&) = delete;
 
-  void Init(Env& env) noexcept {
+  void Init() noexcept {
     th_->Push(
-        std::make_shared<nf7::GenericContext>(env, 0, "creating ma_context"),
+        std::make_shared<nf7::GenericContext>(*env_, 0, "creating ma_context"),
         [this, self = shared_from_this()](auto) {
           auto ctx = std::make_shared<ma_context>();
           if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
@@ -137,8 +138,8 @@ class AudioContext::Queue final : public nf7::audio::Queue,
 };
 AudioContext::AudioContext(Env& env) noexcept :
     File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-    q_(std::make_shared<Queue>(env)) {
-  q_->Init(env);
+    q_(std::make_shared<Queue>(*this)) {
+  q_->Init();
 }
 
 

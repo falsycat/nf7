@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cinttypes>
 #include <cctype>
 #include <string>
@@ -19,6 +20,7 @@ namespace nf7::luajit {
 // pushes original libraries
 static void PushMathLib(lua_State* L) noexcept;
 static void PushTableLib(lua_State* L) noexcept;
+static void PushTimeLib(lua_State* L) noexcept;
 
 // buffer <-> lua value conversion
 template <typename T>
@@ -37,6 +39,9 @@ void PushGlobalTable(lua_State* L) noexcept {
 
     PushTableLib(L);
     lua_setfield(L, -2, "table");
+
+    PushTimeLib(L);
+    lua_setfield(L, -2, "time");
 
     lua_pushcfunction(L, [](auto L) {
       if (lua_isstring(L, 2)) {
@@ -449,6 +454,24 @@ static void PushTableLib(lua_State* L) noexcept {
       return 1;
     });
     lua_setfield(L, -2, "setmetatable");
+  }
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+}
+static void PushTimeLib(lua_State* L) noexcept {
+  lua_newuserdata(L, 0);
+
+  lua_createtable(L, 0, 0);
+  lua_createtable(L, 0, 0);
+  {
+    // time.now()
+    lua_pushcfunction(L, [](auto L) {
+      const auto now = nf7::Env::Clock::now().time_since_epoch();
+      const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(now);
+      lua_pushnumber(L, static_cast<double>(ms.count())/1000.);
+      return 1;
+    });
+    lua_setfield(L, -2, "now");
   }
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);

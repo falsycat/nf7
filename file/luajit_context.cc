@@ -35,7 +35,7 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 
   LuaContext(Env& env) :
       File(kType, env), DirItem(DirItem::kTooltip) {
-    q_ = std::make_shared<Queue>(env);
+    q_ = std::make_shared<Queue>(*this);
   }
 
   LuaContext(Env& env, Deserializer&) : LuaContext(env) {
@@ -72,10 +72,9 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   using Thread = nf7::Thread<Runner, Task>;
 
   Queue() = delete;
-  Queue(Env& env) :
-      L(luaL_newstate()),
-      env_(&env),
-      th_(std::make_shared<Thread>(env, Runner {*this})) {
+  Queue(LuaContext& f) :
+      L(luaL_newstate()), env_(&f.env()),
+      th_(std::make_shared<Thread>(f, Runner {*this})) {
     if (!L) throw nf7::Exception("failed to create new Lua state");
   }
   ~Queue() noexcept {
@@ -89,8 +88,8 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   Queue& operator=(const Queue&) = delete;
   Queue& operator=(Queue&&) = delete;
 
-  void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task) noexcept override {
-    th_->Push(ctx, std::move(task));
+  void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task, nf7::Env::Time t) noexcept override {
+    th_->Push(ctx, std::move(task), t);
   }
   std::shared_ptr<luajit::Queue> self() noexcept override { return shared_from_this(); }
 

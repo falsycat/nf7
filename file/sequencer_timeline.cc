@@ -694,7 +694,7 @@ class TL::Session final : public Sequencer::Session,
   Session(const std::shared_ptr<TL::Lambda>& initiator,
           const std::weak_ptr<Session>&      leader,
           uint64_t time, const std::unordered_map<std::string, nf7::Value>& vars) noexcept :
-      env_(&initiator->env()), last_active_(std::chrono::system_clock::now()),
+      env_(&initiator->env()), last_active_(nf7::Env::Clock::now()),
       initiator_(initiator), leader_(leader),
       time_(time), vars_(vars) {
   }
@@ -742,7 +742,7 @@ class TL::Session final : public Sequencer::Session,
       info_.end   = t.end();
       lambda->Run(shared_from_this());
 
-      last_active_ = std::chrono::system_clock::now();
+      last_active_ = nf7::Env::Clock::now();
       ++layer_;
 
     } else if (leader) {
@@ -1349,7 +1349,7 @@ void TL::UpdateEditorWindow() noexcept {
 
       // running sessions
       if (lambda_) {
-        const auto now = std::chrono::system_clock::now();
+        const auto now = nf7::Env::Clock::now();
         for (auto& wss : lambda_->sessions()) {
           auto ss = wss.lock();
           if (!ss || ss->done()) continue;

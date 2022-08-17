@@ -2,6 +2,7 @@
 #include "common/luajit_thread_lambda.hh"
 #include "common/luajit_thread_lock.hh"
 
+#include <chrono>
 #include <sstream>
 #include <tuple>
 
@@ -134,6 +135,19 @@ static void PushMeta(lua_State* L) noexcept {
         return lua_yield(L, 0);
       });
       lua_setfield(L, -2, "query");
+
+      lua_pushcfunction(L, [](auto L) {
+        auto       th  = Thread::GetPtr(L, 1);
+        const auto sec = luaL_checknumber(L, 2);
+
+        const auto time = nf7::Env::Clock::now() +
+            std::chrono::milliseconds(static_cast<uint64_t>(sec*1000));
+        th->ljq()->Push(th->ctx(), [th, L](auto) { th->ExecResume(L); }, time);
+
+        th->ExpectYield(L);
+        return lua_yield(L, 0);
+      });
+      lua_setfield(L, -2, "sleep");
 
       // nf7:yield(results...)
       lua_pushcfunction(L, [](auto L) {

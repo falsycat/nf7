@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <mutex>
@@ -20,10 +21,12 @@ class Queue {
 
   void Push(T&& task) noexcept {
     std::unique_lock<std::mutex> _(mtx_);
+    ++n_;
     tasks_.push_back(std::move(task));
   }
   void Interrupt(T&& task) noexcept {
     std::unique_lock<std::mutex> _(mtx_);
+    ++n_;
     tasks_.push_front(std::move(task));
   }
   std::optional<T> Pop() noexcept {
@@ -31,24 +34,19 @@ class Queue {
     if (tasks_.empty()) return std::nullopt;
     auto ret = std::move(tasks_.front());
     tasks_.pop_front();
+    --n_;
     k.unlock();
     return ret;
   }
 
-  void Clear() noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    tasks_.clear();
-  }
-
-  bool size() const noexcept {
-    std::unique_lock<std::mutex> k(const_cast<std::mutex&>(mtx_));
-    return tasks_.size();
-  }
+  size_t size() const noexcept { return n_; }
 
  protected:
   std::mutex mtx_;
 
  private:
+  std::atomic<size_t> n_;
+
   std::deque<T> tasks_;
 };
 

@@ -18,7 +18,7 @@
 #include "nf7.hh"
 
 #include "common/queue.hh"
-#include "common/wait_queue.hh"
+#include "common/timed_queue.hh"
 #include "common/yas_nf7.hh"
 
 // Include glfw lastly to prevent conflict with windows.h.
@@ -91,8 +91,8 @@ class Env final : public nf7::Env {
   void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
     sub_.Push({ctx, std::move(task)});
   }
-  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
-    async_.Push({ctx, std::move(task)});
+  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task, Time time) noexcept override {
+    async_.Push(time, {ctx, std::move(task)});
   }
 
   void Handle(const File::Event& e) noexcept override
@@ -175,9 +175,9 @@ class Env final : public nf7::Env {
   std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;
 
   using TaskItem = std::pair<std::shared_ptr<nf7::Context>, Task>;
-  Queue<TaskItem>     main_;
-  Queue<TaskItem>     sub_;
-  WaitQueue<TaskItem> async_;
+  nf7::Queue<TaskItem>          main_;
+  nf7::Queue<TaskItem>          sub_;
+  nf7::TimedWaitQueue<TaskItem> async_;
 
   std::mutex               mtx_;
   std::condition_variable  cv_;
@@ -262,14 +262,15 @@ class Env final : public nf7::Env {
   }
   void AsyncThread() noexcept {
     while (alive_) {
-      while (auto task = async_.Pop())
+      const auto now = Clock::now();
+      while (auto task = async_.Pop(now))
       try {
         task->second();
-      } catch (Exception&) {
-        // TODO: how to handle?
+      } catch (Exception& e) {
+        std::cout << "async thread exception: " << e.msg() << std::endl;
       }
       if (!alive_) break;
-      async_.WaitFor(1s);
+      async_.Wait();
     }
   }
 };

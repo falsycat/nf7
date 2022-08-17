@@ -22,7 +22,8 @@ class Queue : public File::Interface {
   Queue& operator=(Queue&&) = delete;
 
   // thread-safe
-  virtual void Push(const std::shared_ptr<nf7::Context>&, Task&&) noexcept = 0;
+  virtual void Push(
+      const std::shared_ptr<nf7::Context>&, Task&&, nf7::Env::Time t = {}) noexcept = 0;
 
   virtual std::shared_ptr<Queue> self() noexcept = 0;
 };

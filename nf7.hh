@@ -244,7 +244,8 @@ class Context {
 
 class Env {
  public:
-  friend class ProxyEnv;
+  using Clock = std::chrono::system_clock;
+  using Time  = Clock::time_point;
 
   class Watcher;
 
@@ -268,7 +269,7 @@ class Env {
   using Task = std::function<void()>;
   virtual void ExecMain(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
   virtual void ExecSub(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
-  virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
+  virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
 
   virtual void Handle(const File::Event&) noexcept = 0;
 
