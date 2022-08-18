@@ -10,6 +10,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_window.hh"
 #include "common/logger.hh"
@@ -105,7 +106,7 @@ class Logger final : public nf7::File,
 
   const char* popup_ = nullptr;
 
-  gui::Window win_;
+  nf7::gui::Window win_;
 
 
   void DropExceededRows() noexcept {
@@ -345,6 +346,11 @@ void Logger::UpdateMenu() noexcept {
 void Logger::UpdateRowMenu(const Row& row) noexcept {
   if (ImGui::MenuItem("copy as text")) {
     ImGui::SetClipboardText(row.Stringify().c_str());
+  }
+  ImGui::Separator();
+  if (ImGui::MenuItem("clear")) {
+    env().ExecMain(
+        std::make_shared<nf7::GenericContext>(*this), [this]() { rows_.clear(); });
   }
 }
 
