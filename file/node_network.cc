@@ -58,7 +58,6 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   }
 
   class InternalNode;
-  class ChildNode;
 
   class Item;
   class Lambda;
@@ -68,9 +67,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
 
   // special Node types
   class Initiator;
-  class InputOrOutput;
-  class Input;
-  class Output;
+  class Terminal;
 
   using ItemId   = uint64_t;
   using ItemList = std::vector<std::unique_ptr<Item>>;
@@ -146,10 +143,14 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   // GUI popup
   class AddPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
    public:
+    static bool TypeFilter(const nf7::File::TypeInfo& t) noexcept {
+      return
+          t.flags().contains("nf7::Node") ||
+          t.name().find("Node/Network/") == 0;
+    }
+
     AddPopup(Network& owner) noexcept :
-        nf7::gui::Popup("AddPopup"),
-        owner_(&owner),
-        factory_(owner, [](auto& t) { return t.flags().contains("nf7::Node"); }) {
+        nf7::gui::Popup("AddPopup"), owner_(&owner), factory_(owner, TypeFilter) {
     }
 
     void Open(const ImVec2& pos) noexcept;
@@ -233,30 +234,6 @@ class Network::InternalNode : public nf7::File::Interface {
 
  private:
   const Flags flags_;
-};
-
-// ChildNode is a File where it can be supposed that owner is Node/Network.
-class Network::ChildNode : public nf7::File {
- public:
-  using nf7::File::File;
-
-  void Handle(const Event& ev) noexcept override {
-    switch (ev.type) {
-    case Event::kAdd:
-      owner_ = dynamic_cast<Network*>(parent());
-      assert(owner_);
-      return;
-    case Event::kRemove:
-      owner_ = nullptr;
-      return;
-    default:
-      return;
-    }
-  }
-  Network& owner() const noexcept { assert(owner_); return *owner_; }
-
- private:
-  Network* owner_;
 };
 
 
@@ -654,15 +631,14 @@ class Network::Item::MoveCommand final : public nf7::History::Command {
 };
 
 
-// An implementation of ChildNode that emits a pulse
-// when Network lambda receives the first input.
-class Network::Initiator final : public Network::ChildNode,
+// Node that emits a pulse when Network lambda receives the first input.
+class Network::Initiator final : public nf7::File,
     public nf7::Memento,
     public nf7::Node,
     public Network::InternalNode {
  public:
   static inline const GenericTypeInfo<Initiator> kType = {
-    "Node/Network/Initiator", {"nf7::Node"}};
+    "Node/Network/Initiator", {}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted(
         "Emits a pulse immediately when Node/Network gets the first input.");
@@ -670,7 +646,7 @@ class Network::Initiator final : public Network::ChildNode,
   }
 
   Initiator(Env& env, bool enable_auto = false) noexcept :
-      ChildNode(kType, env), InternalNode(InternalNode::kInputHandler),
+      File(kType, env), InternalNode(InternalNode::kInputHandler),
       enable_auto_(enable_auto) {
     output_ = {"out"};
   }
@@ -746,99 +722,111 @@ class Network::Initiator final : public Network::ChildNode,
   bool enable_auto_;
 };
 
-// A base implementation of ChildNode
-// that has useful methods for Input or Output Node on Node/Network.
-class Network::InputOrOutput : public Network::ChildNode {
+// Node that emits/receives input or output.
+class Network::Terminal : public nf7::File,
+    public nf7::Node,
+    public Network::InternalNode {
  public:
-  enum Type {
-    kInput,
-    kOutput,
-  };
-  InputOrOutput(const TypeInfo& type, Env& env, std::string_view name, Type stype) noexcept :
-      ChildNode(type, env), mem_(*this, std::string(name)), type_(stype) {
+  static inline const GenericTypeInfo<Terminal> kType = {
+    "Node/Network/Terminal", {}};
+
+  enum Type { kInput, kOutput, };
+  Terminal(Env& env, std::string_view name = "", Type stype = kInput) noexcept :
+      nf7::File(kType, env),
+      Network::InternalNode(Network::InternalNode::kInputHandler |
+                            Network::InternalNode::kOutputEmitter),
+      life_(*this), mem_(*this, Data { .type = stype, .name = std::string {name} }) {
+    Commit();
   }
 
-  void UpdateSelector() noexcept {
-    const auto& socks = type_ == kInput? owner().input_: owner().output_;
-
-    auto& name = mem_.data();
-    ImGui::BeginGroup();
-    ImGui::SetNextItemWidth(8*ImGui::GetFontSize());
-    if (ImGui::BeginCombo("##name", mem_.data().c_str())) {
-      for (const auto& sock : socks) {
-        if (ImGui::Selectable(sock.c_str())) {
-          if (name != sock) {
-            name = sock;
-            mem_.Commit();
-            env().Handle({ .id = id(), .type = Event::kUpdate, });
-          }
-        }
-      }
-      ImGui::EndCombo();
-    }
-    if (socks.end() == std::find(socks.begin(), socks.end(), name)) {
-      ImGui::TextUnformatted("SOCKET MISSING X(");
-    }
-    ImGui::EndGroup();
-  }
-
- protected:
-  nf7::GenericMemento<std::string> mem_;
-
- private:
-  Type type_;
-};
-
-// An implementation of ChildNode that emits an input value when Node/Network receives.
-class Network::Input final : public Network::InputOrOutput,
-    public Network::InternalNode,
-    public nf7::Node {
- public:
-  static inline const GenericTypeInfo<Input> kType = {"Node/Network/Input", {}};
-
-  Input(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, kInput),
-      InternalNode(InternalNode::kInputHandler) {
-    output_ = {"out"};
-  }
-
-  Input(Env& env, Deserializer& ar) : Input(env, "") {
-    ar(mem_.data());
+  Terminal(nf7::Env& env, Deserializer& ar) : Terminal(env) {
+    ar(data().type, data().name);
+    Commit();
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(mem_.data());
+    ar(data().type, data().name);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Input>(env, mem_.data());
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
+    return std::make_unique<Network::Terminal>(env, data().name, data().type);
   }
 
   std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
-    class Emitter final : public Node::Lambda,
-        public std::enable_shared_from_this<Emitter> {
-     public:
-      Emitter(Input& f, const std::shared_ptr<Node::Lambda>& parent, std::string_view name) noexcept :
-          Node::Lambda(f, parent), name_(name) {
-      }
-      void Handle(std::string_view name, const Value& v,
-                  const std::shared_ptr<Node::Lambda>& caller) noexcept override {
-        if (name != name_) return;
-        caller->Handle("out", v, shared_from_this());
-      }
-     private:
-      std::string name_;
-    };
-    return std::make_unique<Emitter>(*this, parent, mem_.data());
+      const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept override {
+    return std::make_shared<Emitter>(*this, parent);
   }
 
-  void UpdateNode(Editor&) noexcept override {
-    ImGui::TextUnformatted("Node/Network/Input");
-    if (ImNodes::BeginOutputSlot("out", 1)) {
-      UpdateSelector();
-      ImGui::SameLine();
-      ImGui::AlignTextToFramePadding();
-      nf7::gui::NodeSocket();
-      ImNodes::EndSlot();
+  void UpdateNode(nf7::Node::Editor&) noexcept override {
+    ImGui::TextUnformatted("Node/Network/Terminal");
+    switch (data().type) {
+    case kInput:
+      if (ImNodes::BeginOutputSlot("out", 1)) {
+        UpdateSelector();
+        ImGui::SameLine();
+        nf7::gui::NodeSocket();
+        ImNodes::EndSlot();
+      }
+      break;
+    case kOutput:
+      if (ImNodes::BeginInputSlot("in", 1)) {
+        ImGui::AlignTextToFramePadding();
+        nf7::gui::NodeSocket();
+        ImGui::SameLine();
+        UpdateSelector();
+        ImNodes::EndSlot();
+      }
+      break;
+    default:
+      assert(false);
+      break;
+    }
+
+    if (auto net = owner()) {
+      const auto& socks = data().type == kInput? net->input_: net->output_;
+      if (socks.end() == std::find(socks.begin(), socks.end(), data().name)) {
+        ImGui::TextUnformatted("SOCKET MISSING X(");
+      }
+    }
+  }
+  void UpdateSelector() noexcept {
+    auto net = owner();
+    if (!net) {
+      ImGui::TextUnformatted("parent must be Node/Network");
+      return;
+    }
+
+    auto& name = data().name;
+    ImGui::SetNextItemWidth(12*ImGui::GetFontSize());
+    if (ImGui::BeginCombo("##name", name.c_str())) {
+      ImGui::PushID("input");
+      if (net->input_.size() > 0) {
+        ImGui::TextDisabled("inputs");
+      } else {
+        ImGui::TextDisabled("no input");
+      }
+      for (const auto& sock : net->input_) {
+        if (ImGui::Selectable(sock.c_str())) {
+          if (data().type != kInput || name != sock) {
+            Commit(kInput, sock);
+          }
+        }
+      }
+      ImGui::PopID();
+      ImGui::Separator();
+      ImGui::PushID("output");
+      if (net->output_.size() > 0) {
+        ImGui::TextDisabled("outputs");
+      } else {
+        ImGui::TextDisabled("no output");
+      }
+      for (const auto& sock : net->output_) {
+        if (ImGui::Selectable(sock.c_str())) {
+          if (data().type != kOutput || name != sock) {
+            Commit(kOutput, sock);
+          }
+        }
+      }
+      ImGui::PopID();
+      ImGui::EndCombo();
     }
   }
 
@@ -846,67 +834,76 @@ class Network::Input final : public Network::InputOrOutput,
     return InterfaceSelector<
         Network::InternalNode, nf7::Node, nf7::Memento>(t).Select(this, &mem_);
   }
-};
 
-// An implementation of ChildNode that passes an input to a caller of Node/Network's lambda.
-class Network::Output final : public Network::InputOrOutput,
-    public nf7::Node, public Network::InternalNode {
- public:
-  static inline const GenericTypeInfo<Output> kType = {"Node/Network/Output", {}};
+ private:
+  nf7::Life<Terminal> life_;
 
-  Output(Env& env, std::string_view name) noexcept :
-      InputOrOutput(kType, env, name, kOutput),
-      InternalNode(InternalNode::kOutputEmitter) {
-    input_ = {"in"};
-  }
+  struct Data {
+    Type        type;
+    std::string name;
+  };
+  nf7::GenericMemento<Data> mem_;
 
-  Output(Env& env, Deserializer& ar) : Output(env, "") {
-    ar(mem_.data());
-  }
-  void Serialize(Serializer& ar) const noexcept override {
-    ar(mem_.data());
-  }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Output>(env, mem_.data());
-  }
 
-  std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
-    class Emitter final : public Node::Lambda,
-        public std::enable_shared_from_this<Emitter> {
-     public:
-      Emitter(Output& f, const std::shared_ptr<Network::Lambda>& parent, std::string_view name) noexcept :
-          Node::Lambda(f, parent), name_(name) {
-        assert(parent);
-      }
-      void Handle(std::string_view name, const Value& v,
-                  const std::shared_ptr<Node::Lambda>& caller) noexcept override {
-        if (name != "in") return;
-        caller->Handle(name_, std::move(v), shared_from_this());
-      }
-     private:
-      std::string name_;
-    };
-    return std::make_shared<Emitter>(
-        *this, std::dynamic_pointer_cast<Network::Lambda>(parent), mem_.data());
-  }
+  Data& data() noexcept { return mem_.data(); }
+  const Data& data() const noexcept { return mem_.data(); }
+  Network* owner() noexcept { return dynamic_cast<Network*>(parent()); }
 
-  void UpdateNode(Editor&) noexcept override {
-    ImGui::TextUnformatted("Node/Network/Output");
-    if (ImNodes::BeginInputSlot("in", 1)) {
-      ImGui::AlignTextToFramePadding();
-      nf7::gui::NodeSocket();
-      ImGui::SameLine();
-      UpdateSelector();
-      ImNodes::EndSlot();
+
+  void Commit() noexcept {
+    Commit(data().type, data().name);
+  }
+  void Commit(Type type, std::string_view name) noexcept {
+    data() = Data { .type = type, .name = std::string {name}, };
+
+    input_  = {};
+    output_ = {};
+    switch (type) {
+    case kInput:
+      output_ = {"out"};
+      break;
+    case kOutput:
+      input_ = {"in"};
+      break;
+    default:
+      assert(false);
+      break;
     }
+    mem_.Commit();
   }
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<
-        Network::InternalNode, nf7::Node, nf7::Memento>(t).
-        Select(this, &mem_);
-  }
+  class Emitter final : public nf7::Node::Lambda,
+      public std::enable_shared_from_this<Emitter> {
+   public:
+    Emitter(Terminal& f, const std::shared_ptr<nf7::Node::Lambda>& node) noexcept :
+        nf7::Node::Lambda(f, node), f_(f.life_) {
+    }
+
+    void Handle(std::string_view name, const nf7::Value& v,
+                const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+    try {
+      f_.EnforceAlive();
+
+      const auto& data = f_->data();
+      switch (data.type) {
+      case kInput:
+        if (name == data.name) {
+          caller->Handle(name, v, shared_from_this());
+        }
+        break;
+      case kOutput:
+        caller->Handle(data.name, v, shared_from_this());
+        break;
+      default:
+        assert(false);
+        break;
+      }
+    } catch (nf7::Exception&) {
+    }
+
+   private:
+    nf7::Life<Terminal>::Ref f_;
+  };
 };
 
 
