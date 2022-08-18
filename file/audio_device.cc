@@ -225,18 +225,24 @@ class Device::Ring final {
   // for playback mode: mix samples into this ring
   std::pair<uint64_t, uint64_t> Mix(const float* ptr, size_t n, uint64_t time) noexcept {
     std::unique_lock<std::mutex> k(mtx_);
-    if (time < time_) time = time_;
+    if (time < time_) {
+      time = time_;
+    }
     if (time-time_ > buf_.size()) {
       return {time_+buf_.size(), 0};
     }
 
-    const size_t vn     = std::min(n, buf_.size());
+    n = std::min(n, buf_.size());
+    if (time+n-time_ > buf_.size()) {
+      n = buf_.size() - (time-time_);
+    }
+
     const size_t offset = (time-time_begin_)%buf_.size();
-    for (size_t srci = 0, dsti = offset; srci < vn; ++srci, ++dsti) {
+    for (size_t srci = 0, dsti = offset; srci < n; ++srci, ++dsti) {
       if (dsti >= buf_.size()) dsti = 0;
       buf_[dsti] += ptr[srci];
     }
-    return {time+vn, vn};
+    return {time+n, n};
   }
   // for playback mode: consume samples in this ring
   void Consume(float* dst, size_t n) noexcept {
