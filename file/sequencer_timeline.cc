@@ -736,10 +736,7 @@ class TL::Session final : public Sequencer::Session,
     if (item) {
       assert(lambda);
 
-      const auto& t = item->timing();
-      info_.time  = time_;
-      info_.begin = t.begin();
-      info_.end   = t.end();
+      ResetSystemVar(*item);
       lambda->Run(shared_from_this());
 
       last_active_ = nf7::Env::Clock::now();
@@ -765,8 +762,6 @@ class TL::Session final : public Sequencer::Session,
     }
   }
 
-  const Info& info() const noexcept override { return info_; }
-
   std::chrono::system_clock::time_point lastActive() const noexcept { return last_active_; }
   bool done() const noexcept { return done_; }
   uint64_t time() const noexcept { return time_; }
@@ -786,7 +781,17 @@ class TL::Session final : public Sequencer::Session,
 
   bool     done_  = false;
   uint64_t layer_ = 0;
-  Info     info_;
+
+
+  void ResetSystemVar(TL::Item& item) noexcept {
+    const auto& t = item.timing();
+    vars_["_begin"] = static_cast<nf7::Value::Integer>(t.begin());
+    vars_["_end"]   = static_cast<nf7::Value::Integer>(t.end());
+    vars_["_time"]  = static_cast<nf7::Value::Integer>(time_);
+    vars_["_timef"] =
+        static_cast<nf7::Value::Scalar>(time_-t.begin()) /
+        static_cast<nf7::Value::Scalar>(t.dur());
+  }
 };
 void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
                         const std::shared_ptr<Node::Lambda>&) noexcept {

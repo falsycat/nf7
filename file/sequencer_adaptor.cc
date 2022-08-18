@@ -175,8 +175,6 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
     parent_ = nullptr;
   }
 
-  const Info& info() const noexcept override { return parent_->info(); }
-
  private:
   std::shared_ptr<nf7::Sequencer::Session> parent_;
 

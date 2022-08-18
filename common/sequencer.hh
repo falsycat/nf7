@@ -21,8 +21,6 @@ class Sequencer : public nf7::File::Interface {
   class Session;
   class Lambda;
 
-  struct Period { uint64_t begin, end; };
-
   enum Flag : uint8_t {
     kNone = 0,
     kCustomItem = 1 << 0,  // uses UpdateItem() to draw an item on timeline if enable
@@ -98,14 +96,6 @@ class Sequencer::Session {
 
   // thread-safe
   virtual void Finish() noexcept = 0;
-
-  struct Info final {
-   public:
-    uint64_t time;
-    uint64_t begin;
-    uint64_t end;
-  };
-  virtual const Info& info() const noexcept = 0;
 };
 
 class Sequencer::Lambda : public nf7::Context {
