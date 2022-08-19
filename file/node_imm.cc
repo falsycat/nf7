@@ -34,7 +34,7 @@ namespace {
 
 class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<Imm> kType =
+  static inline const nf7::GenericTypeInfo<Imm> kType =
       {"Node/Imm", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Emits an immediate value when get an input.");
@@ -46,28 +46,32 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   class Lambda;
 
-  Imm(Env& env, nf7::gui::Value&& v = {}) noexcept :
+  Imm(nf7::Env& env, nf7::gui::Value&& v = {}) noexcept :
       nf7::File(kType, env), nf7::DirItem(DirItem::kNone),
-      life_(*this), mem_(*this, std::move(v)) {
+      life_(*this), mem_(std::move(v)) {
     input_  = {"in"};
     output_ = {"out"};
+
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Imm(Env& env, Deserializer& ar) : Imm(env) {
+  Imm(nf7::Env& env, Deserializer& ar) : Imm(env) {
     ar(mem_.data());
   }
   void Serialize(Serializer& ar) const noexcept override {
     ar(mem_.data());
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Imm>(env, nf7::gui::Value {mem_.data()});
   }
 
-  std::shared_ptr<Node::Lambda> CreateLambda(const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
-  void UpdateNode(Node::Editor&) noexcept override;
+  void UpdateNode(nf7::Node::Editor&) noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
         nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
@@ -78,15 +82,15 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   nf7::GenericMemento<nf7::gui::Value> mem_;
 };
 
-class Imm::Lambda final : public Node::Lambda,
+class Imm::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Imm::Lambda> {
  public:
   Lambda(Imm& f, const std::shared_ptr<Node::Lambda>& parent) noexcept :
-      Node::Lambda(f, parent), f_(f.life_) {
+      nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
   void Handle(std::string_view name, const nf7::Value&,
-              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
+              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
     if (!f_) return;
     if (name == "in") {
       caller->Handle("out", f_->mem_.data().entity(), shared_from_this());
@@ -97,13 +101,13 @@ class Imm::Lambda final : public Node::Lambda,
  private:
   nf7::Life<Imm>::Ref f_;
 };
-std::shared_ptr<Node::Lambda> Imm::CreateLambda(
-    const std::shared_ptr<Node::Lambda>& parent) noexcept {
+std::shared_ptr<nf7::Node::Lambda> Imm::CreateLambda(
+    const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Imm::Lambda>(*this, parent);
 }
 
 
-void Imm::UpdateNode(Node::Editor&) noexcept {
+void Imm::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
   ImGui::TextUnformatted("Node/Imm");

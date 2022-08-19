@@ -11,12 +11,11 @@
 namespace nf7 {
 
 template <typename T>
-class GenericMemento : public Memento {
+class GenericMemento : public nf7::Memento {
  public:
   class CustomTag;
 
-  GenericMemento(File& owner, T&& data) noexcept :
-      owner_(&owner), initial_(T(data)), data_(std::move(data)) {
+  GenericMemento(T&& data) noexcept : initial_(T(data)), data_(std::move(data)) {
   }
   ~GenericMemento() noexcept {
     tag_  = nullptr;
@@ -37,22 +36,18 @@ class GenericMemento : public Memento {
     data_ = itr->second;
     tag_  = tag;
     last_ = tag;
-
-    if (owner_->id()) {
-      owner_->env().Handle(
-          {.id = owner_->id(), .type = File::Event::kUpdate});
-    }
+    onRestore();
   }
   void Commit() noexcept {
     tag_ = nullptr;
-    NotifyUpdate();
+    onCommit();
   }
   void CommitAmend() noexcept {
     if (!tag_) return;
     auto itr = map_.find(tag_->id());
     assert(itr != map_.end());
     itr->second = data_;
-    NotifyUpdate();
+    onCommit();
   }
 
   T& data() noexcept { return data_; }
@@ -66,9 +61,10 @@ class GenericMemento : public Memento {
     return itr->second;
   }
 
- private:
-  File* const owner_;
+  std::function<void()> onRestore = [](){};
+  std::function<void()> onCommit  = [](){};
 
+ private:
   const T initial_;
   T data_;
 
@@ -77,13 +73,6 @@ class GenericMemento : public Memento {
 
   std::shared_ptr<nf7::Memento::Tag> tag_;
   std::shared_ptr<nf7::Memento::Tag> last_;
-
-  void NotifyUpdate() noexcept {
-    if (owner_->id()) {
-      owner_->env().Handle(
-          {.id = owner_->id(), .type = File::Event::kUpdate});
-    }
-  }
 };
 
 template <typename T>

@@ -51,9 +51,12 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
       callee_(*this, "callee", callee),
       callee_editor_(callee_,
                      [](auto& t) { return t.flags().contains("nf7::Node"); }),
-      mem_(*this, Data {*this, expects}){
+      mem_({*this, expects}){
     callee_.onChildMementoChange = [this]() { mem_.Commit(); };
     callee_.onEmplace            = [this]() { mem_.Commit(); };
+
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Call(Env& env, Deserializer& ar) : Call(env) {

@@ -52,7 +52,9 @@ class Ref final : public nf7::File, public nf7::Node {
       nf7::File(kType, env),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
-      mem_(*this, {*this, std::move(path), std::move(in), std::move(out)}) {
+      mem_({*this, std::move(path), std::move(in), std::move(out)}) {
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Ref(Env& env, Deserializer& ar) : Ref(env) {

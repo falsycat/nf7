@@ -735,7 +735,7 @@ class Network::Terminal : public nf7::File,
       nf7::File(kType, env),
       Network::InternalNode(Network::InternalNode::kInputHandler |
                             Network::InternalNode::kOutputEmitter),
-      life_(*this), mem_(*this, Data { .type = stype, .name = std::string {name} }) {
+      life_(*this), mem_({ .type = stype, .name = std::string {name} }) {
     Commit();
   }
 
