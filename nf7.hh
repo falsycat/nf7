@@ -272,6 +272,7 @@ class Env {
   virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
 
   virtual void Handle(const File::Event&) noexcept = 0;
+  void ExecHandle(const File::Event&) noexcept;
 
   virtual void Save() noexcept = 0;
 

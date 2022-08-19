@@ -9,6 +9,8 @@
 #include <yas/types/std/string.hpp>
 #include <yas/types/std/vector.hpp>
 
+#include "common/generic_context.hh"
+
 
 using namespace std::literals;
 
@@ -143,7 +145,7 @@ File& File::ancestorOrThrow(size_t dist) const {
 }
 void File::Touch() noexcept {
   if (!id()) return;
-  env().Handle({.id = id(), .type = Event::kUpdate});
+  env().ExecHandle({.id = id(), .type = Event::kUpdate});
 }
 
 File::TypeInfo::TypeInfo(const std::string& name,
@@ -234,6 +236,10 @@ void Env::Pop() noexcept {
 File& Env::GetFileOrThrow(File::Id id) const {
   if (auto ret = GetFile(id)) return *ret;
   throw ExpiredException("file ("+std::to_string(id)+") is expired");
+}
+void Env::ExecHandle(const File::Event& ev) noexcept {
+  ExecMain(std::make_shared<nf7::GenericContext>(*this, ev.id),
+           [this, ev]() { Handle(ev); });
 }
 
 Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {
