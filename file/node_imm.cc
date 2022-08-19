@@ -110,9 +110,10 @@ std::shared_ptr<nf7::Node::Lambda> Imm::CreateLambda(
 void Imm::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
+  bool mod = false;
   ImGui::TextUnformatted("Node/Imm");
   ImGui::SameLine();
-  mem_.data().UpdateTypeButton(nullptr, true);
+  mod |= mem_.data().UpdateTypeButton(nullptr, true);
 
   if (ImNodes::BeginInputSlot("in", 1)) {
     ImGui::AlignTextToFramePadding();
@@ -122,7 +123,7 @@ void Imm::UpdateNode(nf7::Node::Editor&) noexcept {
   ImGui::SameLine();
 
   ImGui::PushItemWidth(8*em);
-  mem_.data().UpdateEditor();
+  mod |= mem_.data().UpdateEditor();
   ImGui::PopItemWidth();
 
   ImGui::SameLine();
@@ -130,6 +131,10 @@ void Imm::UpdateNode(nf7::Node::Editor&) noexcept {
     ImGui::AlignTextToFramePadding();
     nf7::gui::NodeSocket();
     ImNodes::EndSlot();
+  }
+
+  if (mod) {
+    mem_.Commit();
   }
 }
 
