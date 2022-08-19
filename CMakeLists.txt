@@ -120,7 +120,7 @@ target_sources(nf7
     file/sequencer_call.cc
     file/sequencer_timeline.cc
     file/system_dir.cc
-    file/system_imgui_config.cc
+    file/system_imgui.cc
     file/system_logger.cc
     file/system_native_file.cc
 )

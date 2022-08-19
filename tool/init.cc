@@ -47,7 +47,7 @@ int main(void) {
     { "_audio"s,
         Write(ar, "Audio/Context"s) },
     { "_imgui"s,
-        Write(ar, "System/ImGuiConfig"s, ""s) },
+        Write(ar, "System/ImGui"s, ""s) },
     { "_logger"s,
         Write(ar, "System/Logger"s, WINDOW_(true), 1024, false, false) },
     { "_luajit"s,

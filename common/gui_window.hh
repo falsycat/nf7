@@ -15,6 +15,10 @@ namespace nf7::gui {
 
 class Window {
  public:
+  static std::string ConcatId(nf7::File& f, const std::string& name) noexcept {
+    return f.abspath().Stringify() + " | " + std::string {name};
+  }
+
   Window() = delete;
   Window(File& owner, std::string_view title, const gui::Window* src = nullptr) noexcept :
       owner_(&owner), title_(title),
@@ -54,7 +58,7 @@ class Window {
   }
 
   std::string id() const noexcept {
-    return owner_->abspath().Stringify() + " | " + title_;
+    return ConcatId(*owner_, title_);
   }
 
   bool shown() const noexcept { return shown_; }
