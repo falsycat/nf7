@@ -266,6 +266,8 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
         ImGui::PushID(static_cast<int>(i));
 
         if (ImGui::TableNextColumn()) {
+          commit |= p.second.UpdateTypeButton("T");
+          ImGui::SameLine();
           ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
           commit |= p.second.UpdateEditor();
         }

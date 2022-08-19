@@ -70,6 +70,8 @@ target_sources(nf7
     common/gui_resizer.hh
     common/gui_timeline.hh
     common/gui_timeline.cc
+    common/gui_value.hh
+    common/gui_value.cc
     common/gui_window.hh
     common/history.hh
     common/life.hh

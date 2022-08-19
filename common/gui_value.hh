@@ -20,12 +20,10 @@ namespace nf7::gui {
 class Value {
  public:
   enum Type {
-    kPulse,
-    kInteger,
-    kScalar,
-    kNormalizedScalar,
-    kString,
-    kMultilineString,
+    kPulse, kInteger, kScalar, kNormalizedScalar, kString, kMultilineString,
+  };
+  static inline const Type kTypes[] = {
+    kPulse, kInteger, kScalar, kNormalizedScalar, kString, kMultilineString,
   };
 
   static const char* StringifyType(Type t) noexcept {
@@ -36,6 +34,18 @@ class Value {
     case kNormalizedScalar: return "NormalizedScalar";
     case kString:           return "String";
     case kMultilineString:  return "MultilineString";
+    }
+    assert(false);
+    return nullptr;
+  }
+  static const char* StringifyShortType(Type t) noexcept {
+    switch (t) {
+    case kPulse:            return "Pulse";
+    case kInteger:          return "Integer";
+    case kScalar:           return "Scalar";
+    case kNormalizedScalar: return "NScalar";
+    case kString:           return "String";
+    case kMultilineString:  return "MString";
     }
     assert(false);
     return nullptr;
@@ -57,125 +67,20 @@ class Value {
   Value& operator=(const Value&) = default;
   Value& operator=(Value&&) = default;
 
-  bool ReplaceType(Type t) noexcept {
-    if (type_ == t) return false;
+  bool ReplaceType(Type t) noexcept;
 
-    type_ = t;
-    switch (type_) {
-    case nf7::gui::Value::kPulse:
-      entity_ = nf7::Value::Pulse {};
-      break;
-    case nf7::gui::Value::kInteger:
-      entity_ = nf7::Value::Integer {0};
-      break;
-    case nf7::gui::Value::kScalar:
-    case nf7::gui::Value::kNormalizedScalar:
-      entity_ = nf7::Value::Scalar {0};
-      break;
-    case nf7::gui::Value::kString:
-    case nf7::gui::Value::kMultilineString:
-      entity_ = nf7::Value::String {};
-      break;
-    default:
-      assert(false);
-    }
-    return true;
-  }
-
-  void ReplaceEntity(const nf7::Value& v) noexcept {
+  void ReplaceEntity(const nf7::Value& v) {
     entity_ = v;
     ValidateValue();
   }
-  void ReplaceEntity(nf7::Value&& v) noexcept {
+  void ReplaceEntity(nf7::Value&& v) {
     entity_ = std::move(v);
     ValidateValue();
   }
-  void ValidateValue() const {
-    bool valid = true;
-    switch (type_) {
-    case nf7::gui::Value::kPulse:
-      valid = entity_.isPulse();
-      break;
-    case nf7::gui::Value::kInteger:
-      valid = entity_.isInteger();
-      break;
-    case nf7::gui::Value::kScalar:
-    case nf7::gui::Value::kNormalizedScalar:
-      valid = entity_.isScalar();
-      break;
-    case nf7::gui::Value::kString:
-    case nf7::gui::Value::kMultilineString:
-      valid = entity_.isString();
-      break;
-    }
-    if (!valid) {
-      throw nf7::DeserializeException {"invalid entity type"};
-    }
-  }
+  void ValidateValue() const;
 
-  bool UpdateEditor() noexcept {
-    bool ret = false;
-    const auto w = ImGui::CalcItemWidth();
-
-    ImGui::Button("T");
-    if (ImGui::BeginPopupContextItem(nullptr, ImGuiPopupFlags_MouseButtonLeft)) {
-      if (ImGui::MenuItem("Pulse", nullptr, type_ == kPulse)) {
-        ret |= ReplaceType(kPulse);
-      }
-      if (ImGui::MenuItem("Integer", nullptr, type_ == kInteger)) {
-        ret |= ReplaceType(kInteger);
-      }
-      if (ImGui::MenuItem("Scalar", nullptr, type_ == kScalar)) {
-        ret |= ReplaceType(kScalar);
-      }
-      if (ImGui::MenuItem("Normalized Scalar", nullptr, type_ == kNormalizedScalar)) {
-        ret |= ReplaceType(kNormalizedScalar);
-      }
-      if (ImGui::MenuItem("String", nullptr, type_ == kString)) {
-        ret |= ReplaceType(kString);
-      }
-      if (ImGui::MenuItem("Multiline String", nullptr, type_ == kMultilineString)) {
-        ret |= ReplaceType(kMultilineString);
-      }
-      ImGui::EndPopup();
-    }
-    ImGui::SameLine();
-
-    const auto em = ImGui::GetFontSize();
-    ImGui::PushItemWidth(w-ImGui::GetItemRectSize().x);
-    switch (type_) {
-    case kPulse:
-      ImGui::BeginDisabled();
-      ImGui::Button("PULSE", {w, 0});
-      ImGui::EndDisabled();
-      break;
-    case kInteger:
-      ImGui::DragScalar("##value", ImGuiDataType_S64, &entity_.integer());
-      ret |= ImGui::IsItemDeactivatedAfterEdit();
-      break;
-    case kScalar:
-      ImGui::DragScalar("##value", ImGuiDataType_Double, &entity_.scalar());
-      ret |= ImGui::IsItemDeactivatedAfterEdit();
-      break;
-    case kNormalizedScalar:
-      ImGui::DragScalar("##value", ImGuiDataType_Double, &entity_.scalar());
-      ret |= ImGui::IsItemDeactivatedAfterEdit();
-      break;
-    case kString:
-      ImGui::InputTextWithHint("##value", "string", &entity_.string());
-      ret |= ImGui::IsItemDeactivatedAfterEdit();
-      break;
-    case kMultilineString:
-      ImGui::InputTextMultiline("##value", &entity_.string(), {w, 2.4f*em});
-      ret |= ImGui::IsItemDeactivatedAfterEdit();
-      break;
-    default:
-      assert(false);
-    }
-    ImGui::PopItemWidth();
-
-    return ret;
-  }
+  bool UpdateTypeButton(const char* name = nullptr, bool small = false) noexcept;
+  bool UpdateEditor() noexcept;
 
   Type type() const noexcept { return type_; }
   const nf7::Value& entity() const noexcept { return entity_; }
