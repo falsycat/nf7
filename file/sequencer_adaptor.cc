@@ -225,9 +225,17 @@ class Adaptor::Editor final : public nf7::Sequencer::Editor {
 
 
 void Adaptor::UpdateItem(Sequencer::Editor&) noexcept {
-  const auto em = ImGui::GetFontSize();
-  ImGui::SetCursorPos({.25f*em, .25f*em});
-  target_editor_.SmallButton();
+  try {
+    auto& seq = target_.GetFileOrThrow().interfaceOrThrow<nf7::Sequencer>();
+    if (seq.flags() & nf7::Sequencer::kCustomItem) {
+      Adaptor::Editor ed;
+      seq.UpdateItem(ed);
+    }
+  } catch (nf7::Exception&) {
+    const auto em = ImGui::GetFontSize();
+    ImGui::SetCursorPos({.25f*em, .25f*em});
+    target_editor_.SmallButton();
+  }
 }
 void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
   bool commit = false;

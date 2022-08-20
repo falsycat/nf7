@@ -125,6 +125,7 @@ target_sources(nf7
     file/system_imgui.cc
     file/system_logger.cc
     file/system_native_file.cc
+    file/value_curve.cc
 )
 target_link_libraries(nf7
   PRIVATE

@@ -247,7 +247,9 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
   const auto h = layer_h_;
 
   ImGui::SetCursorPos({left, std::round(layer_y_+pad)});
-  if (ImGui::BeginChild(ImGui::GetID(item), {w, h})) {
+
+  constexpr auto kFlags = ImGuiWindowFlags_NoScrollbar;
+  if (ImGui::BeginChild(ImGui::GetID(item), {w, h}, false, kFlags)) {
     const auto resizer_w = std::min(1*em, w/2);
 
     ImGui::SetCursorPos({0, 0});

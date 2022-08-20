@@ -7,7 +7,7 @@
 
 namespace nf7::gui {
 
-bool Resizer(ImVec2* size, const ImVec2& min, const ImVec2& max, float scale,
+inline bool Resizer(ImVec2* size, const ImVec2& min, const ImVec2& max, float scale,
              const char* idstr = "##resizer") noexcept {
   const auto id = ImGui::GetID(idstr);
 

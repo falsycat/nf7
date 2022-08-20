@@ -20,13 +20,11 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_node.hh"
-#include "common/gui_resizer.hh"
 #include "common/gui_value.hh"
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/value.hh"
-#include "common/yas_imgui.hh"
 
 
 namespace nf7 {
