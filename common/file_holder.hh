@@ -10,7 +10,6 @@
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/variant.hpp>
-#include <yas/types/utility/usertype.hpp>
 
 #include "nf7.hh"
 
@@ -41,9 +40,12 @@ class FileHolder : public nf7::FileBase::Feature {
   FileHolder& operator=(const FileHolder&) = delete;
   FileHolder& operator=(FileHolder&&) = delete;
 
-  // yas usertype serializer
-  void serialize(auto& ar) {
+  void Serialize(auto& ar) const {
     ar(entity_);
+  }
+  void Deserialize(auto& ar) {
+    ar(entity_);
+    SetUp();
   }
 
   void Emplace(nf7::File::Path&& path) noexcept {
@@ -104,8 +106,6 @@ class FileHolder : public nf7::FileBase::Feature {
   nf7::File* const  owner_;
   const std::string id_;
 
-  bool ready_ = false;  // whether owner is added to file tree
-
   Entity entity_;
   std::shared_ptr<nf7::Memento::Tag> tag_;
 
@@ -136,3 +136,27 @@ class FileHolder::Tag final {
 };
 
 }  // namespace nf7
+ 
+
+namespace yas::detail {
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
+    nf7::FileHolder> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive& ar, const nf7::FileHolder& h) {
+    h.Serialize(ar);
+    return ar;
+  }
+  template <typename Archive>
+  static Archive& load(Archive& ar, nf7::FileHolder& h) {
+    h.Deserialize(ar);
+    return ar;
+  }
+};
+
+}  // namespace yas::detail

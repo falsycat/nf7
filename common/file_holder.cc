@@ -25,14 +25,10 @@ nf7::File* FileHolder::Find(std::string_view name) const noexcept {
 void FileHolder::Handle(const nf7::File::Event& ev) noexcept {
   switch (ev.type) {
   case nf7::File::Event::kAdd:
-    assert(!ready_);
-    ready_ = true;
     SetUp();
     break;
   case nf7::File::Event::kRemove:
-    assert(ready_);
     TearDown();
-    ready_ = false;
     break;
   default:
     break;
@@ -47,36 +43,56 @@ void FileHolder::Update() noexcept {
 }
 
 void FileHolder::SetUp() noexcept {
-  if (!ready_ || file_) return;
+  const bool first_setup = !file_;
+
   if (own()) {
     file_ = std::get<std::shared_ptr<nf7::File>>(entity_).get();
-    file_->MoveUnder(*owner_, id_);
+    if (owner_->id() && file_->id() == 0) {
+      file_->MoveUnder(*owner_, id_);
+    }
+
   } else if (ref()) {
-    try {
-      file_ = &owner_->ResolveOrThrow(path());
-    } catch (nf7::File::NotFoundException&) {
+    if (owner_->id()) {
+      try {
+        file_ = &owner_->ResolveOrThrow(path());
+      } catch (nf7::File::NotFoundException&) {
+      }
     }
   }
-  if (file_) {
-    watcher_.emplace(file_->env());
-    watcher_->Watch(file_->id());
 
-    watcher_->AddHandler(nf7::File::Event::kRemove, [this](auto&) {
-      file_ = nullptr;
-    });
+  if (file_) {
     auto mem = file_->interface<nf7::Memento>();
-    if (own() && mem) {
-      watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
-        auto ptag = std::exchange(tag_, mem->Save());
-        if (ptag != tag_) {
-          onChildMementoChange();
-        }
+
+    // init watcher
+    if (owner_->id() && !watcher_) {
+      watcher_.emplace(file_->env());
+      watcher_->Watch(file_->id());
+
+      watcher_->AddHandler(nf7::File::Event::kRemove, [this](auto&) {
+        file_ = nullptr;
       });
+      if (mem) {
+        watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
+          auto ptag = std::exchange(tag_, mem->Save());
+          if (ptag != tag_) {
+            onChildMementoChange();
+          }
+        });
+      }
+    }
+
+    // memento setup
+    if (first_setup && mem) {
+      if (!tag_) {
+        tag_ = mem->Save();
+      } else {
+        mem->Restore(tag_);
+      }
     }
   }
 }
 void FileHolder::TearDown() noexcept {
-  if (!ready_) return;
+  if (!owner_->id()) return;
   if (own()) {
     file_->Isolate();
   }
@@ -101,9 +117,6 @@ FileHolder::Tag& FileHolder::Tag::operator=(const Tag& src) noexcept {
   target_->TearDown();
   target_->entity_ = src.entity_;
   target_->tag_    = src.tag_;
-  if (target_->tag_) {
-    target_->file()->interfaceOrThrow<nf7::Memento>().Restore(target_->tag_);
-  }
   target_->SetUp();
 
   return *this;
