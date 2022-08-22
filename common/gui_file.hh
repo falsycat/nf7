@@ -7,6 +7,7 @@
 
 #include "nf7.hh"
 
+#include "common/file_base.hh"
 #include "common/file_holder.hh"
 
 
@@ -47,7 +48,7 @@ class FileFactory final {
   std::string type_filter_;
 };
 
-class FileHolderEditor final {
+class FileHolderEditor final : public nf7::FileBase::Feature {
  public:
   enum Type {
     kOwn,
@@ -64,18 +65,23 @@ class FileHolderEditor final {
 
   std::string GetDisplayText() const noexcept;
 
-  void Button(bool = false) noexcept;
-  void SmallButton() noexcept { Button(true); }
+  void Button(float w = 0, bool = false) noexcept;
+  void SmallButton() noexcept { Button(0, true); }
   void ButtonWithLabel(const char* id) noexcept;
+  void Tooltip() noexcept;
+  void MenuItems() noexcept;
+  void MenuWithTooltip(const char* name) noexcept;
+
+  void Update() noexcept override;
 
  private:
   nf7::FileHolder* const holder_;
 
+  bool open_ = false;
+
   Type        type_;
   FileFactory factory_;
   std::string path_;
-
-  void UpdatePopup() noexcept;
 };
 
 }  // namespace nf7::gui

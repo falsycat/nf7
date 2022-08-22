@@ -111,14 +111,19 @@ FileHolder::Tag::Tag(const Tag& src) noexcept {
   }
 }
 FileHolder::Tag& FileHolder::Tag::operator=(const Tag& src) noexcept {
-  assert(!src.target_);
-  assert(target_);
-
-  target_->TearDown();
-  target_->entity_ = src.entity_;
-  target_->tag_    = src.tag_;
-  target_->SetUp();
-
+  if (!src.target_ && target_) {
+    // restore
+    target_->TearDown();
+    target_->entity_ = src.entity_;
+    target_->tag_    = src.tag_;
+    target_->SetUp();
+  } else if (!src.target_ && !target_) {
+    // copy
+    entity_ = src.entity_;
+    tag_    = src.tag_;
+  } else {
+    assert(false);
+  }
   return *this;
 }
 

@@ -54,7 +54,6 @@ target_sources(nf7
     common/file_base.hh
     common/file_holder.hh
     common/file_holder.cc
-    common/file_ref.hh
     common/future.hh
     common/generic_context.hh
     common/generic_history.hh

@@ -72,7 +72,7 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
   };
 
   Adaptor(Env& env, const nf7::FileHolder* target = nullptr, const Data* data = nullptr) noexcept :
-      nf7::FileBase(kType, env, {&target_}),
+      nf7::FileBase(kType, env, {&target_, &target_editor_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),

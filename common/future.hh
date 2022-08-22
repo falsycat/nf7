@@ -35,6 +35,7 @@ class Future final {
   class Coro;
 
   using Handle = std::coroutine_handle<Promise>;
+  using Imm    = std::variant<T, std::exception_ptr>;
 
   enum State { kYet, kDone, kError, };
 
@@ -203,6 +204,10 @@ class Future final {
   }
   Future(std::exception_ptr e) noexcept : imm_({e}) {
   }
+  Future(const Imm& imm) noexcept : imm_(imm) {
+  }
+  Future(Imm&& imm) noexcept : imm_(std::move(imm)) {
+  }
   Future(const Future&) = default;
   Future(Future&&) = default;
   Future& operator=(const Future&) = default;
@@ -235,7 +240,8 @@ class Future final {
         return *this;
       }
     }
-    ctx->env().ExecSub(ctx, std::bind(f, Future(data_)));
+    assert(imm_);
+    ctx->env().ExecSub(ctx, std::bind(f, Future(*imm_)));
     return *this;
   }
 
@@ -304,7 +310,7 @@ class Future final {
   auto await_resume() { return value(); }
 
  private:
-  std::optional<std::variant<T, std::exception_ptr>> imm_;
+  std::optional<Imm> imm_;
   std::shared_ptr<Data> data_;
 
   Future(const std::shared_ptr<Data>& data) noexcept : data_(data) { }

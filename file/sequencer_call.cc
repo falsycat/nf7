@@ -43,7 +43,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   class SessionLambda;
 
   Call(Env& env, const nf7::FileHolder* callee = nullptr, std::string_view expects = "") noexcept :
-      FileBase(kType, env, {&callee_}),
+      FileBase(kType, env, {&callee_, &callee_editor_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),

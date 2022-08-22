@@ -15,12 +15,13 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
-#include "common/file_ref.hh"
+#include "common/file_base.hh"
+#include "common/file_holder.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
-#include "common/generic_watcher.hh"
-#include "common/gui_dnd.hh"
+#include "common/gui_file.hh"
+#include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
@@ -38,33 +39,39 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Node> kType =
-      {"LuaJIT/Node", {"nf7::DirItem",}};
+      {"LuaJIT/Node", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Defines new Node using LuaJIT/Obj.");
+    ImGui::TextUnformatted("Defines new Node using Lua object factory.");
     ImGui::Bullet();
     ImGui::TextUnformatted("refers nf7::luajit::Queue through linked LuaJIT/Obj");
-    ImGui::Bullet();
-    ImGui::TextUnformatted("requires nf7::luajit::Obj to refer this Node from externals");
   }
 
-  class FetchTask;
   class Lambda;
 
   struct Data {
-    std::string  desc;
+    nf7::FileHolder::Tag     obj;
+    std::string              desc;
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
   };
 
-  Node(Env& env, File::Path&& path = {}, Data&& data = {}) noexcept :
-      File(kType, env),
-      DirItem(DirItem::kMenu | DirItem::kTooltip | DirItem::kDragDropTarget),
+  Node(Env& env, const nf7::FileHolder* obj = nullptr, Data&& data = {}) noexcept :
+      nf7::FileBase(kType, env, {&obj_, &obj_editor_}),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+      life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
-      obj_(*this, std::move(path)),
+      obj_(*this, "obj_factory", obj),
+      obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::luajit::Obj"); }),
       mem_(std::move(data)) {
+    this->data().obj = nf7::FileHolder::Tag {obj_};
+    mem_.CommitAmend();
+
+    obj_.onChildMementoChange = [this]() { mem_.Commit(); };
+    obj_.onEmplace            = [this]() { mem_.Commit(); };
+
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -80,7 +87,7 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
     ar(obj_, data().desc, data().inputs, data().outputs);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Node>(env, File::Path(obj_.path()), Data {data()});
+    return std::make_unique<Node>(env, &obj_, Data {data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -97,23 +104,23 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   static void UpdateList(std::vector<std::string>&) noexcept;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
-  void UpdateDragDropTarget() noexcept override;
-  void UpdateNode(Node::Editor&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:
+  nf7::Life<Node> life_;
+
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::shared_ptr<nf7::luajit::Ref> handler_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
 
   const char* popup_ = nullptr;
 
-  nf7::FileRef obj_;
-  std::optional<nf7::GenericWatcher> watcher_;
+  nf7::FileHolder            obj_;
+  nf7::gui::FileHolderEditor obj_editor_;
 
   nf7::GenericMemento<Data> mem_;
   const Data& data() const noexcept { return mem_.data(); }
@@ -121,12 +128,6 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept;
-
-  void DropHandler() noexcept {
-    watcher_ = std::nullopt;
-    handler_ = nullptr;
-    fetch_   = {};
-  }
 
   static void Uniq(std::vector<std::string>& v) {
     for (auto itr = v.begin(); itr < v.end();) {
@@ -154,62 +155,26 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 };
 
-class Node::FetchTask final : public nf7::Task<std::shared_ptr<nf7::luajit::Ref>> {
- public:
-  FetchTask(Node& target) noexcept :
-      Task(target.env(), target.id()), target_(&target), log_(target_->log_) {
-  }
-
- private:
-  Node* const target_;
-  std::shared_ptr<nf7::LoggerRef> log_;
-
-
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Coro Proc() noexcept {
-    try {
-      auto& objf    = *target_->obj_;
-      auto& obj     = objf.interfaceOrThrow<nf7::luajit::Obj>();
-      auto  handler = co_await obj.Build();
-      co_yield handler;
-
-      try {
-        *target_->obj_;  // checks if objf is alive
-
-        target_->handler_ = handler;
-
-        auto& w = target_->watcher_;
-        w.emplace(env());
-        w->Watch(objf.id());
-        w->AddHandler(Event::kUpdate, [t = target_](auto&) {
-          if (t->handler_) {
-            t->log_->Info("detected update of handler object, drops cache");
-            t->handler_ = nullptr;
-          }
-        });
-      } catch (Exception& e) {
-        log_->Error("watcher setup failure: "+e.msg());
-      }
-    } catch (Exception& e) {
-      log_->Error("fetch failure: "+e.msg());
-      throw;
-    }
-  }
-};
-
 class Node::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
   Lambda(Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent),
-      file_(&f), log_(f.log_), handler_(f.FetchHandler()) {
+      nf7::Node::Lambda(f, parent), file_(f.life_), log_(f.log_) {
   }
 
   void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
+              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+  try {
+    file_.EnforceAlive();
+
+    auto fu   = file_->FetchHandler();
     auto self = shared_from_this();
-    handler_.ThenSub(self, [self, name = std::string(name), v, caller](auto) mutable {
-      self->CallHandler({{std::move(name), std::move(v)}}, caller);
+    fu.ThenSub(self, [self, name = std::string(name), v = v, caller](auto fu) mutable {
+      self->CallHandler({std::move(name), std::move(v)}, fu, caller);
     });
+  } catch (nf7::LifeExpiredException&) {
+  } catch (nf7::Exception& e) {
+    log_->Error(e.msg());
   }
   void Abort() noexcept override {
     for (auto& wth : th_) {
@@ -220,12 +185,9 @@ class Node::Lambda final : public nf7::Node::Lambda,
   }
 
  private:
-  Node* const file_;
+  nf7::Life<Node>::Ref file_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
-
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> handler_;
-  std::shared_ptr<nf7::luajit::Queue>            ljq_;
 
   std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
 
@@ -233,49 +195,43 @@ class Node::Lambda final : public nf7::Node::Lambda,
 
 
   using Param = std::pair<std::string, nf7::Value>;
-  void CallHandler(std::optional<Param>&& p, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept
+  void CallHandler(Param&& p, auto& fu, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept
   try {
     auto self = shared_from_this();
     th_.erase(
         std::remove_if(th_.begin(), th_.end(), [](auto& x) { return x.expired(); }),
         th_.end());
 
-    auto handler = handler_.value();
-    ljq_ = handler->ljq();
+    auto handler = fu.value();
+    auto ljq     = handler->ljq();
 
-    env().GetFileOrThrow(initiator());  // check if the owner is alive
     auto th = std::make_shared<nf7::luajit::Thread>(
-        self, ljq_,
-        [self](auto& th, auto L) { self->HandleThread(th, L); });
+        self, ljq, [self, ljq](auto& th, auto L) { self->HandleThread(ljq, th, L); });
     th->Install(log_);
     th_.emplace_back(th);
 
-    ljq_->Push(self, [this, self, p = std::move(p), caller, handler, th](auto L) mutable {
+    ljq->Push(self, [this, self, ljq, p = std::move(p), caller, handler, th](auto L) mutable {
       auto thL = th->Init(L);
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
-      if (p) {
-        lua_pushstring(thL, p->first.c_str());
-        nf7::luajit::PushValue(thL, p->second);
-      } else {
-        lua_pushnil(thL);
-        lua_pushnil(thL);
-      }
+      lua_pushstring(thL, p.first.c_str());
+      nf7::luajit::PushValue(thL, p.second);
       PushCaller(thL, caller);
-      PushContextTable(thL);
+      PushContextTable(ljq, thL);
       th->Resume(thL, 4);
     });
   } catch (nf7::Exception& e) {
     log_->Error("failed to call handler: "+e.msg());
   }
 
-  void HandleThread(nf7::luajit::Thread& th, lua_State* L) noexcept {
+  void HandleThread(const std::shared_ptr<nf7::luajit::Queue>& ljq,
+                    nf7::luajit::Thread& th, lua_State* L) noexcept {
     switch (th.state()) {
     case nf7::luajit::Thread::kFinished:
       return;
 
     case nf7::luajit::Thread::kPaused:
       log_->Warn("unexpected yield");
-      ljq_->Push(shared_from_this(),
+      ljq->Push(shared_from_this(),
                 [th = th.shared_from_this(), L](auto) { th->Resume(L, 0); });
       return;
 
@@ -320,12 +276,16 @@ class Node::Lambda final : public nf7::Node::Lambda,
     lua_setmetatable(L, -2);
   }
 
-  void PushContextTable(lua_State* L) noexcept {
+  void PushContextTable(const std::shared_ptr<nf7::luajit::Queue>& ljq,
+                        lua_State* L) noexcept {
+    if (ctxtable_ && ctxtable_->ljq() != ljq) {
+      ctxtable_ = std::nullopt;
+    }
     if (!ctxtable_) {
       lua_createtable(L, 0, 0);
       lua_pushvalue(L, -1);
       const int idx = luaL_ref(L, LUA_REGISTRYINDEX);
-      ctxtable_.emplace(shared_from_this(), ljq_, idx);
+      ctxtable_.emplace(shared_from_this(), ljq, idx);
     } else {
       lua_rawgeti(L, LUA_REGISTRYINDEX, ctxtable_->index());
     }
@@ -337,21 +297,19 @@ std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
 }
-nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept {
-  if (handler_) return handler_;
-  if (auto fetch = fetch_.lock()) return fetch->fu();
-
-  auto fetch = std::make_shared<FetchTask>(*this);
-  fetch->Start();
-  fetch_ = {fetch};
-  return fetch->fu();
+nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept
+try {
+  return obj_.GetFileOrThrow().interfaceOrThrow<nf7::luajit::Obj>().Build();
+} catch (nf7::Exception&) {
+  return {std::current_exception()};
 }
 
 void Node::Handle(const Event& ev) noexcept {
+  nf7::FileBase::Handle(ev);
+
   switch (ev.type) {
   case Event::kAdd:
     log_->SetUp(*this);
-    FetchHandler();
     return;
 
   case Event::kRemove:
@@ -363,6 +321,8 @@ void Node::Handle(const Event& ev) noexcept {
   }
 }
 void Node::Update() noexcept {
+  nf7::FileBase::Update();
+
   const auto& style = ImGui::GetStyle();
   const auto  em    = ImGui::GetFontSize();
 
@@ -371,22 +331,21 @@ void Node::Update() noexcept {
   }
 
   if (ImGui::BeginPopup("ConfigPopup")) {
-    static std::string path;
     static std::string desc;
     static std::string in, out;
     static std::vector<std::string> invec, outvec;
 
     ImGui::TextUnformatted("LuaJIT/Node: config");
     if (ImGui::IsWindowAppearing()) {
-      path = obj_.path().Stringify();
       desc = desc;
       Join(in, data().inputs);
       Join(out, data().outputs);
     }
 
+    obj_editor_.ButtonWithLabel("obj factory");
+
     const auto w = ImGui::CalcItemWidth()/2 - style.ItemSpacing.x/2;
 
-    ImGui::InputText("path", &path);
     ImGui::InputTextMultiline("description", &desc, {0, 4*em});
     ImGui::BeginGroup();
     ImGui::TextUnformatted("input:");
@@ -401,16 +360,6 @@ void Node::Update() noexcept {
     ImGui::TextUnformatted("sockets");
 
     bool err = false;
-    File::Path p;
-    try {
-      p = File::Path::Parse(path);
-      ResolveOrThrow(p);
-    } catch (File::NotFoundException&) {
-      ImGui::Bullet(); ImGui::TextUnformatted("path seems to be missing");
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::Text("invalid path: %s", e.msg().c_str());
-      err = true;
-    }
     try {
       Split(invec, in);
     } catch (nf7::Exception& e) {
@@ -428,8 +377,7 @@ void Node::Update() noexcept {
       ImGui::CloseCurrentPopup();
 
       auto ctx = std::make_shared<nf7::GenericContext>(*this, "rebuilding node");
-      env().ExecMain(ctx, [&, p = std::move(p)]() mutable {
-        obj_ = std::move(p);
+      env().ExecMain(ctx, [&]() mutable {
         data().desc    = std::move(desc);
         data().inputs  = std::move(invec);
         data().outputs = std::move(outvec);
@@ -443,17 +391,19 @@ void Node::UpdateMenu() noexcept {
   if (ImGui::MenuItem("config")) {
     popup_ = "ConfigPopup";
   }
+
+  obj_editor_.MenuWithTooltip("factory");
+
   ImGui::Separator();
   if (ImGui::MenuItem("try fetch handler")) {
     FetchHandler();
   }
-  if (ImGui::MenuItem("drop cached handler")) {
-    DropHandler();
-  }
 }
 void Node::UpdateTooltip() noexcept {
-  ImGui::Text("path   : %s", obj_.path().Stringify().c_str());
-  ImGui::Text("handler: %s", handler_? "ready": "no");
+  ImGui::Text("src:");
+  ImGui::Indent();
+  obj_editor_.Tooltip();
+  ImGui::Unindent();
   ImGui::Spacing();
 
   ImGui::Text("input:");
@@ -484,15 +434,6 @@ void Node::UpdateTooltip() noexcept {
     ImGui::TextUnformatted(data().desc.c_str());
   }
   ImGui::Unindent();
-
-  ImGui::TextDisabled("drop a file here to set it as source");
-}
-void Node::UpdateDragDropTarget() noexcept {
-  if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
-    obj_ = std::move(*p);
-  }
-}
-void Node::UpdateNode(Node::Editor&) noexcept {
 }
 
 }

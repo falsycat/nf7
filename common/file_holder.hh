@@ -89,6 +89,7 @@ class FileHolder : public nf7::FileBase::Feature {
   }
 
   nf7::File& owner() const noexcept { return *owner_; }
+  const std::string& id() const noexcept { return id_; }
 
   nf7::File* file() const noexcept { return file_; }
   nf7::File::Path path() const noexcept {
@@ -121,6 +122,7 @@ class FileHolder : public nf7::FileBase::Feature {
 // to save/restore FileHolder's changes through GenericMemento
 class FileHolder::Tag final {
  public:
+  Tag() = default;
   Tag(nf7::FileHolder& target) noexcept : target_(&target) {
   }
   Tag(const Tag&) noexcept;

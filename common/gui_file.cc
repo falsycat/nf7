@@ -5,12 +5,22 @@
 #include <imgui.h>
 #include <imgui_stdlib.h>
 
+#include "common/dir_item.hh"
 #include "common/generic_context.hh"
 
 
 using namespace std::literals;
 
 namespace nf7::gui {
+
+static nf7::DirItem* GetDirItem(nf7::FileHolder& h, nf7::DirItem::Flags f) noexcept
+try {
+  auto& d = h.GetFileOrThrow().interfaceOrThrow<nf7::DirItem>();
+  return d.flags() & f? &d: nullptr;
+} catch (nf7::Exception&) {
+  return nullptr;
+}
+
 
 bool FileFactory::Update() noexcept {
   const auto em = ImGui::GetFontSize();
@@ -116,41 +126,70 @@ std::string FileHolderEditor::GetDisplayText() const noexcept {
   return text;
 }
 
-void FileHolderEditor::Button(bool small) noexcept {
+void FileHolderEditor::Button(float w, bool small) noexcept {
   ImGui::PushID(this);
-
   ImGui::BeginGroup();
   const auto text = GetDisplayText();
 
-  const bool open = small?
+  open_ |= small?
       ImGui::SmallButton(text.c_str()):
-      ImGui::Button(text.c_str());
-  if (open) {
-    ImGui::OpenPopup("FileHolderEditorPopup");
+      ImGui::Button(text.c_str(), {w, 0});
+  if (ImGui::BeginPopupContextItem()) {
+    MenuItems();
+    ImGui::EndPopup();
   }
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s", text.c_str());
+    ImGui::BeginTooltip();
+    Tooltip();
+    ImGui::EndTooltip();
   }
   ImGui::EndGroup();
-
-  UpdatePopup();
   ImGui::PopID();
 }
 void FileHolderEditor::ButtonWithLabel(const char* name) noexcept {
   ImGui::PushID(this);
-
   ImGui::BeginGroup();
-  if (ImGui::Button(GetDisplayText().c_str(), {ImGui::CalcItemWidth(), 0})) {
-    ImGui::OpenPopup("FileHolderEditorPopup");
-  }
+  Button(ImGui::CalcItemWidth());
   ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::TextUnformatted(name);
   ImGui::EndGroup();
-
-  UpdatePopup();
   ImGui::PopID();
 }
-void FileHolderEditor::UpdatePopup() noexcept {
+void FileHolderEditor::Tooltip() noexcept {
+  ImGui::TextUnformatted(GetDisplayText().c_str());
+  ImGui::Indent();
+  if (auto a = GetDirItem(*holder_, nf7::DirItem::kTooltip)) {
+    a->UpdateTooltip();
+  }
+  ImGui::Unindent();
+}
+void FileHolderEditor::MenuItems() noexcept {
+  if (ImGui::MenuItem("emplace")) {
+    open_ = true;
+  }
+  if (auto a = GetDirItem(*holder_, nf7::DirItem::kMenu)) {
+    ImGui::Separator();
+    a->UpdateMenu();
+  }
+}
+void FileHolderEditor::MenuWithTooltip(const char* name) noexcept {
+  if (ImGui::BeginMenu(name)) {
+    MenuItems();
+    ImGui::EndMenu();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::BeginTooltip();
+    Tooltip();
+    ImGui::EndTooltip();
+  }
+}
+
+void FileHolderEditor::Update() noexcept {
+  ImGui::PushID(this);
+
+  if (std::exchange(open_, false)) {
+    ImGui::OpenPopup("FileHolderEditorPopup");
+  }
   if (ImGui::BeginPopup("FileHolderEditorPopup")) {
     if (ImGui::IsWindowAppearing()) {
       if (holder_->ref()) {
@@ -208,6 +247,8 @@ void FileHolderEditor::UpdatePopup() noexcept {
     }
     ImGui::EndPopup();
   }
+
+  ImGui::PopID();
 }
 
 }  // namespace nf7::gui
