@@ -17,6 +17,9 @@ class GenericHistory : public nf7::History {
   GenericHistory(GenericHistory&&) = default;
   GenericHistory& operator=(const GenericHistory&) = delete;
   GenericHistory& operator=(GenericHistory&&) = default;
+  ~GenericHistory() noexcept {
+    Clear();
+  }
 
   Command& Add(std::unique_ptr<Command>&& cmd) noexcept override {
     cmds_.erase(cmds_.begin()+static_cast<intmax_t>(cursor_), cmds_.end());
@@ -25,6 +28,9 @@ class GenericHistory : public nf7::History {
     return *cmds_.back();
   }
   void Clear() noexcept {
+    for (auto itr = cmds_.rbegin(); itr < cmds_.rend(); ++itr) {
+      *itr = nullptr;
+    }
     cmds_.clear();
   }
 
