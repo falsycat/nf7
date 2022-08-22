@@ -66,7 +66,6 @@ target_sources(nf7
     common/gui_file.cc
     common/gui_node.hh
     common/gui_popup.hh
-    common/gui_resizer.hh
     common/gui_timeline.hh
     common/gui_timeline.cc
     common/gui_value.hh
