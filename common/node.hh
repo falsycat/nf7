@@ -38,16 +38,14 @@ class Node : public File::Interface {
   virtual void UpdateNode(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }
 
-  std::span<const std::string> input() const noexcept { return input_; }
-  std::span<const std::string> output() const noexcept { return output_; }
+  // The returned span is alive until next operation to the file.
+  virtual std::span<const std::string> GetInputs() const noexcept = 0;
+  virtual std::span<const std::string> GetOutputs() const noexcept = 0;
 
   Flags flags() const noexcept { return flags_; }
 
  protected:
   Flags flags_;
-
-  std::vector<std::string> input_;
-  std::vector<std::string> output_;
 };
 
 class Node::Editor {

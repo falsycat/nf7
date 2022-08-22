@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
@@ -22,6 +23,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -62,8 +64,9 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
   Device(Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
       File(kType, env), nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
-      data_(std::make_shared<Data>()),
-      selector_(std::move(sel)), cfg_(cfg) {
+      data_(std::make_shared<AsyncData>()),
+      selector_(std::move(sel)), cfg_(cfg),
+      config_popup_(std::make_shared<ConfigPopup>()) {
   }
 
   Device(Env& env, Deserializer& ar) : Device(env) {
@@ -77,6 +80,8 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override;
+  std::span<const std::string> GetOutputs() const noexcept override;
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -84,16 +89,18 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void UpdateTooltip() noexcept override;
   void UpdateNode(Node::Editor&) noexcept override { }
 
+  static bool UpdateModeSelector(ma_device_type*) noexcept;
+  static const ma_device_info* UpdateSelector(Selector*, ma_device_info*, size_t) noexcept;
+  static void UpdatePresetSelector(ma_device_config*, const ma_device_info*) noexcept;
+
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:
-  const char* popup_ = nullptr;
-
-  struct Data {
+  struct AsyncData {
    public:
-    Data() noexcept : ring(std::make_unique<Ring>()) {
+    AsyncData() noexcept : ring(std::make_unique<Ring>()) {
     }
 
     nf7::LoggerRef log;
@@ -104,17 +111,21 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     std::optional<ma_device> dev;
     std::atomic<size_t> busy = 0;
   };
-  std::shared_ptr<Data> data_;
+  std::shared_ptr<AsyncData> data_;
 
   // persistent params
   Selector         selector_;
   ma_device_config cfg_;
 
-  // ConfigPopup param
+  // ConfigPopup param (must be shared_ptr because saves fetched device list async)
   struct ConfigPopup final : std::enable_shared_from_this<ConfigPopup> {
+    bool open = false;
+
+    // params
     ma_device_config cfg;
     Selector         selector;
 
+    // fetched devices
     std::atomic<bool> fetching = false;
     ma_device_info*   devs   = nullptr;
     ma_uint32         devs_n = 0;
@@ -143,8 +154,6 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   void InitDev() noexcept;
   void DeinitDev() noexcept;
-  void BuildNode() noexcept;
-
 
   static std::pair<ma_device_info*, size_t> FetchDevs(ma_context* ctx, ma_device_type mode) {
     ma_device_info* devs = nullptr;
@@ -187,11 +196,6 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     }
     return ret;
   }
-
-
-  static bool UpdateModeSelector(ma_device_type*) noexcept;
-  static const ma_device_info* UpdateSelector(Selector*, ma_device_info*, size_t) noexcept;
-  static void UpdatePresetSelector(ma_device_config*, const ma_device_info*) noexcept;
 
 
   nf7::Value infoTuple() const noexcept {
@@ -326,7 +330,7 @@ class Device::PlaybackLambda final : public nf7::Node::Lambda,
   }
 
  private:
-  std::shared_ptr<Data> data_;
+  std::shared_ptr<AsyncData> data_;
   nf7::Value info_;
 
   uint64_t time_ = 0;
@@ -362,7 +366,7 @@ class Device::CaptureLambda final : public nf7::Node::Lambda,
   }
 
  private:
-  std::shared_ptr<Data> data_;
+  std::shared_ptr<AsyncData> data_;
   nf7::Value info_;
 
   std::optional<uint64_t> time_;
@@ -405,6 +409,29 @@ struct Device::SelectorVisitor final {
   size_t n_;
 };
 
+
+std::span<const std::string> Device::GetInputs() const noexcept {
+  switch (cfg_.deviceType) {
+  case ma_device_type_playback:
+    return PlaybackLambda::kInputs;
+  case ma_device_type_capture:
+    return CaptureLambda::kInputs;
+  default:
+    assert(false);
+  }
+  return {};
+}
+std::span<const std::string> Device::GetOutputs() const noexcept {
+  switch (cfg_.deviceType) {
+  case ma_device_type_playback:
+    return PlaybackLambda::kOutputs;
+  case ma_device_type_capture:
+    return CaptureLambda::kOutputs;
+  default:
+    assert(false);
+  }
+  return {};
+}
 
 void Device::InitDev() noexcept {
   if (!data_->aq) {
@@ -479,21 +506,6 @@ void Device::DeinitDev() noexcept {
     --d->busy;
   });
 }
-void Device::BuildNode() noexcept {
-  switch (cfg_.deviceType) {
-  case ma_device_type_playback:
-    nf7::Node::input_  = PlaybackLambda::kInputs;
-    nf7::Node::output_ = PlaybackLambda::kOutputs;
-    break;
-  case ma_device_type_capture:
-    nf7::Node::input_  = CaptureLambda::kInputs;
-    nf7::Node::output_ = CaptureLambda::kOutputs;
-    break;
-  default:
-    assert(false);
-  }
-  nf7::File::Touch();
-}
 
 
 void Device::Handle(const Event& ev) noexcept {
@@ -505,7 +517,6 @@ void Device::Handle(const Event& ev) noexcept {
           ResolveUpwardOrThrow("_audio").
           interfaceOrThrow<nf7::audio::Queue>().self();
       InitDev();
-      BuildNode();
     } catch (nf7::Exception&) {
       data_->log.Info("audio context is not found");
     }
@@ -524,20 +535,15 @@ void Device::Handle(const Event& ev) noexcept {
   }
 }
 
-
 void Device::Update() noexcept {
-  if (const auto popup = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(popup);
+  if (std::exchange(config_popup_->open, false)) {
+    ImGui::OpenPopup("ConfigPopup");
   }
-
   if (ImGui::BeginPopup("ConfigPopup")) {
     auto& p = config_popup_;
 
     ImGui::TextUnformatted("Audio/Output");
     if (ImGui::IsWindowAppearing()) {
-      if (!p) {
-        p = std::make_shared<ConfigPopup>();
-      }
       p->cfg      = cfg_;
       p->selector = selector_;
 
@@ -571,7 +577,7 @@ void Device::Update() noexcept {
       cfg_      = p->cfg;
       selector_ = p->selector;
       InitDev();
-      BuildNode();
+      Touch();
     }
     ImGui::EndPopup();
   }
@@ -585,7 +591,7 @@ void Device::UpdateMenu() noexcept {
     ImGui::Separator();
   }
   if (ImGui::MenuItem("config")) {
-    popup_ = "ConfigPopup";
+    config_popup_->open = true;
   }
 }
 void Device::UpdateTooltip() noexcept {

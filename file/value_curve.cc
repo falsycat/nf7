@@ -23,8 +23,6 @@
 #include "common/yas_imgui.hh"
 
 
-// TODO: currently bezier curve is not implemented
-
 namespace nf7 {
 namespace {
 
@@ -75,9 +73,6 @@ class Curve final : public nf7::File,
     AssignId();
     Sanitize();
 
-    input_  = {"x"};
-    output_ = {"y"};
-
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -98,6 +93,15 @@ class Curve final : public nf7::File,
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Context>&) noexcept override;
+
+  std::span<const std::string> GetInputs() const noexcept override {
+    static const std::vector<std::string> kInputs = {"x"};
+    return kInputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    static const std::vector<std::string> kOutputs = {"y"};
+    return kOutputs;
+  }
 
   void UpdateItem(nf7::Sequencer::Editor&) noexcept override;
 

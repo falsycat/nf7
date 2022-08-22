@@ -198,7 +198,7 @@ try {
   }
 
   ssla_->Listen(*file_, ss);
-  for (const auto& name : node.input()) {
+  for (const auto& name : node.GetInputs()) {
     if (auto v = ss->Receive(name)) {
       la_->Handle(name, *v, ssla_);
     }

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,7 +15,6 @@
 
 #include "nf7.hh"
 
-#include "common/file_ref.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -46,46 +46,46 @@ class Ref final : public nf7::File, public nf7::Node {
 
   class Lambda;
 
-  Ref(Env& env, Path&& path = {"initial", "path"},
-      std::vector<std::string>&& in  = {},
-      std::vector<std::string>&& out = {}) noexcept :
+  struct Data final {
+   public:
+    nf7::File::Path          target;
+    std::vector<std::string> inputs;
+    std::vector<std::string> outputs;
+  };
+
+  Ref(Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
-      mem_({*this, std::move(path), std::move(in), std::move(out)}) {
+      mem_(std::move(data)) {
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
 
   Ref(Env& env, Deserializer& ar) : Ref(env) {
-    auto& d = mem_.data();
-    ar(d.target, d.input, d.output);
+    ar(data().target, data().inputs, data().outputs);
   }
   void Serialize(Serializer& ar) const noexcept override {
-    const auto& d = mem_.data();
-    ar(d.target, d.input, d.output);
+    ar(data().target, data().inputs, data().outputs);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    const auto& d = mem_.data();
-    return std::make_unique<Ref>(
-        env, Path{d.target.path()},
-        std::vector<std::string>{input_}, std::vector<std::string>{output_});
+    return std::make_unique<Ref>(env, Data {data()});
   }
 
   std::shared_ptr<Node::Lambda> CreateLambda(
       const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override {
+    return data().inputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    return data().outputs;
+  }
 
   void Handle(const Event& ev) noexcept {
-    const auto& d = mem_.data();
-
     switch (ev.type) {
     case Event::kAdd:
       log_->SetUp(*this);
       /* fallthrough */
-    case Event::kUpdate:
-      input_  = d.input;
-      output_ = d.output;
-      return;
     case Event::kRemove:
       log_->TearDown();
       return;
@@ -108,49 +108,49 @@ class Ref final : public nf7::File, public nf7::Node {
 
   const char* popup_ = nullptr;
 
-  // persistent params
-  struct Data final {
-   public:
-    Data(Ref& owner, Path&& p,
-         std::vector<std::string>&& in,
-         std::vector<std::string>&& out) noexcept :
-        target(owner, std::move(p)), input(std::move(in)), output(std::move(out)) {
-    }
-
-    nf7::FileRef target;
-    std::vector<std::string> input;
-    std::vector<std::string> output;
-  };
   nf7::GenericMemento<Data> mem_;
 
+  const Data& data() const noexcept { return mem_.data(); }
+  Data& data() noexcept { return mem_.data(); }
 
-  void SyncQuiet() noexcept {
-    auto& d = mem_.data();
+  nf7::Node& target() const {
+    auto& f = ResolveOrThrow(data().target);
+    if (&f == this) throw nf7::Exception("self reference");
+    return f.interfaceOrThrow<nf7::Node>();
+  }
+
+
+  bool SyncQuiet() noexcept {
+    auto& dsti = data().inputs;
+    auto& dsto = data().outputs;
+
+    bool mod = false;
     try {
       auto& n = target();
 
-      const auto i = n.input();
-      d.input = std::vector<std::string>{i.begin(), i.end()};
+      const auto srci = n.GetInputs();
+      mod |= std::equal(dsti.begin(), dsti.end(), srci.begin(), srci.end());
+      dsti = std::vector<std::string>{srci.begin(), srci.end()};
 
-      const auto o = n.output();
-      d.output = std::vector<std::string>{o.begin(), o.end()};
+      const auto srco = n.GetOutputs();
+      mod |= std::equal(dsto.begin(), dsto.end(), srco.begin(), srco.end());
+      dsto = std::vector<std::string>{srco.begin(), srco.end()};
     } catch (nf7::Exception& e) {
-      d.input  = {};
-      d.output = {};
+      mod = dsti.size() > 0 || dsto.size() > 0;
+      dsti = {};
+      dsto = {};
       log_->Error("failed to sync: "+e.msg());
     }
+    return mod;
   }
   void Sync() noexcept {
-    SyncQuiet();
-    const auto& d = mem_.data();
-    if (input_ != d.input || output_ != d.output) {
+    if (SyncQuiet()) {
       mem_.Commit();
     }
   }
-
   void ExecChangePath(Path&& p) noexcept {
     auto& target = mem_.data().target;
-    if (p == target.path()) return;
+    if (p == target) return;
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "change path"),
         [this, &target, p = std::move(p)]() mutable {
@@ -158,12 +158,6 @@ class Ref final : public nf7::File, public nf7::Node {
           SyncQuiet();
           mem_.Commit();
         });
-  }
-
-  nf7::Node& target() const {
-    auto& f = *mem_.data().target;
-    if (&f == this) throw nf7::Exception("self reference");
-    return f.interfaceOrThrow<nf7::Node>();
   }
 };
 
@@ -223,8 +217,6 @@ try {
 
 
 void Ref::Update() noexcept {
-  const auto& d = mem_.data();
-
   if (auto popup = std::exchange(popup_, nullptr)) {
     ImGui::OpenPopup(popup);
   }
@@ -233,7 +225,7 @@ void Ref::Update() noexcept {
     static std::string pathstr;
 
     if (ImGui::IsWindowAppearing()) {
-      pathstr = d.target.path().Stringify();
+      pathstr = data().target.Stringify();
     }
 
     ImGui::TextUnformatted("Node/Ref: config");
@@ -274,7 +266,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
         [this]() { Sync(); });
   }
 
-  const auto pathstr = mem_.data().target.path().Stringify();
+  const auto pathstr = mem_.data().target.Stringify();
 
   auto w = 6*em;
   {
@@ -282,11 +274,11 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     w = std::max(w, std::min(pw, 8*em));
 
     auto iw = 3*em;
-    for (const auto& v : input_) {
+    for (const auto& v : data().inputs) {
       iw = std::max(iw, ImGui::CalcTextSize(v.c_str()).x);
     }
     auto ow = 3*em;
-    for (const auto& v : output_) {
+    for (const auto& v : data().outputs) {
       ow = std::max(ow, ImGui::CalcTextSize(v.c_str()).x);
     }
     w = std::max(w, 1*em+style.ItemSpacing.x+iw +1*em+ ow+style.ItemSpacing.x+1*em);
@@ -304,7 +296,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
 
   const auto right = ImGui::GetCursorPosX() + w;
   ImGui::BeginGroup();
-  for (const auto& name : input_) {
+  for (const auto& name : data().inputs) {
     if (ImNodes::BeginInputSlot(name.c_str(), 1)) {
       gui::NodeSocket();
       ImGui::SameLine();
@@ -315,7 +307,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
   ImGui::EndGroup();
   ImGui::SameLine();
   ImGui::BeginGroup();
-  for (const auto& name : output_) {
+  for (const auto& name : data().outputs) {
     const auto tw = ImGui::CalcTextSize(name.c_str()).x;
     ImGui::SetCursorPosX(right-(tw+style.ItemSpacing.x+em));
 

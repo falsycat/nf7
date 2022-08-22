@@ -82,10 +82,10 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
     history_.Clear();
   }
 
-  void SetUpAfterDeserialize();
   TL(Env& env, Deserializer& ar) : TL(env) {
     ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
-    SetUpAfterDeserialize();
+    AssignId();
+    ApplySeqSocketChanges();
   }
   void Serialize(Serializer& ar) const noexcept override {
     ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
@@ -94,6 +94,12 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<Node::Lambda> CreateLambda(
       const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override {
+    return inputs_;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    return outputs_;
+  }
 
   void Handle(const Event& ev) noexcept;
   void Update() noexcept override;
@@ -116,6 +122,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<TL::Lambda> lambda_;
   std::vector<std::weak_ptr<TL::Lambda>> lambdas_running_;
+
+  std::vector<std::string> inputs_, outputs_;  // for GetInputs/GetOutputs
 
   // permanentized params
   uint64_t length_;
@@ -185,6 +193,8 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   std::unordered_set<TL::Item*> selected_;
 
 
+  void AssignId();
+
   // layer operation
   void ExecInsertLayer(size_t, std::unique_ptr<TL::Layer>&& = nullptr) noexcept;
   void ExecRemoveLayer(size_t) noexcept;
@@ -217,13 +227,13 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   // socket operation
   void ApplySeqSocketChanges() noexcept {
-    input_ = seq_inputs_;
-    input_.push_back("_exec");
+    inputs_ = seq_inputs_;
+    inputs_.push_back("_exec");
 
-    output_ = seq_outputs_;
-    output_.push_back("_cursor");
+    outputs_ = seq_outputs_;
+    outputs_.push_back("_cursor");
   }
-  static std::vector<std::string> ParseSocketSpecifier(std::string_view names) {
+  static std::vector<std::string> ParseSocketList(std::string_view names) {
     const auto n = names.size();
 
     std::vector<std::string> ret;
@@ -568,7 +578,7 @@ class TL::Layer final {
   size_t index_;
   float  offset_y_;
 };
-void TL::SetUpAfterDeserialize() {
+void TL::AssignId() {
   next_ = 1;
   std::unordered_set<ItemId> ids;
   for (auto& layer : layers_) {
@@ -583,7 +593,6 @@ void TL::SetUpAfterDeserialize() {
       next_ = std::max(next_, item->id()+1);
     }
   }
-  ApplySeqSocketChanges();
 }
 
 
@@ -1638,8 +1647,8 @@ void TL::ConfigPopup::Update() noexcept {
     if (ImGui::Button("ok")) {
       try {
         auto cmd = ConfigModifyCommand::Builder(*owner_).
-            inputs(ParseSocketSpecifier(inputs_)).
-            outputs(ParseSocketSpecifier(outputs_)).
+            inputs(ParseSocketList(inputs_)).
+            outputs(ParseSocketList(outputs_)).
             Build();
         ImGui::CloseCurrentPopup();
 

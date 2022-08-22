@@ -47,9 +47,6 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   Imm(nf7::Env& env, nf7::gui::Value&& v = {}) noexcept :
       nf7::File(kType, env), nf7::DirItem(DirItem::kNone),
       life_(*this), mem_(std::move(v)) {
-    input_  = {"in"};
-    output_ = {"out"};
-
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -66,6 +63,14 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override {
+    static const std::vector<std::string> kInputs = {"in"};
+    return kInputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    static const std::vector<std::string> kOutputs = {"out"};
+    return kOutputs;
+  }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
 

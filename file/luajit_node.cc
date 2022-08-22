@@ -18,6 +18,7 @@
 #include "common/file_ref.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/generic_memento.hh"
 #include "common/generic_watcher.hh"
 #include "common/gui_dnd.hh"
 #include "common/logger_ref.hh"
@@ -25,6 +26,7 @@
 #include "common/luajit_queue.hh"
 #include "common/luajit_ref.hh"
 #include "common/luajit_thread.hh"
+#include "common/memento.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/task.hh"
@@ -51,42 +53,44 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
   class FetchTask;
   class Lambda;
 
-  Node(Env& env, File::Path&& path = {}, std::string_view desc = "",
-       std::vector<std::string>&& in  = {},
-       std::vector<std::string>&& out = {}) noexcept :
+  struct Data {
+    std::string  desc;
+    std::vector<std::string> inputs;
+    std::vector<std::string> outputs;
+  };
+
+  Node(Env& env, File::Path&& path = {}, Data&& data = {}) noexcept :
       File(kType, env),
       DirItem(DirItem::kMenu | DirItem::kTooltip | DirItem::kDragDropTarget),
       log_(std::make_shared<nf7::LoggerRef>()),
-      obj_(*this, std::move(path)), desc_(desc) {
-    input_  = std::move(in);
-    output_ = std::move(out);
+      obj_(*this, std::move(path)),
+      mem_(std::move(data)) {
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Node(Env& env, Deserializer& ar) : Node(env) {
-    ar(obj_, desc_, input_, output_);
+    ar(obj_, data().desc, data().inputs, data().outputs);
 
-    for (auto itr = input_.begin(); itr < input_.end(); ++itr) {
-      if (std::find(itr+1, input_.end(), *itr) != input_.end()) {
-        throw nf7::DeserializeException("duplicated input socket");
-      }
-    }
-    for (auto itr = output_.begin(); itr < output_.end(); ++itr) {
-      if (std::find(itr+1, output_.end(), *itr) != output_.end()) {
-        throw nf7::DeserializeException("duplicated output socket");
-      }
-    }
+    // sanitize (remove duplicated sockets)
+    Uniq(data().inputs);
+    Uniq(data().outputs);
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(obj_, desc_, input_, output_);
+    ar(obj_, data().desc, data().inputs, data().outputs);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Node>(
-        env, File::Path(obj_.path()), desc_,
-        std::vector<std::string>(input_), std::vector<std::string>(output_));
+    return std::make_unique<Node>(env, File::Path(obj_.path()), Data {data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override {
+    return data().inputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    return data().outputs;
+  }
 
   void Handle(const Event&) noexcept override;
   void Update() noexcept override;
@@ -102,16 +106,18 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
  private:
   std::shared_ptr<nf7::LoggerRef> log_;
-  std::optional<nf7::GenericWatcher> watcher_;
 
   std::shared_ptr<nf7::luajit::Ref> handler_;
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
 
   const char* popup_ = nullptr;
 
-  // persistent params
   nf7::FileRef obj_;
-  std::string  desc_;
+  std::optional<nf7::GenericWatcher> watcher_;
+
+  nf7::GenericMemento<Data> mem_;
+  const Data& data() const noexcept { return mem_.data(); }
+  Data& data() noexcept { return mem_.data(); }
 
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept;
@@ -122,6 +128,15 @@ class Node final : public nf7::File, public nf7::DirItem, public nf7::Node {
     fetch_   = {};
   }
 
+  static void Uniq(std::vector<std::string>& v) {
+    for (auto itr = v.begin(); itr < v.end();) {
+      if (v.end() != std::find(itr+1, v.end(), *itr)) {
+        itr = v.erase(itr);
+      } else {
+        ++itr;
+      }
+    }
+  }
   static void Join(std::string& str, const std::vector<std::string>& vec) noexcept {
     str.clear();
     for (const auto& name : vec) str += name + "\n";
@@ -364,9 +379,9 @@ void Node::Update() noexcept {
     ImGui::TextUnformatted("LuaJIT/Node: config");
     if (ImGui::IsWindowAppearing()) {
       path = obj_.path().Stringify();
-      desc = desc_;
-      Join(in, input_);
-      Join(out, output_);
+      desc = desc;
+      Join(in, data().inputs);
+      Join(out, data().outputs);
     }
 
     const auto w = ImGui::CalcItemWidth()/2 - style.ItemSpacing.x/2;
@@ -414,11 +429,11 @@ void Node::Update() noexcept {
 
       auto ctx = std::make_shared<nf7::GenericContext>(*this, "rebuilding node");
       env().ExecMain(ctx, [&, p = std::move(p)]() mutable {
-        obj_    = std::move(p);
-        desc_   = std::move(desc);
-        input_  = std::move(invec);
-        output_ = std::move(outvec);
-        Touch();
+        obj_ = std::move(p);
+        data().desc    = std::move(desc);
+        data().inputs  = std::move(invec);
+        data().outputs = std::move(outvec);
+        mem_.Commit();
       });
     }
     ImGui::EndPopup();
@@ -443,30 +458,30 @@ void Node::UpdateTooltip() noexcept {
 
   ImGui::Text("input:");
   ImGui::Indent();
-  for (const auto& name : input_) {
+  for (const auto& name : data().inputs) {
     ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
   }
-  if (input_.empty()) {
+  if (data().inputs.empty()) {
     ImGui::TextDisabled("(nothing)");
   }
   ImGui::Unindent();
 
   ImGui::Text("output:");
   ImGui::Indent();
-  for (const auto& name : output_) {
+  for (const auto& name : data().outputs) {
     ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
   }
-  if (output_.empty()) {
+  if (data().outputs.empty()) {
     ImGui::TextDisabled("(nothing)");
   }
   ImGui::Unindent();
 
   ImGui::Text("description:");
   ImGui::Indent();
-  if (desc_.empty()) {
+  if (data().desc.empty()) {
     ImGui::TextDisabled("(empty)");
   } else {
-    ImGui::TextUnformatted(desc_.c_str());
+    ImGui::TextUnformatted(data().desc.c_str());
   }
   ImGui::Unindent();
 
