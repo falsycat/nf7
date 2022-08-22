@@ -62,15 +62,18 @@ class Obj final : public nf7::FileBase, public nf7::DirItem, public nf7::luajit:
     nf7::FileHolder::Tag src;
   };
 
-  Obj(Env& env, const nf7::FileHolder* src = nullptr, Data&& = {}) noexcept :
+  Obj(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&src_, &src_editor_}),
       nf7::DirItem(nf7::DirItem::kTooltip |
                    nf7::DirItem::kMenu),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
-      src_(*this, "src", src),
+      src_(*this, "src"),
       src_editor_(src_, [](auto& t) { return t.flags().contains("nf7::AsyncBuffer"); }),
-      mem_({.src = {src_}}) {
+      mem_(std::move(data)) {
+    mem_.data().src.SetTarget(src_);
+    mem_.CommitAmend();
+
     src_.onChildMementoChange = [this]() { mem_.Commit(); };
     src_.onEmplace            = [this]() { mem_.Commit(); };
 
@@ -85,7 +88,7 @@ class Obj final : public nf7::FileBase, public nf7::DirItem, public nf7::luajit:
     ar(src_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Obj>(env, &src_, Data {mem_.data()});
+    return std::make_unique<Obj>(env, Data {mem_.data()});
   }
 
   void Handle(const Event&) noexcept override;
@@ -291,8 +294,11 @@ void Obj::UpdateMenu() noexcept {
   }
 }
 void Obj::UpdateTooltip() noexcept {
-  ImGui::Text("source: %s", src_editor_.GetDisplayText().c_str());
-  ImGui::Text("cache : %d", cache_? cache_->index(): -1);
+  ImGui::Text("cache: %s", cache_? "ready": "nothing");
+  ImGui::Text("src  :");
+  ImGui::Indent();
+  src_editor_.Tooltip();
+  ImGui::Unindent();
 }
 
 }

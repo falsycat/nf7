@@ -174,13 +174,13 @@ void FileHolderEditor::MenuItems() noexcept {
 }
 void FileHolderEditor::MenuWithTooltip(const char* name) noexcept {
   if (ImGui::BeginMenu(name)) {
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      Tooltip();
+      ImGui::EndTooltip();
+    }
     MenuItems();
     ImGui::EndMenu();
-  }
-  if (ImGui::IsItemHovered()) {
-    ImGui::BeginTooltip();
-    Tooltip();
-    ImGui::EndTooltip();
   }
 }
 

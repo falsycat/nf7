@@ -7,18 +7,6 @@ using namespace std::literals;
 
 namespace nf7 {
 
-FileHolder::FileHolder(nf7::File& owner, std::string_view id, const FileHolder* src) :
-    owner_(&owner), id_(id) {
-  if (src) {
-    if (src->own()) {
-      entity_ = src->file()->Clone(owner.env());
-    } else {
-      entity_ = src->entity_;
-    }
-    // SetUp() will be called by kAdd event
-  }
-}
-
 nf7::File* FileHolder::Find(std::string_view name) const noexcept {
   return name == id_? file_: nullptr;
 }
@@ -118,13 +106,28 @@ FileHolder::Tag& FileHolder::Tag::operator=(const Tag& src) noexcept {
     target_->tag_    = src.tag_;
     target_->SetUp();
   } else if (!src.target_ && !target_) {
-    // copy
+    // shallow copy
     entity_ = src.entity_;
     tag_    = src.tag_;
   } else {
     assert(false);
   }
   return *this;
+}
+void FileHolder::Tag::SetTarget(nf7::FileHolder& h) noexcept {
+  assert(!target_);
+
+  target_ = &h;
+
+  h.TearDown();
+  if (std::holds_alternative<nf7::File::Path>(entity_)) {
+    h.Emplace(std::move(std::get<nf7::File::Path>(entity_)));
+  } else if (std::holds_alternative<std::shared_ptr<nf7::File>>(entity_)) {
+    h.Emplace(std::get<std::shared_ptr<nf7::File>>(entity_)->Clone(h.env()));
+  }
+  entity_ = std::monostate {};
+  tag_    = nullptr;
+  h.SetUp();
 }
 
 }  // namespace nf7

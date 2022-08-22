@@ -42,16 +42,25 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   class Lambda;
   class SessionLambda;
 
-  Call(Env& env, const nf7::FileHolder* callee = nullptr, std::string_view expects = "") noexcept :
+  struct Data {
+    nf7::FileHolder::Tag callee;
+    std::string          expects;
+    bool pure;
+  };
+
+  Call(Env& env, Data&& data = {}) noexcept :
       FileBase(kType, env, {&callee_, &callee_editor_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      callee_(*this, "callee", callee),
+      callee_(*this, "callee"),
       callee_editor_(callee_,
                      [](auto& t) { return t.flags().contains("nf7::Node"); }),
-      mem_({*this, expects}){
+      mem_(std::move(data)){
+    mem_.data().callee.SetTarget(callee_);
+    mem_.CommitAmend();
+
     callee_.onChildMementoChange = [this]() { mem_.Commit(); };
     callee_.onEmplace            = [this]() { mem_.Commit(); };
 
@@ -66,7 +75,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
     ar(callee_, data().expects, data().pure);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Call>(env, &callee_, data().expects);
+    return std::make_unique<Call>(env, Data {data()});
   }
 
   std::shared_ptr<Sequencer::Lambda> CreateLambda(
@@ -87,16 +96,6 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
 
   nf7::gui::FileHolderEditor callee_editor_;
 
-  struct Data {
-    Data(Call& f, std::string_view ex) noexcept :
-        callee(f.callee_), expects(ex) {
-    }
-
-    nf7::FileHolder::Tag callee;
-    std::string          expects;
-
-    bool pure = false;
-  };
   nf7::GenericMemento<Data> mem_;
 
   Data& data() noexcept { return mem_.data(); }

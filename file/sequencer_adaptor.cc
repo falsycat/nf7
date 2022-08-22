@@ -56,14 +56,6 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
     }
   };
   struct Data {
-    Data(Adaptor& f, const Data* src) noexcept : target(f.target_) {
-      if (src) {
-        input_imm  = src->input_imm;
-        input_map  = src->input_map;
-        output_map = src->output_map;
-      }
-    }
-
     nf7::FileHolder::Tag target;
 
     std::vector<std::pair<std::string, nf7::gui::Value>> input_imm;
@@ -71,16 +63,19 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
     std::vector<std::pair<std::string, std::string>>     output_map;
   };
 
-  Adaptor(Env& env, const nf7::FileHolder* target = nullptr, const Data* data = nullptr) noexcept :
+  Adaptor(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&target_, &target_editor_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      target_(*this, "target", target),
+      target_(*this, "target"),
       target_editor_(target_,
                      [](auto& t) { return t.flags().contains("nf7::Sequencer"); }),
-      mem_({*this, data}) {
+      mem_(std::move(data)) {
+    mem_.data().target.SetTarget(target_);
+    mem_.CommitAmend();
+
     target_.onChildMementoChange = [this]() { mem_.Commit(); };
     target_.onEmplace            = [this]() { mem_.Commit(); };
 
@@ -95,7 +90,7 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
     ar(target_, data().input_imm, data().input_map, data().output_map);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Adaptor>(env, &target_, &data());
+    return std::make_unique<Adaptor>(env, Data {data()});
   }
 
   std::shared_ptr<Sequencer::Lambda> CreateLambda(

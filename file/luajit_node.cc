@@ -58,15 +58,15 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     std::vector<std::string> outputs;
   };
 
-  Node(Env& env, const nf7::FileHolder* obj = nullptr, Data&& data = {}) noexcept :
+  Node(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&obj_, &obj_editor_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
-      obj_(*this, "obj_factory", obj),
+      obj_(*this, "obj_factory"),
       obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::luajit::Obj"); }),
       mem_(std::move(data)) {
-    this->data().obj = nf7::FileHolder::Tag {obj_};
+    mem_.data().obj.SetTarget(obj_);
     mem_.CommitAmend();
 
     obj_.onChildMementoChange = [this]() { mem_.Commit(); };
@@ -87,7 +87,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     ar(obj_, data().desc, data().inputs, data().outputs);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<Node>(env, &obj_, Data {data()});
+    return std::make_unique<Node>(env, Data {data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -400,7 +400,7 @@ void Node::UpdateMenu() noexcept {
   }
 }
 void Node::UpdateTooltip() noexcept {
-  ImGui::Text("src:");
+  ImGui::Text("factory:");
   ImGui::Indent();
   obj_editor_.Tooltip();
   ImGui::Unindent();

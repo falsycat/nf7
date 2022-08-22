@@ -34,7 +34,9 @@ class FileHolder : public nf7::FileBase::Feature {
   using Entity = std::variant<
       std::monostate, nf7::File::Path, std::shared_ptr<nf7::File>>;
 
-  FileHolder(nf7::File& owner, std::string_view id, const FileHolder* src = nullptr);
+  FileHolder(nf7::File& owner, std::string_view id) noexcept :
+      owner_(&owner), id_(id) {
+  }
   FileHolder(const FileHolder&) = delete;
   FileHolder(FileHolder&&) = delete;
   FileHolder& operator=(const FileHolder&) = delete;
@@ -89,6 +91,7 @@ class FileHolder : public nf7::FileBase::Feature {
   }
 
   nf7::File& owner() const noexcept { return *owner_; }
+  nf7::Env& env() const noexcept { return owner_->env(); }
   const std::string& id() const noexcept { return id_; }
 
   nf7::File* file() const noexcept { return file_; }
@@ -123,12 +126,12 @@ class FileHolder : public nf7::FileBase::Feature {
 class FileHolder::Tag final {
  public:
   Tag() = default;
-  Tag(nf7::FileHolder& target) noexcept : target_(&target) {
-  }
   Tag(const Tag&) noexcept;
   Tag& operator=(const Tag&) noexcept;
   Tag(Tag&&) = default;
   Tag& operator=(Tag&&) = default;
+
+  void SetTarget(nf7::FileHolder& h) noexcept;
 
  private:
   nf7::FileHolder* target_ = nullptr;
