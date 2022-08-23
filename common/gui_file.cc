@@ -95,7 +95,6 @@ bool FileFactory::Update() noexcept {
   bool ret = false;
   if (!err) {
     if (ImGui::Button("ok")) {
-      ImGui::CloseCurrentPopup();
       ret = true;
     }
     if (ImGui::IsItemHovered()) {
@@ -115,11 +114,11 @@ bool FileFactory::Update() noexcept {
 std::string FileHolderEditor::GetDisplayText() const noexcept {
   std::string text;
   if (holder_->own()) {
-    text = "OWN: " + holder_->file()->type().name();
+    text = "[OWN] " + holder_->GetFile()->type().name();
   } else if (holder_->ref()) {
-    text = "REF: "s + holder_->path().Stringify();
+    text = "[REF] "s + holder_->path().Stringify();
   } else if (holder_->empty()) {
-    text = "(NULL)";
+    text = "(empty)";
   } else {
     assert(false);
   }
@@ -131,12 +130,11 @@ void FileHolderEditor::Button(float w, bool small) noexcept {
   ImGui::BeginGroup();
   const auto text = GetDisplayText();
 
-  open_ |= small?
+  const bool open = small?
       ImGui::SmallButton(text.c_str()):
       ImGui::Button(text.c_str(), {w, 0});
-  if (ImGui::BeginPopupContextItem()) {
-    MenuItems();
-    ImGui::EndPopup();
+  if (open) {
+    ImGui::OpenPopup("FileHolderEmplacePopup_FromButton");
   }
   if (ImGui::IsItemHovered()) {
     ImGui::BeginTooltip();
@@ -144,6 +142,8 @@ void FileHolderEditor::Button(float w, bool small) noexcept {
     ImGui::EndTooltip();
   }
   ImGui::EndGroup();
+
+  UpdateEmplacePopup("FileHolderEmplacePopup_FromButton");
   ImGui::PopID();
 }
 void FileHolderEditor::ButtonWithLabel(const char* name) noexcept {
@@ -163,34 +163,28 @@ void FileHolderEditor::Tooltip() noexcept {
   }
   ImGui::Unindent();
 }
-void FileHolderEditor::MenuItems() noexcept {
-  if (ImGui::MenuItem("emplace")) {
-    open_ = true;
-  }
-  if (auto a = GetDirItem(*holder_, nf7::DirItem::kMenu)) {
-    ImGui::Separator();
-    a->UpdateMenu();
-  }
-}
-void FileHolderEditor::MenuWithTooltip(const char* name) noexcept {
-  if (ImGui::BeginMenu(name)) {
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      Tooltip();
-      ImGui::EndTooltip();
+void FileHolderEditor::ItemWidget(const char* title) noexcept {
+  if (auto d = GetDirItem(*holder_, nf7::DirItem::kWidget)) {
+    if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::PushID(d);
+      ImGui::Indent();
+      d->UpdateWidget();
+      ImGui::Unindent();
+      ImGui::PopID();
     }
-    MenuItems();
-    ImGui::EndMenu();
   }
 }
 
 void FileHolderEditor::Update() noexcept {
   ImGui::PushID(this);
-
-  if (std::exchange(open_, false)) {
-    ImGui::OpenPopup("FileHolderEditorPopup");
+  if (std::exchange(open_emplace_, false)) {
+    ImGui::OpenPopup("FileHolderEmplacePopup_FromMenu");
   }
-  if (ImGui::BeginPopup("FileHolderEditorPopup")) {
+  UpdateEmplacePopup("FileHolderEmplacePopup_FromMenu");
+  ImGui::PopID();
+}
+void FileHolderEditor::UpdateEmplacePopup(const char* id) noexcept {
+  if (ImGui::BeginPopup(id)) {
     if (ImGui::IsWindowAppearing()) {
       if (holder_->ref()) {
         type_ = kRef;
@@ -208,6 +202,8 @@ void FileHolderEditor::Update() noexcept {
     switch (type_) {
     case kOwn:
       if (factory_.Update()) {
+        ImGui::CloseCurrentPopup();
+
         auto& f = holder_->owner();
         f.env().ExecMain(
             std::make_shared<nf7::GenericContext>(f),
@@ -247,8 +243,6 @@ void FileHolderEditor::Update() noexcept {
     }
     ImGui::EndPopup();
   }
-
-  ImGui::PopID();
 }
 
 }  // namespace nf7::gui

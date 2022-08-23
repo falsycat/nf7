@@ -21,6 +21,7 @@
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
 #include "common/gui_file.hh"
+#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_obj.hh"
@@ -31,6 +32,7 @@
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/task.hh"
+#include "common/util_string.hh"
 
 
 using namespace std::literals;
@@ -59,8 +61,10 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   };
 
   Node(Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&obj_, &obj_editor_}),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+      nf7::FileBase(kType, env, {&obj_, &obj_editor_, &socket_popup_}),
+      nf7::DirItem(nf7::DirItem::kMenu |
+                   nf7::DirItem::kTooltip |
+                   nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
       obj_(*this, "obj_factory"),
@@ -68,6 +72,16 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
       mem_(std::move(data)) {
     mem_.data().obj.SetTarget(obj_);
     mem_.CommitAmend();
+
+    socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
+      this->env().ExecMain(
+          std::make_shared<nf7::GenericContext>(*this),
+          [this, i = std::move(i), o = std::move(o)]() {
+            mem_.data().inputs  = std::move(i);
+            mem_.data().outputs = std::move(o);
+            mem_.Commit();
+          });
+    };
 
     obj_.onChildMementoChange = [this]() { mem_.Commit(); };
     obj_.onEmplace            = [this]() { mem_.Commit(); };
@@ -79,9 +93,8 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   Node(Env& env, Deserializer& ar) : Node(env) {
     ar(obj_, data().desc, data().inputs, data().outputs);
 
-    // sanitize (remove duplicated sockets)
-    Uniq(data().inputs);
-    Uniq(data().outputs);
+    nf7::util::Uniq(data().inputs);
+    nf7::util::Uniq(data().outputs);
   }
   void Serialize(Serializer& ar) const noexcept override {
     ar(obj_, data().desc, data().inputs, data().outputs);
@@ -100,10 +113,9 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   }
 
   void Handle(const Event&) noexcept override;
-  void Update() noexcept override;
-  static void UpdateList(std::vector<std::string>&) noexcept;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateWidget() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
@@ -117,10 +129,10 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
 
-  const char* popup_ = nullptr;
-
   nf7::FileHolder            obj_;
   nf7::gui::FileHolderEditor obj_editor_;
+
+  nf7::gui::IOSocketListPopup socket_popup_;
 
   nf7::GenericMemento<Data> mem_;
   const Data& data() const noexcept { return mem_.data(); }
@@ -128,31 +140,6 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept;
-
-  static void Uniq(std::vector<std::string>& v) {
-    for (auto itr = v.begin(); itr < v.end();) {
-      if (v.end() != std::find(itr+1, v.end(), *itr)) {
-        itr = v.erase(itr);
-      } else {
-        ++itr;
-      }
-    }
-  }
-  static void Join(std::string& str, const std::vector<std::string>& vec) noexcept {
-    str.clear();
-    for (const auto& name : vec) str += name + "\n";
-  }
-  static void Split(std::vector<std::string>& vec, const std::string& str) {
-    vec.clear();
-    for (size_t i = 0; i < str.size(); ++i) {
-      auto j = str.find('\n', i);
-      if (j == std::string::npos) j = str.size();
-      auto name = str.substr(i, j-i);
-      File::Path::ValidateTerm(name);
-      vec.push_back(std::move(name));
-      i = j;
-    }
-  }
 };
 
 class Node::Lambda final : public nf7::Node::Lambda,
@@ -320,82 +307,8 @@ void Node::Handle(const Event& ev) noexcept {
     return;
   }
 }
-void Node::Update() noexcept {
-  nf7::FileBase::Update();
-
-  const auto& style = ImGui::GetStyle();
-  const auto  em    = ImGui::GetFontSize();
-
-  if (const char* popup = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(popup);
-  }
-
-  if (ImGui::BeginPopup("ConfigPopup")) {
-    static std::string desc;
-    static std::string in, out;
-    static std::vector<std::string> invec, outvec;
-
-    ImGui::TextUnformatted("LuaJIT/Node: config");
-    if (ImGui::IsWindowAppearing()) {
-      desc = desc;
-      Join(in, data().inputs);
-      Join(out, data().outputs);
-    }
-
-    obj_editor_.ButtonWithLabel("obj factory");
-
-    const auto w = ImGui::CalcItemWidth()/2 - style.ItemSpacing.x/2;
-
-    ImGui::InputTextMultiline("description", &desc, {0, 4*em});
-    ImGui::BeginGroup();
-    ImGui::TextUnformatted("input:");
-    ImGui::InputTextMultiline("##input", &in, {w, 0});
-    ImGui::EndGroup();
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    ImGui::TextUnformatted("output:");
-    ImGui::InputTextMultiline("##output", &out, {w, 0});
-    ImGui::EndGroup();
-    ImGui::SameLine(0, style.ItemInnerSpacing.x);
-    ImGui::TextUnformatted("sockets");
-
-    bool err = false;
-    try {
-      Split(invec, in);
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::Text("invalid inputs: %s", e.msg().c_str());
-      err = true;
-    }
-    try {
-      Split(outvec, out);
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::Text("invalid outputs: %s", e.msg().c_str());
-      err = true;
-    }
-
-    if (!err && ImGui::Button("ok")) {
-      ImGui::CloseCurrentPopup();
-
-      auto ctx = std::make_shared<nf7::GenericContext>(*this, "rebuilding node");
-      env().ExecMain(ctx, [&]() mutable {
-        data().desc    = std::move(desc);
-        data().inputs  = std::move(invec);
-        data().outputs = std::move(outvec);
-        mem_.Commit();
-      });
-    }
-    ImGui::EndPopup();
-  }
-}
 void Node::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("config")) {
-    popup_ = "ConfigPopup";
-  }
-
-  obj_editor_.MenuWithTooltip("factory");
-
-  ImGui::Separator();
-  if (ImGui::MenuItem("try fetch handler")) {
+  if (ImGui::MenuItem("fetch handler")) {
     FetchHandler();
   }
 }
@@ -434,6 +347,26 @@ void Node::UpdateTooltip() noexcept {
     ImGui::TextUnformatted(data().desc.c_str());
   }
   ImGui::Unindent();
+}
+void Node::UpdateWidget() noexcept {
+  const auto em = ImGui::GetFontSize();
+
+  ImGui::TextUnformatted("LuaJIT/Node: config");
+  obj_editor_.ButtonWithLabel("obj factory");
+
+  ImGui::InputTextMultiline("description", &data().desc, {0, 4*em});
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    mem_.Commit();
+  }
+
+  if (ImGui::Button("input/output list")) {
+    socket_popup_.Open(data().inputs, data().outputs);
+  }
+
+  ImGui::Spacing();
+  obj_editor_.ItemWidget("obj factory");
+
+  socket_popup_.Update();
 }
 
 }

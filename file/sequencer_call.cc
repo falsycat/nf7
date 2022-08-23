@@ -249,6 +249,8 @@ void Call::UpdateParamPanel(Sequencer::Editor&) noexcept {
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("callee's lambda is created for each session");
     }
+    ImGui::Spacing();
+    callee_editor_.ItemWidget("callee");
   }
 }
 void Call::UpdateTooltip(Sequencer::Editor&) noexcept {

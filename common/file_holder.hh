@@ -68,11 +68,14 @@ class FileHolder : public nf7::FileBase::Feature {
   }
 
   nf7::File& GetFileOrThrow() {
-    SetUp();
-    if (!file_) {
-      throw EmptyException {"holder is empty"};
+    if (auto f = GetFile()) {
+      return *f;
     }
-    return *file_;
+    throw EmptyException {"holder is empty"};
+  }
+  nf7::File* GetFile() noexcept {
+    SetUp();
+    return file_;
   }
 
   // nf7::FileBase::Feature methods

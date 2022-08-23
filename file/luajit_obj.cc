@@ -65,7 +65,8 @@ class Obj final : public nf7::FileBase, public nf7::DirItem, public nf7::luajit:
   Obj(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&src_, &src_editor_}),
       nf7::DirItem(nf7::DirItem::kTooltip |
-                   nf7::DirItem::kMenu),
+                   nf7::DirItem::kMenu |
+                   nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
       src_(*this, "src"),
@@ -94,6 +95,7 @@ class Obj final : public nf7::FileBase, public nf7::DirItem, public nf7::luajit:
   void Handle(const Event&) noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateWidget() noexcept override;
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept override;
 
@@ -284,9 +286,7 @@ void Obj::DropCache() noexcept {
 }
 
 void Obj::UpdateMenu() noexcept {
-  src_editor_.MenuWithTooltip("src");
-  ImGui::Separator();
-  if (ImGui::MenuItem("try build")) {
+  if (ImGui::MenuItem("build")) {
     Build();
   }
   if (ImGui::MenuItem("drop cache", nullptr, nullptr, !!cache_)) {
@@ -299,6 +299,12 @@ void Obj::UpdateTooltip() noexcept {
   ImGui::Indent();
   src_editor_.Tooltip();
   ImGui::Unindent();
+}
+void Obj::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("LuaJIT/Obj: config");
+  src_editor_.ButtonWithLabel("src");
+  ImGui::Spacing();
+  src_editor_.ItemWidget("src");
 }
 
 }

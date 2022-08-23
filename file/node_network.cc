@@ -77,13 +77,17 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
           ItemList&&         items = {},
           NodeLinkStore&&    links = {}) :
       nf7::FileBase(kType, env, {&add_popup_, &socket_popup_}),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+      nf7::DirItem(nf7::DirItem::kMenu |
+                   nf7::DirItem::kTooltip |
+                   nf7::DirItem::kWidget),
       life_(*this),
       win_(*this, "Editor Node/Network", win),
       items_(std::move(items)), links_(std::move(links)),
-      add_popup_(*this), socket_popup_(*this) {
+      add_popup_(*this) {
+    socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
+      ExecSwapSocket(std::move(i), std::move(o));
+    };
     Initialize();
-    win_.shown() = true;
   }
   ~Network() noexcept {
     history_.Clear();
@@ -108,11 +112,13 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
 
   File* Find(std::string_view name) const noexcept;
 
+  void Handle(const Event& ev) noexcept override;
+
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateWidget() noexcept override;
   void UpdateNode(Node::Editor&) noexcept override;
-  void Handle(const Event& ev) noexcept override;
 
   std::shared_ptr<Node::Lambda> CreateLambda(
       const std::shared_ptr<Node::Lambda>&) noexcept override;
@@ -150,6 +156,8 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   std::vector<std::string> inputs_, outputs_;
 
   // GUI popup
+  nf7::gui::IOSocketListPopup socket_popup_;
+
   class AddPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
    public:
     static bool TypeFilter(const nf7::File::TypeInfo& t) noexcept {
@@ -170,24 +178,6 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
     nf7::gui::FileFactory factory_;
     ImVec2                pos_;
   } add_popup_;
-  class SocketPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
-   public:
-    SocketPopup(Network& owner) noexcept :
-        nf7::gui::Popup("SocketPopup"), owner_(&owner) {
-    }
-
-    void Open() noexcept;
-    void Update() noexcept override;
-
-    static std::string Join(std::span<const std::string>) noexcept;
-    static std::vector<std::string> Parse(std::string_view);
-
-   private:
-    Network* const owner_;
-
-    std::string inputs_;
-    std::string outputs_;
-  } socket_popup_;
 
 
   void Initialize();
@@ -204,6 +194,8 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
         std::make_shared<nf7::GenericContext>(*this, "applying command to redo"),
         [this]() { history_.ReDo(); Touch(); });
   }
+
+  void ExecSwapSocket(std::vector<std::string>&&, std::vector<std::string>&&) noexcept;
 
   Item& GetItem(ItemId id) const {
     auto itr = item_map_.find(id);
@@ -575,6 +567,12 @@ class Network::SocketSwapCommand final : public nf7::History::Command {
     std::swap(owner_->outputs_, pair_.out);
   }
 };
+void Network::ExecSwapSocket(std::vector<std::string>&& i, std::vector<std::string>&& o) noexcept {
+  auto cmd = std::make_unique<SocketSwapCommand>(
+      *this, SocketSwapCommand::Pair {std::move(i), std::move(o)});
+  auto ctx = std::make_shared<nf7::GenericContext>(*this);
+  history_.Add(std::move(cmd)).ExecApply(ctx);
+}
 
 // A command that add or remove a Node.
 class Network::Item::SwapCommand final : public nf7::History::Command {
@@ -1030,9 +1028,6 @@ void Network::Update() noexcept {
           const auto pos = mouse - canvas_pos - canvas_.Offset/canvas_.Zoom;
           add_popup_.Open(pos);
         }
-        if (ImGui::MenuItem("I/O sockets")) {
-          socket_popup_.Open();
-        }
         ImGui::Separator();
         if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
           UnDo();
@@ -1043,6 +1038,10 @@ void Network::Update() noexcept {
         ImGui::Separator();
         if (ImGui::MenuItem("reset canvas zoom")) {
           canvas_.Zoom = 1.f;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("I/O socket list")) {
+          socket_popup_.Open(inputs_, outputs_);
         }
         ImGui::EndPopup();
       }
@@ -1057,10 +1056,25 @@ void Network::Update() noexcept {
   }
 }
 void Network::UpdateMenu() noexcept {
-  ImGui::MenuItem("shown", nullptr, &win_.shown());
+  if (ImGui::MenuItem("I/O sockets")) {
+    socket_popup_.Open(inputs_, outputs_);
+  }
+  ImGui::Separator();
+  ImGui::MenuItem("Network Editor", nullptr, &win_.shown());
 }
 void Network::UpdateTooltip() noexcept {
   ImGui::Text("nodes active: %zu", items_.size());
+}
+void Network::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("Node/Network");
+  if (ImGui::Button("open network editor")) {
+    win_.shown() = true;
+  }
+  if (ImGui::Button("I/O sockets")) {
+    socket_popup_.Open(inputs_, outputs_);
+  }
+
+  socket_popup_.Update();
 }
 void Network::UpdateNode(Node::Editor&) noexcept {
 }
@@ -1114,6 +1128,8 @@ void Network::AddPopup::Update() noexcept {
   if (nf7::gui::Popup::Begin()) {
     ImGui::TextUnformatted("Node/Network: adding new Node...");
     if (factory_.Update()) {
+      ImGui::CloseCurrentPopup();
+
       auto item = std::make_unique<Item>(owner_->next_++, factory_.Create(owner_->env()));
       auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "adding new node");
 
@@ -1127,65 +1143,6 @@ void Network::AddPopup::Update() noexcept {
     }
     ImGui::EndPopup();
   }
-}
-
-
-void Network::SocketPopup::Open() noexcept {
-  nf7::gui::Popup::Open();
-  inputs_  = Join(owner_->inputs_);
-  outputs_ = Join(owner_->outputs_);
-}
-void Network::SocketPopup::Update() noexcept {
-  if (nf7::gui::Popup::Begin()) {
-    ImGui::InputTextMultiline("input",  &inputs_);
-    ImGui::InputTextMultiline("output", &outputs_);
-    try {
-      auto p = Network::SocketSwapCommand::Pair {
-        .in  = Parse(inputs_),
-        .out = Parse(outputs_),
-      };
-      if (ImGui::Button("ok")) {
-        ImGui::CloseCurrentPopup();
-        auto cmd = std::make_unique<Network::SocketSwapCommand>(*owner_, std::move(p));
-        auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "updating IO sockets");
-        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
-      }
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::TextUnformatted(e.msg().c_str());
-    }
-    ImGui::EndPopup();
-  }
-}
-std::string Network::SocketPopup::Join(std::span<const std::string> items) noexcept {
-  std::stringstream st;
-  for (const auto& item : items) {
-    st << item << '\n';
-  }
-  return st.str();
-}
-std::vector<std::string> Network::SocketPopup::Parse(std::string_view str) {
-  if (str.size() > 10*1024) {
-    throw nf7::Exception {"too long text"};
-  }
-
-  std::vector<std::string> ret;
-  std::string_view::size_type pos = 0;
-  while (pos < str.size()) {
-    auto next = str.find('\n', pos);
-    if (next == std::string_view::npos) {
-      next = str.size();
-    }
-    const auto name = str.substr(pos, next-pos);
-    pos = next+1;
-
-    nf7::File::Path::ValidateTerm(name);
-    if (ret.end() != std::find(ret.begin(), ret.end(), name)) {
-      throw nf7::Exception {"name duplication ("+std::string{name}+")"};
-    }
-
-    ret.push_back(std::string {name});
-  }
-  return ret;
 }
 
 

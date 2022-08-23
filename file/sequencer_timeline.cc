@@ -22,6 +22,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_context.hh"
@@ -44,7 +45,7 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<TL> kType = {
     "Sequencer/Timeline", {"nf7::DirItem"}};
@@ -71,12 +72,17 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
-      nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kMenu),
+      nf7::FileBase(kType, env, {&popup_socket_, &popup_add_item_}),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       life_(*this),
       length_(length), layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
-      popup_add_item_(*this), popup_config_(*this) {
+      popup_add_item_(*this) {
     ApplySeqSocketChanges();
+
+    popup_socket_.onSubmit = [this](auto&& i, auto&& o) {
+      ExecChangeSeqSocket(std::move(i), std::move(o));
+    };
   }
   ~TL() noexcept {
     history_.Clear();
@@ -104,6 +110,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void Handle(const Event& ev) noexcept;
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
+  void UpdateWidget() noexcept override;
 
   void UpdateEditorWindow() noexcept;
   void UpdateLambdaSelector() noexcept;
@@ -139,8 +146,11 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   nf7::gui::Timeline tl_;
 
 
-  // popup
-  struct AddItemPopup final : nf7::gui::Popup {
+  // GUI popup
+  nf7::gui::IOSocketListPopup popup_socket_;
+
+  struct AddItemPopup final :
+      public nf7::FileBase::Feature, private nf7::gui::Popup {
    public:
     AddItemPopup(TL& f) noexcept :
         Popup("AddItemPopup"),
@@ -153,7 +163,7 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
       target_layer_ = &l;
       Popup::Open();
     }
-    void Update() noexcept;
+    void Update() noexcept override;
 
    private:
     TL* const owner_;
@@ -163,27 +173,6 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
     nf7::gui::FileFactory factory_;
   } popup_add_item_;
-  struct ConfigPopup final : nf7::gui::Popup {
-   public:
-    ConfigPopup(TL& f) noexcept :
-        Popup("ConfigPopup"), owner_(&f) {
-    }
-
-    void Open() noexcept {
-      inputs_  = StringifySocketList(owner_->seq_inputs_);
-      outputs_ = StringifySocketList(owner_->seq_outputs_);
-      error_   = "";
-      Popup::Open();
-    }
-    void Update() noexcept;
-
-   private:
-    TL* const owner_;
-
-    std::string inputs_;
-    std::string outputs_;
-    std::string error_;
-  } popup_config_;
 
 
   // GUI temporary params
@@ -226,48 +215,13 @@ class TL final : public nf7::File, public nf7::DirItem, public nf7::Node {
   void AttachLambda(const std::shared_ptr<TL::Lambda>&) noexcept;
 
   // socket operation
+  void ExecChangeSeqSocket(std::vector<std::string>&&, std::vector<std::string>&&) noexcept;
   void ApplySeqSocketChanges() noexcept {
     inputs_ = seq_inputs_;
     inputs_.push_back("_exec");
 
     outputs_ = seq_outputs_;
     outputs_.push_back("_cursor");
-  }
-  static std::vector<std::string> ParseSocketList(std::string_view names) {
-    const auto n = names.size();
-
-    std::vector<std::string> ret;
-    size_t begin = 0;
-
-    for (size_t i = 0; i <= n; ++i) {
-      if (i == n || names[i] == '\n') {
-        const auto name = names.substr(begin, i-begin);
-        if (name.size() > 0) {
-          ret.push_back(std::string {name});
-        }
-        begin = i+1;
-        continue;
-      }
-    }
-    ValidateSocketList(ret);
-    return ret;
-  }
-  static void ValidateSocketList(const std::vector<std::string>& a) {
-    for (size_t i = 0; i < a.size(); ++i) {
-      File::Path::ValidateTerm(a[i]);
-      for (size_t j = i+1; j < a.size(); ++j) {
-        if (a[i] == a[j]) {
-          throw nf7::Exception {"name duplication: "+a[i]};
-        }
-      }
-    }
-  }
-  static std::string StringifySocketList(const std::vector<std::string>& a) noexcept {
-    std::stringstream st;
-    for (auto& name : a) {
-      st << name << '\n';
-    }
-    return st.str();
   }
 };
 
@@ -1228,6 +1182,14 @@ class TL::ConfigModifyCommand final : public nf7::History::Command {
     }
   }
 };
+void TL::ExecChangeSeqSocket(std::vector<std::string>&& i, std::vector<std::string>&& o) noexcept {
+  auto cmd = ConfigModifyCommand::Builder {*this}.
+      inputs(std::move(i)).
+      outputs(std::move(o)).
+      Build();
+  auto ctx = std::make_shared<nf7::GenericContext>(*this, "updating I/O socket list");
+  history_.Add(std::move(cmd)).ExecApply(ctx);
+}
 
 
 std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
@@ -1238,6 +1200,8 @@ std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   return std::make_unique<TL>(env, length_, std::move(layers), next, &win_);
 }
 void TL::Handle(const Event& ev) noexcept {
+  nf7::FileBase::Handle(ev);
+
   switch (ev.type) {
   case Event::kAdd:
     if (layers_.size() == 0) {
@@ -1268,14 +1232,13 @@ void TL::Handle(const Event& ev) noexcept {
 }
 
 void TL::Update() noexcept {
+  nf7::FileBase::Update();
+
   for (const auto& layer : layers_) {
     for (const auto& item : layer->items()) {
       item->file().Update();
     }
   }
-
-  popup_add_item_.Update();
-  popup_config_.Update();
 
   UpdateEditorWindow();
   UpdateParamPanelWindow();
@@ -1287,6 +1250,15 @@ void TL::Update() noexcept {
 }
 void TL::UpdateMenu() noexcept {
   ImGui::MenuItem("Editor", nullptr, &win_.shown());
+}
+void TL::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("Sequencer/Timeline");
+
+  if (ImGui::Button("I/O socket list")) {
+    popup_socket_.Open(seq_inputs_, seq_outputs_);
+  }
+
+  popup_socket_.Update();
 }
 void TL::UpdateEditorWindow() noexcept {
   const auto kInit = []() {
@@ -1324,8 +1296,8 @@ void TL::UpdateEditorWindow() noexcept {
             ExecReDo();
           }
           ImGui::Separator();
-          if (ImGui::MenuItem("config")) {
-            popup_config_.Open();
+          if (ImGui::MenuItem("I/O socket list")) {
+            popup_socket_.Open(seq_inputs_, seq_outputs_);
           }
           ImGui::EndPopup();
         }
@@ -1634,33 +1606,6 @@ void TL::AddItemPopup::Update() noexcept {
       auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
       auto  ctx    = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
       owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
-    }
-    ImGui::EndPopup();
-  }
-}
-void TL::ConfigPopup::Update() noexcept {
-  if (Popup::Begin()) {
-    ImGui::TextUnformatted("Sequencer/Timeline: updating config...");
-    ImGui::InputTextMultiline("inputs", &inputs_);
-    ImGui::InputTextMultiline("outputs", &outputs_);
-
-    if (ImGui::Button("ok")) {
-      try {
-        auto cmd = ConfigModifyCommand::Builder(*owner_).
-            inputs(ParseSocketList(inputs_)).
-            outputs(ParseSocketList(outputs_)).
-            Build();
-        ImGui::CloseCurrentPopup();
-
-        auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "updating config");
-        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
-      } catch (nf7::Exception& e) {
-        error_ = e.msg();
-      }
-    }
-    if (error_.size() > 0) {
-      ImGui::Bullet();
-      ImGui::TextUnformatted(error_.c_str());
     }
     ImGui::EndPopup();
   }

@@ -16,10 +16,12 @@
 
 #include "common/dir.hh"
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_file.hh"
+#include "common/gui_popup.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_nf7.hh"
@@ -28,7 +30,7 @@
 namespace nf7 {
 namespace {
 
-class Dir final : public File,
+class Dir final : public nf7::FileBase,
     public nf7::Dir,
     public nf7::DirItem {
  public:
@@ -38,15 +40,13 @@ class Dir final : public File,
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
   Dir(Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
-      File(kType, env),
-      DirItem(nf7::DirItem::kTree |
-              nf7::DirItem::kMenu |
-              nf7::DirItem::kTooltip |
-              nf7::DirItem::kDragDropTarget),
-      factory_(*this, [](auto& t) { return t.flags().contains("nf7::DirItem"); },
-               nf7::gui::FileFactory::kNameInput |
-               nf7::gui::FileFactory::kNameDupCheck),
-      items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
+      nf7::FileBase(kType, env, {&widget_popup_, &add_popup_, &rename_popup_}),
+      nf7::DirItem(nf7::DirItem::kTree |
+                   nf7::DirItem::kMenu |
+                   nf7::DirItem::kTooltip |
+                   nf7::DirItem::kDragDropTarget),
+      items_(std::move(items)), win_(*this, "TreeView System/Dir", src),
+      widget_popup_(*this), add_popup_(*this), rename_popup_(*this) {
   }
 
   Dir(Env& env, Deserializer& ar) : Dir(env) {
@@ -96,6 +96,7 @@ class Dir final : public File,
   void UpdateDragDropTarget() noexcept override;
 
   void Handle(const Event& ev) noexcept override {
+    nf7::FileBase::Handle(ev);
     switch (ev.type) {
     case Event::kAdd:
       for (const auto& item : items_) item.second->MoveUnder(*this, item.first);
@@ -117,17 +118,71 @@ class Dir final : public File,
   }
 
  private:
-  const char* popup_ = nullptr;
-
-  std::string rename_target_;
-
-  nf7::gui::FileFactory factory_;
-
   // persistent params
   ItemMap     items_;
   gui::Window win_;
 
   std::unordered_set<std::string> opened_;
+
+
+  // GUI popup
+  class WidgetPopup final :
+      public nf7::FileBase::Feature, private nf7::gui::Popup {
+   public:
+    WidgetPopup(Dir& owner) noexcept :
+        nf7::gui::Popup("WidgetPopup"), owner_(&owner) {
+    }
+
+    void Open(nf7::File& f) noexcept {
+      target_ = &f;
+      nf7::gui::Popup::Open();
+    }
+    void Update() noexcept override;
+
+   private:
+    Dir*       owner_;
+    nf7::File* target_ = nullptr;
+  } widget_popup_;
+
+  class AddPopup final :
+      public nf7::FileBase::Feature, private nf7::gui::Popup {
+   public:
+    AddPopup(Dir& owner) noexcept :
+        nf7::gui::Popup("AddPopup"),
+        owner_(&owner),
+        factory_(owner, [](auto& t) { return t.flags().contains("nf7::DirItem"); },
+                 nf7::gui::FileFactory::kNameInput |
+                 nf7::gui::FileFactory::kNameDupCheck) {
+    }
+
+    using nf7::gui::Popup::Open;
+    void Update() noexcept override;
+
+   private:
+    Dir* owner_;
+    nf7::gui::FileFactory factory_;
+  } add_popup_;
+
+  class RenamePopup final :
+      public nf7::FileBase::Feature, private nf7::gui::Popup {
+   public:
+    RenamePopup(Dir& owner) noexcept :
+        nf7::gui::Popup("RenamePopup"),
+        owner_(&owner) {
+    }
+
+    void Open(std::string_view before) noexcept {
+      before_ = before;
+      after_  = "";
+      nf7::gui::Popup::Open();
+    }
+    void Update() noexcept override;
+
+   private:
+    Dir* owner_;
+    std::string before_;
+    std::string after_;
+  } rename_popup_;
 
 
   std::string GetUniqueName(std::string_view name) const noexcept {
@@ -140,6 +195,8 @@ class Dir final : public File,
 };
 
 void Dir::Update() noexcept {
+  nf7::FileBase::Update();
+
   const auto em = ImGui::GetFontSize();
 
   // update children
@@ -147,74 +204,6 @@ void Dir::Update() noexcept {
     ImGui::PushID(item.second.get());
     item.second->Update();
     ImGui::PopID();
-  }
-
-  if (const auto popup = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(popup);
-  }
-
-  // new item popup
-  if (ImGui::BeginPopup("NewItemPopup")) {
-    ImGui::TextUnformatted("System/Dir: adding new file...");
-    if (factory_.Update()) {
-      auto ctx  = std::make_shared<nf7::GenericContext>(*this, "adding new item");
-      auto task = [this]() { Add(factory_.name(), factory_.Create(env())); };
-      env().ExecMain(ctx, std::move(task));
-    }
-    ImGui::EndPopup();
-  }
-
-  // rename popup
-  if (ImGui::BeginPopup("RenamePopup")) {
-    static std::string new_name;
-    ImGui::TextUnformatted("System/Dir: renaming an exsting item...");
-    ImGui::InputText("before", &rename_target_);
-
-    bool submit = false;
-    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-    if (ImGui::InputText("after", &new_name, ImGuiInputTextFlags_EnterReturnsTrue)) {
-      submit = true;
-    }
-
-    bool err = false;
-    if (!Find(rename_target_)) {
-      ImGui::Bullet(); ImGui::TextUnformatted("before is invalid: missing target");
-      err = true;
-    }
-    if (Find(new_name)) {
-      ImGui::Bullet(); ImGui::TextUnformatted("after is invalid: duplicated name");
-      err = true;
-    }
-    try {
-      Path::ValidateTerm(new_name);
-    } catch (Exception& e) {
-      ImGui::Bullet(); ImGui::Text("after is invalid: %s", e.msg().c_str());
-      err = true;
-    }
-
-    if (!err) {
-      if (ImGui::Button("ok")) {
-        submit = true;
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "rename '%s' to '%s' on '%s'",
-            rename_target_.c_str(), new_name.c_str(), abspath().Stringify().c_str());
-      }
-    }
-
-    if (submit) {
-      ImGui::CloseCurrentPopup();
-
-      auto ctx  = std::make_shared<nf7::GenericContext>(*this, "renaming item");
-      auto task = [this, before = std::move(rename_target_), after = std::move(new_name)]() {
-        auto f = Remove(before);
-        if (!f) throw Exception("missing target");
-        Add(after, std::move(f));
-      };
-      env().ExecMain(ctx, std::move(task));
-    }
-    ImGui::EndPopup();
   }
 
   // tree view window
@@ -267,6 +256,12 @@ void Dir::UpdateTree() noexcept {
       opened_.erase(name);
     }
 
+    if (ditem && (ditem->flags() & DirItem::kWidget)) {
+      if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        widget_popup_.Open(file);
+      }
+    }
+
     // tooltip
     if (ImGui::IsItemHovered()) {
       ImGui::BeginTooltip();
@@ -283,6 +278,11 @@ void Dir::UpdateTree() noexcept {
 
     // context menu
     if (ImGui::BeginPopupContextItem()) {
+      if (ditem && (ditem->flags() & DirItem::kWidget)) {
+        if (ImGui::MenuItem("open widget")) {
+          widget_popup_.Open(file);
+        }
+      }
       if (ImGui::MenuItem("copy path")) {
         ImGui::SetClipboardText(file.abspath().Stringify().c_str());
       }
@@ -294,8 +294,7 @@ void Dir::UpdateTree() noexcept {
             [this, name]() { Remove(name); });
       }
       if (ImGui::MenuItem("rename")) {
-        rename_target_ = name;
-        popup_         = "RenamePopup";
+        rename_popup_.Open(name);
       }
 
       if (ImGui::MenuItem("renew")) {
@@ -309,7 +308,7 @@ void Dir::UpdateTree() noexcept {
 
       ImGui::Separator();
       if (ImGui::MenuItem("add new sibling")) {
-        popup_ = "NewItemPopup";
+        add_popup_.Open();
       }
 
       if (ditem && (ditem->flags() & DirItem::kMenu)) {
@@ -356,7 +355,7 @@ void Dir::UpdateTree() noexcept {
 }
 void Dir::UpdateMenu() noexcept {
   if (ImGui::MenuItem("add new child")) {
-    popup_ = "NewItemPopup";
+    add_popup_.Open();
   }
   ImGui::Separator();
   ImGui::MenuItem("TreeView", nullptr, &win_.shown());
@@ -389,6 +388,84 @@ try {
     }
   }
 } catch (nf7::Exception&) {
+}
+
+void Dir::WidgetPopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    if (auto item = target_->interface<nf7::DirItem>()) {
+      ImGui::PushID(item);
+      item->UpdateWidget();
+      ImGui::PopID();
+    }
+    ImGui::EndPopup();
+  }
+}
+void Dir::AddPopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    ImGui::TextUnformatted("System/Dir: adding new file...");
+    if (factory_.Update()) {
+      ImGui::CloseCurrentPopup();
+
+      auto& env  = owner_->env();
+      auto  ctx  = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
+      auto  task = [this, &env]() { owner_->Add(factory_.name(), factory_.Create(env)); };
+      env.ExecMain(ctx, std::move(task));
+    }
+    ImGui::EndPopup();
+  }
+}
+void Dir::RenamePopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    ImGui::TextUnformatted("System/Dir: renaming an exsting item...");
+    ImGui::InputText("before", &before_);
+
+    bool submit = false;
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    if (ImGui::InputText("after", &after_, ImGuiInputTextFlags_EnterReturnsTrue)) {
+      submit = true;
+    }
+
+    bool err = false;
+    if (!Find(before_)) {
+      ImGui::Bullet(); ImGui::TextUnformatted("before is invalid: missing target");
+      err = true;
+    }
+    if (Find(after_)) {
+      ImGui::Bullet(); ImGui::TextUnformatted("after is invalid: duplicated name");
+      err = true;
+    }
+    try {
+      Path::ValidateTerm(after_);
+    } catch (Exception& e) {
+      ImGui::Bullet(); ImGui::Text("after is invalid: %s", e.msg().c_str());
+      err = true;
+    }
+
+    if (!err) {
+      if (ImGui::Button("ok")) {
+        submit = true;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "rename '%s' to '%s' on '%s'",
+            before_.c_str(), after_.c_str(),
+            owner_->abspath().Stringify().c_str());
+      }
+    }
+
+    if (submit) {
+      ImGui::CloseCurrentPopup();
+
+      auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "renaming item");
+      auto task = [this, before = std::move(before_), after = std::move(after_)]() {
+        auto f = owner_->Remove(before);
+        if (!f) throw Exception("missing target");
+        owner_->Add(after, std::move(f));
+      };
+      owner_->env().ExecMain(ctx, std::move(task));
+    }
+    ImGui::EndPopup();
+  }
 }
 
 }

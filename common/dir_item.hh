@@ -14,7 +14,8 @@ class DirItem : public File::Interface {
     kTree           = 1 << 0,
     kMenu           = 1 << 1,
     kTooltip        = 1 << 2,
-    kDragDropTarget = 1 << 3,
+    kWidget         = 1 << 3,
+    kDragDropTarget = 1 << 4,
   };
   using Flags = uint8_t;
 
@@ -29,6 +30,7 @@ class DirItem : public File::Interface {
   virtual void UpdateTree() noexcept { }
   virtual void UpdateMenu() noexcept { }
   virtual void UpdateTooltip() noexcept { }
+  virtual void UpdateWidget() noexcept { }
   virtual void UpdateDragDropTarget() noexcept { }
 
   Flags flags() const noexcept { return flags_; }

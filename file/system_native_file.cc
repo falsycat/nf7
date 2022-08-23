@@ -44,7 +44,10 @@ class NativeFile final : public File,
   }
 
   NativeFile(Env& env, const std::filesystem::path& path = "", std::string_view mode = "") noexcept :
-      File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
+      nf7::File(kType, env),
+      nf7::DirItem(
+          nf7::DirItem::kTooltip |
+          nf7::DirItem::kWidget),
       npath_(path), mode_(mode) {
   }
 
@@ -59,8 +62,8 @@ class NativeFile final : public File,
   }
 
   void Update() noexcept override;
-  void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+  void UpdateWidget() noexcept override;
 
   void Handle(const Event& ev) noexcept override {
     switch (ev.type) {
@@ -81,8 +84,6 @@ class NativeFile final : public File,
 
  private:
   std::shared_ptr<nf7::AsyncBufferAdaptor> buf_;
-
-  const char* popup_ = nullptr;
 
   // persistent params
   std::filesystem::path npath_;
@@ -114,11 +115,20 @@ void NativeFile::Update() noexcept {
     }
   } catch (std::filesystem::filesystem_error&) {
   }
+}
+void NativeFile::UpdateTooltip() noexcept {
+  ImGui::Text("basepath: %s", env().npath().generic_string().c_str());
+  ImGui::Text("path    : %s", npath_.generic_string().c_str());
+  ImGui::Text("mode    : %s", mode_.c_str());
+}
+void NativeFile::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("System/NativeFile");
 
-  if (const auto popup = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(popup);
+  if (ImGui::Button("change referencee")) {
+    ImGui::OpenPopup("ReplaceReferenceePopup");
   }
-  if (ImGui::BeginPopup("ConfigPopup")) {
+
+  if (ImGui::BeginPopup("ReplaceReferenceePopup")) {
     static std::string path;
     static bool flag_exlock;
     static bool flag_readable;
@@ -160,16 +170,6 @@ void NativeFile::Update() noexcept {
     }
     ImGui::EndPopup();
   }
-}
-void NativeFile::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("config")) {
-    popup_ = "ConfigPopup";
-  }
-}
-void NativeFile::UpdateTooltip() noexcept {
-  ImGui::Text("basepath: %s", env().npath().generic_string().c_str());
-  ImGui::Text("path    : %s", npath_.generic_string().c_str());
-  ImGui::Text("mode    : %s", mode_.c_str());
 }
 
 }

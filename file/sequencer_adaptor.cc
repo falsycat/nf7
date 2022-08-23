@@ -143,13 +143,10 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
   }
 
   const nf7::Value* Peek(std::string_view name) noexcept override {
-    assert(parent_);
     auto itr = vars_.find(std::string {name});
     return itr != vars_.end()? &itr->second: nullptr;
   }
   std::optional<nf7::Value> Receive(std::string_view name) noexcept override {
-    assert(parent_);
-
     auto itr = vars_.find(std::string {name});
     if (itr == vars_.end()) {
       return std::nullopt;
@@ -160,7 +157,8 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
   }
 
   void Send(std::string_view name, nf7::Value&& v) noexcept override {
-    assert(parent_);
+    if (done_) return;
+
     auto itr = outs_.find(std::string {name});
     if (itr != outs_.end()) {
       parent_->Send(itr->second, std::move(v));
@@ -170,7 +168,7 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
   void Finish() noexcept override {
     assert(parent_);
     parent_->Finish();
-    parent_ = nullptr;
+    done_ = true;
   }
 
  private:
@@ -178,6 +176,8 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
 
   std::unordered_map<std::string, nf7::Value> vars_;
   std::unordered_map<std::string, std::string> outs_;
+
+  bool done_ = false;
 };
 class Adaptor::Lambda final : public nf7::Sequencer::Lambda,
     public std::enable_shared_from_this<Adaptor::Lambda> {

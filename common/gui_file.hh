@@ -69,19 +69,20 @@ class FileHolderEditor final : public nf7::FileBase::Feature {
   void SmallButton() noexcept { Button(0, true); }
   void ButtonWithLabel(const char* id) noexcept;
   void Tooltip() noexcept;
-  void MenuItems() noexcept;
-  void MenuWithTooltip(const char* name) noexcept;
+  void ItemWidget(const char*) noexcept;
 
   void Update() noexcept override;
 
  private:
   nf7::FileHolder* const holder_;
 
-  bool open_ = false;
+  bool open_emplace_ = false;
 
   Type        type_;
   FileFactory factory_;
   std::string path_;
+
+  void UpdateEmplacePopup(const char*) noexcept;
 };
 
 }  // namespace nf7::gui
