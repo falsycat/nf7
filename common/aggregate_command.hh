@@ -16,6 +16,11 @@ class AggregateCommand : public nf7::History::Command {
   AggregateCommand(CommandList&& commands) noexcept :
       commands_(std::move(commands)) {
   }
+  ~AggregateCommand() noexcept {
+    for (auto itr = commands_.rbegin(); itr < commands_.rend(); ++itr) {
+      *itr = nullptr;
+    }
+  }
 
   void Apply() override {
     auto itr = commands_.begin();
