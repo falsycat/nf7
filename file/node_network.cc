@@ -49,7 +49,7 @@ namespace {
 class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Network> kType = {
-    "Node/Network", {"nf7::DirItem"}};
+    "Node/Network", {"nf7::DirItem", ""}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("A Node composed of multiple child Nodes, whose sockets are linked to each other");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
@@ -224,17 +224,13 @@ class Network::InternalNode : public nf7::File::Interface {
   };
   using Flags = uint8_t;
 
-  InternalNode(Flags flags) noexcept : flags_(flags) {
-  }
+  InternalNode() = default;
   InternalNode(const InternalNode&) = delete;
   InternalNode(InternalNode&&) = delete;
   InternalNode& operator=(const InternalNode&) = delete;
   InternalNode& operator=(InternalNode&&) = delete;
 
-  Flags flags() const noexcept { return flags_; }
-
- private:
-  const Flags flags_;
+  virtual Flags flags() const noexcept = 0;
 };
 
 
@@ -651,8 +647,7 @@ class Network::Initiator final : public nf7::File,
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
   }
 
-  Initiator(nf7::Env& env) noexcept :
-      File(kType, env), InternalNode(InternalNode::kInputHandler) {
+  Initiator(nf7::Env& env) noexcept : File(kType, env) {
   }
 
   Initiator(nf7::Env& env, Deserializer&) : Initiator(env) {
@@ -690,6 +685,9 @@ class Network::Initiator final : public nf7::File,
 
   void UpdateNode(nf7::Node::Editor& ed) noexcept override;
 
+  InternalNode::Flags flags() const noexcept override {
+    return InternalNode::kInputHandler;
+  }
   File::Interface* interface(const std::type_info& t) noexcept {
     return nf7::InterfaceSelector<nf7::Node>(t).Select(this);
   }
@@ -711,8 +709,6 @@ class Network::Terminal : public nf7::File,
 
   Terminal(Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
-      Network::InternalNode(Network::InternalNode::kInputHandler |
-                            Network::InternalNode::kOutputEmitter),
       life_(*this), mem_(std::move(data)) {
   }
 
@@ -748,6 +744,17 @@ class Network::Terminal : public nf7::File,
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
 
+  InternalNode::Flags flags() const noexcept override {
+    switch (data().type) {
+    case kInput:
+      return InternalNode::kInputHandler;
+    case kOutput:
+      return InternalNode::kOutputEmitter;
+    default:
+      assert(false);
+      return 0;
+    }
+  }
   File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
         Network::InternalNode, nf7::Node, nf7::Memento>(t).Select(this, &mem_);
@@ -779,11 +786,13 @@ class Network::Terminal : public nf7::File,
       switch (data.type) {
       case kInput:
         if (name == data.name) {
-          caller->Handle(name, v, shared_from_this());
+          caller->Handle("out", v, shared_from_this());
         }
         break;
       case kOutput:
-        caller->Handle(data.name, v, shared_from_this());
+        if (name == "in") {
+          caller->Handle(data.name, v, shared_from_this());
+        }
         break;
       default:
         assert(false);
