@@ -52,16 +52,16 @@ class FileHolder : public nf7::FileBase::Feature {
 
   void Emplace(nf7::File::Path&& path) noexcept {
     TearDown();
-    entity_ = std::move(path);
     tag_    = nullptr;
+    entity_ = std::move(path);
     SetUp();
 
     onEmplace();
   }
   void Emplace(std::unique_ptr<nf7::File>&& f) noexcept {
     TearDown();
-    entity_ = std::move(f);
     tag_    = nullptr;
+    entity_ = std::move(f);
     SetUp();
 
     onEmplace();
