@@ -261,10 +261,10 @@ void Logger::Update() noexcept {
   }
 
   // LogView
-  const auto kInit = [em]() {
+  if (win_.shownInCurrentFrame()) {
     ImGui::SetNextWindowSize({48*em, 16*em}, ImGuiCond_FirstUseEver);
-  };
-  if (win_.Begin(kInit)) {
+  }
+  if (win_.Begin()) {
     constexpr auto kTableFlags =
         ImGuiTableFlags_Resizable         |
         ImGuiTableFlags_Hideable          |

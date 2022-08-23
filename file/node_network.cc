@@ -942,10 +942,10 @@ void Network::Update() noexcept {
   }
 
   // ---- editor window
-  const auto kInit = [em]() {
+  if (win_.shownInCurrentFrame()) {
     ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
-  };
-  if (win_.Begin(kInit)) {
+  }
+  if (win_.Begin()) {
     // ---- editor window / toolbar
     ImGui::BeginGroup();
     {

@@ -29,14 +29,13 @@ class Window {
   Window& operator=(const Window&) = delete;
   Window& operator=(Window&&) = delete;
 
-  bool Begin(const std::function<void()>& before = {}) noexcept {
+  bool Begin() noexcept {
     if (std::exchange(set_focus_, false)) {
       ImGui::SetNextWindowFocus();
       shown_ = true;
     }
     if (!shown_) return false;
 
-    if (before) before();
     need_end_ = true;
     return ImGui::Begin(id().c_str(), &shown_);
   }
@@ -59,6 +58,10 @@ class Window {
 
   std::string id() const noexcept {
     return ConcatId(*owner_, title_);
+  }
+
+  bool shownInCurrentFrame() const noexcept {
+    return shown_ || set_focus_;
   }
 
   bool shown() const noexcept { return shown_; }

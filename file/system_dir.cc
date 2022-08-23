@@ -207,10 +207,10 @@ void Dir::Update() noexcept {
   }
 
   // tree view window
-  const auto kInit = [em]() {
+  if (win_.shownInCurrentFrame()) {
     ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
-  };
-  if (win_.Begin(kInit)) {
+  }
+  if (win_.Begin()) {
     if (ImGui::BeginPopupContextWindow()) {
       UpdateMenu();
       ImGui::EndPopup();

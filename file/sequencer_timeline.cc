@@ -1253,12 +1253,11 @@ void TL::UpdateWidget() noexcept {
   popup_socket_.Update();
 }
 void TL::UpdateEditorWindow() noexcept {
-  const auto kInit = []() {
+  if (win_.shownInCurrentFrame()) {
     const auto em = ImGui::GetFontSize();
     ImGui::SetNextWindowSizeConstraints({32*em, 16*em}, {1e8, 1e8});
-  };
-
-  if (win_.Begin(kInit)) {
+  }
+  if (win_.Begin()) {
     UpdateLambdaSelector();
 
     // timeline
