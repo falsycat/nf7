@@ -710,6 +710,8 @@ class Network::Terminal : public nf7::File,
   Terminal(Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
       life_(*this), mem_(std::move(data)) {
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Terminal(nf7::Env& env, Deserializer& ar) : Terminal(env) {
