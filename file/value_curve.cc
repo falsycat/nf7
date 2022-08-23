@@ -67,8 +67,9 @@ class Curve final : public nf7::File,
 
   Curve(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
-      nf7::DirItem(nf7::DirItem::kNone),
-      nf7::Sequencer(nf7::Sequencer::kCustomItem),
+      nf7::DirItem(nf7::DirItem::kWidget),
+      nf7::Sequencer(nf7::Sequencer::kCustomItem |
+                     nf7::Sequencer::kParamPanel),
       life_(*this), mem_(std::move(data)) {
     AssignId();
     Sanitize();
@@ -104,6 +105,11 @@ class Curve final : public nf7::File,
   }
 
   void UpdateItem(nf7::Sequencer::Editor&) noexcept override;
+  void UpdateParamPanel(nf7::Sequencer::Editor&) noexcept override;
+  void UpdateNode(nf7::Node::Editor&) noexcept override;
+  void UpdateWidget() noexcept override;
+  void UpdateCurveEditorWindow(const ImVec2&) noexcept;
+  void UpdateCurveEditor(const ImVec2&) noexcept;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
@@ -339,12 +345,53 @@ std::shared_ptr<nf7::Sequencer::Lambda> Curve::CreateLambda(
 
 
 void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
+  ImGui::TextUnformatted("Value/Curve");
+  ImGui::SetCursorPos({0, 0});
+  UpdateCurveEditor(ImGui::GetContentRegionAvail());
+}
+void Curve::UpdateNode(nf7::Node::Editor&) noexcept {
+  const auto em = ImGui::GetFontSize();
+  ImGui::TextUnformatted("Value/Curve");
+
+  if (ImNodes::BeginInputSlot("x", 1)) {
+    ImGui::AlignTextToFramePadding();
+    nf7::gui::NodeSocket();
+    ImNodes::EndSlot();
+  }
+  ImGui::SameLine();
+  UpdateCurveEditorWindow({16*em, 6*em});
+  ImGui::SameLine();
+  if (ImNodes::BeginOutputSlot("y", 1)) {
+    ImGui::AlignTextToFramePadding();
+    nf7::gui::NodeSocket();
+    ImNodes::EndSlot();
+  }
+}
+void Curve::UpdateParamPanel(nf7::Sequencer::Editor&) noexcept {
+  if (ImGui::CollapsingHeader("Value/Curve", ImGuiTreeNodeFlags_DefaultOpen)) {
+    const auto em = ImGui::GetFontSize();
+    UpdateCurveEditorWindow({0, 6*em});
+  }
+}
+void Curve::UpdateWidget() noexcept {
+  const auto em = ImGui::GetFontSize();
+  ImGui::TextUnformatted("Value/Curve");
+  UpdateCurveEditorWindow({24*em, 8*em});
+}
+void Curve::UpdateCurveEditorWindow(const ImVec2& size) noexcept {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {0, 0});
+  if (ImGui::BeginChild("CurveEditor", size, true, ImGuiWindowFlags_NoScrollbar)) {
+    UpdateCurveEditor(ImGui::GetContentRegionAvail());
+    ImGui::EndChild();
+  }
+  ImGui::PopStyleVar();
+}
+void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   const auto& io = ImGui::GetIO();
 
   auto d = ImGui::GetWindowDrawList();
 
   const auto em   = ImGui::GetFontSize();
-  const auto sz   = ImGui::GetContentRegionAvail();
   const auto col  = ImGui::GetColorU32(ImGuiCol_Text);
   const auto colg = ImGui::GetColorU32(ImGuiCol_Text, .5f);
   const auto cols = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
@@ -356,9 +403,6 @@ void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
     std::clamp(mpos.x/sz.x, 0.f, 1.f),
     std::clamp(1-mpos.y/sz.y, 0.f, 1.f),
   };
-
-  // title
-  ImGui::TextUnformatted("Value/Curve");
 
   // draw lines
   auto& terms = mem_.data().terms;
@@ -457,7 +501,7 @@ void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
     };
 
     // p2 control point
-    if (io.KeyShift && nt) {
+    if (ImGui::IsWindowFocused() && io.KeyShift && nt) {
       const auto p2 = ImVec2 {sz.x*t.p2.x, sz.y*(1-t.p2.y)};
       ImGui::SetCursorPos(p2 - ImVec2 {grip, grip});
       ImGui::InvisibleButton("grip-p2", {grip*2, grip*2});
@@ -474,7 +518,7 @@ void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
     }
 
     // prev term's p3 control point
-    if (io.KeyShift && pt) {
+    if (ImGui::IsWindowFocused() && io.KeyShift && pt) {
       const auto p3 = ImVec2 {sz.x*pt->p3.x, sz.y*(1-pt->p3.y)};
       ImGui::SetCursorPos(p3 - ImVec2 {grip, grip});
       ImGui::InvisibleButton("grip-p3", {grip*2, grip*2});
