@@ -68,14 +68,13 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   using ItemId = uint64_t;
 
   TL(Env& env,
-     uint64_t                              length = 1000,
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
       nf7::FileBase(kType, env, {&popup_socket_, &popup_add_item_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       life_(*this),
-      length_(length), layers_(std::move(layers)), next_(next),
+      layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
       popup_add_item_(*this) {
     ApplySeqSocketChanges();
@@ -89,12 +88,12 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   }
 
   TL(Env& env, Deserializer& ar) : TL(env) {
-    ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
+    ar(layers_, seq_inputs_, seq_outputs_, win_, tl_);
     AssignId();
     ApplySeqSocketChanges();
   }
   void Serialize(Serializer& ar) const noexcept override {
-    ar(length_, layers_, seq_inputs_, seq_outputs_, win_, tl_);
+    ar(layers_, seq_inputs_, seq_outputs_, win_, tl_);
   }
   std::unique_ptr<File> Clone(Env& env) const noexcept override;
 
@@ -133,7 +132,6 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   std::vector<std::string> inputs_, outputs_;  // for GetInputs/GetOutputs
 
   // permanentized params
-  uint64_t length_;
   uint64_t cursor_;
   std::vector<std::unique_ptr<Layer>> layers_;
 
@@ -221,7 +219,6 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     inputs_.push_back("_exec");
 
     outputs_ = seq_outputs_;
-    outputs_.push_back("_cursor");
   }
 };
 
@@ -307,6 +304,11 @@ class TL::Item final : nf7::Env::Watcher {
   }
   void Detach() noexcept {
     assert(owner_);
+
+    if (owner_->param_panel_target_ == this) {
+      owner_->param_panel_target_ = nullptr;
+    }
+    owner_->selected_.erase(this);
 
     file_->Isolate();
     owner_         = nullptr;
@@ -502,7 +504,7 @@ class TL::Layer final {
   }
   uint64_t GetMaxEndOf(TL::Item& item) const noexcept {
     auto i = FindItemAfter(item.timing().begin(), &item);
-    return i? i->timing().begin(): owner_->length_;
+    return i? i->timing().begin(): INT64_MAX;
   }
 
   void ExecRemoveItem(Item&) noexcept;
@@ -562,6 +564,9 @@ class TL::Lambda final : public Node::Lambda,
               const std::shared_ptr<Node::Lambda>&) noexcept override;
 
   std::shared_ptr<TL::Session> CreateSession(uint64_t t) noexcept {
+    if (depth() != 0 && owner_ && owner_->lambda_.get() == this) {
+      owner_->MoveCursorTo(t);
+    }
     auto ss = std::make_shared<TL::Session>(shared_from_this(), last_session_, t, vars_);
     last_session_ = ss;
     sessions_.erase(
@@ -598,11 +603,6 @@ class TL::Lambda final : public Node::Lambda,
     return {nullptr, nullptr};
   }
 
-  void EmitCursor(uint64_t t) noexcept {
-    if (auto p = parent()) {
-      p->Handle("_cursor", static_cast<nf7::Value::Integer>(t), shared_from_this());
-    }
-  }
   void EmitResults(const std::unordered_map<std::string, nf7::Value>& vars) noexcept {
     if (!owner_) return;
     auto caller = parent();
@@ -760,15 +760,10 @@ void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
                         const std::shared_ptr<Node::Lambda>&) noexcept {
   if (name == "_exec") {
     if (!owner_) return;
-    const auto t_max = owner_->length_-1;
-
     uint64_t t;
     if (v.isInteger()) {
-      const auto ti = std::clamp(v.integer(), int64_t{0}, static_cast<int64_t>(t_max));
+      const auto ti = std::max(v.integer(), int64_t{0});
       t = static_cast<uint64_t>(ti);
-    } else if (v.isScalar()) {
-      const auto tf = std::clamp(v.scalar(), 0., 1.)*static_cast<double>(t_max);
-      t = static_cast<uint64_t>(tf);
     } else {
       // TODO: error
       return;
@@ -779,13 +774,14 @@ void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
   }
 }
 void TL::MoveCursorTo(uint64_t time) noexcept {
-  cursor_ = std::min(time, length_-1);
+  cursor_ = time;
 
   if (!lambda_) {
     AttachLambda(std::make_shared<TL::Lambda>(*this, nullptr));
   }
-  lambda_->CreateSession(time)->StartNext();
-  lambda_->EmitCursor(time);
+  if (lambda_->depth() == 0) {
+    lambda_->CreateSession(time)->StartNext();
+  }
 }
 void TL::AttachLambda(const std::shared_ptr<TL::Lambda>& la) noexcept {
   if (la == lambda_) return;
@@ -1032,11 +1028,9 @@ void TL::MoveDisplayTimingOfSelected(int64_t diff) noexcept {
   for (auto item : selected_) {
     const auto& t = item->displayTiming();
     const auto pbegin = static_cast<int64_t>(t.begin());
-    const auto pdur   = static_cast<int64_t>(t.dur());
     const auto pend   = static_cast<int64_t>(t.end());
-    const auto len    = static_cast<int64_t>(length_);
 
-    const auto begin  = std::clamp(pbegin+diff, int64_t{0}, len-pdur);
+    const auto begin = std::clamp(pbegin+diff, int64_t{0}, INT64_MAX);
 
     const auto begin_actual_diff = begin - pbegin;
     if (begin_actual_diff != diff) {
@@ -1056,7 +1050,9 @@ void TL::MoveDisplayTimingOfSelected(int64_t diff) noexcept {
     }
     timings.emplace_back(item, timing);
   }
-  for (auto p : timings) { p.first->displayTiming() = p.second; }
+  for (auto p : timings) {
+    p.first->displayTiming() = p.second;
+  }
 }
 
 class TL::Layer::ItemMoveCommand final : public nf7::History::Command {
@@ -1133,10 +1129,6 @@ class TL::ConfigModifyCommand final : public nf7::History::Command {
         prod_(std::make_unique<ConfigModifyCommand>(f)) {
     }
 
-    Builder& length(uint64_t v) noexcept {
-      prod_->length_ = v;
-      return *this;
-    }
     Builder& inputs(std::vector<std::string>&& v) noexcept {
       prod_->seq_inputs_ = std::move(v);
       return *this;
@@ -1163,13 +1155,9 @@ class TL::ConfigModifyCommand final : public nf7::History::Command {
  private:
   TL* const owner_;
 
-  std::optional<uint64_t> length_;
   std::optional<std::vector<std::string>> seq_inputs_, seq_outputs_;
 
   void Exec() noexcept {
-    if (length_) {
-      std::swap(owner_->length_, *length_);
-    }
     if (seq_inputs_) {
       std::swap(owner_->seq_inputs_, *seq_inputs_);
     }
@@ -1197,7 +1185,7 @@ std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   layers.reserve(layers_.size());
   ItemId next = 1;
   for (const auto& layer : layers_) layers.push_back(layer->Clone(env, next));
-  return std::make_unique<TL>(env, length_, std::move(layers), next, &win_);
+  return std::make_unique<TL>(env, std::move(layers), next, &win_);
 }
 void TL::Handle(const Event& ev) noexcept {
   nf7::FileBase::Handle(ev);
@@ -1254,6 +1242,10 @@ void TL::UpdateMenu() noexcept {
 void TL::UpdateWidget() noexcept {
   ImGui::TextUnformatted("Sequencer/Timeline");
 
+
+  if (ImGui::Button("Timeline Editor")) {
+    win_.shown() = true;
+  }
   if (ImGui::Button("I/O socket list")) {
     popup_socket_.Open(seq_inputs_, seq_outputs_);
   }
@@ -1263,14 +1255,14 @@ void TL::UpdateWidget() noexcept {
 void TL::UpdateEditorWindow() noexcept {
   const auto kInit = []() {
     const auto em = ImGui::GetFontSize();
-    ImGui::SetNextWindowSizeConstraints({24*em, 8*em}, {1e8, 1e8});
+    ImGui::SetNextWindowSizeConstraints({32*em, 16*em}, {1e8, 1e8});
   };
 
   if (win_.Begin(kInit)) {
     UpdateLambdaSelector();
 
     // timeline
-    if (tl_.Begin(length_)) {
+    if (tl_.Begin()) {
       // layer headers
       for (size_t i = 0; i < layers_.size(); ++i) {
         auto& layer = layers_[i];
@@ -1323,15 +1315,12 @@ void TL::UpdateEditorWindow() noexcept {
       if (ImGui::IsWindowHovered(kFlags)) {
         tl_.Cursor(
             "mouse",
-            std::min(length_-1, tl_.GetTimeFromScreenX(ImGui::GetMousePos().x)),
+            tl_.GetTimeFromScreenX(ImGui::GetMousePos().x),
             ImGui::GetColorU32(ImGuiCol_TextDisabled, .5f));
       }
 
       // frame cursor
       tl_.Cursor("cursor", cursor_, ImGui::GetColorU32(ImGuiCol_Text, .5f));
-
-      // end of timeline
-      tl_.Cursor("END", length_, ImGui::GetColorU32(ImGuiCol_TextDisabled));
 
       // running sessions
       if (lambda_) {
@@ -1362,10 +1351,12 @@ void TL::UpdateEditorWindow() noexcept {
     // key bindings
     const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (focused && !ImGui::IsAnyItemFocused()) {
-      if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
-        if (cursor_ > 0) MoveCursorTo(cursor_-1);
-      } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-        MoveCursorTo(cursor_+1);
+      if (!lambda_ || lambda_->depth() == 0) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+          if (cursor_ > 0) MoveCursorTo(cursor_-1);
+        } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+          MoveCursorTo(cursor_+1);
+        }
       }
     }
   }
@@ -1427,9 +1418,7 @@ void TL::HandleTimelineAction() noexcept {
     item->Select(false);
     ResizeDisplayTimingOfSelected(
         0,
-        action_time_i +
-        static_cast<int64_t>(item->displayTiming().dur()) -
-        static_cast<int64_t>(item->displayTiming().end()));
+        action_time_i - static_cast<int64_t>(item->displayTiming().end()));
     break;
   case tl_.kResizeBeginDone:
   case tl_.kResizeEndDone:
@@ -1455,7 +1444,9 @@ void TL::HandleTimelineAction() noexcept {
     break;
 
   case tl_.kSetTime:
-    MoveCursorTo(action_time);
+    if (!lambda_ || lambda_->depth() == 0) {
+      MoveCursorTo(action_time);
+    }
     break;
 
   case tl_.kNone:
@@ -1471,6 +1462,10 @@ void TL::UpdateParamPanelWindow() noexcept {
   if (std::exchange(param_panel_request_focus_, false)) {
     ImGui::SetNextWindowFocus();
   }
+
+  const auto em = ImGui::GetFontSize();
+  ImGui::SetNextWindowSize({16*em, 16*em}, ImGuiCond_FirstUseEver);
+
   if (ImGui::Begin(name.c_str())) {
     if (auto item = param_panel_target_) {
       if (item->seq().flags() & Sequencer::kParamPanel) {

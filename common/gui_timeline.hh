@@ -83,7 +83,7 @@ struct Timeline {
     ar(scroll_);
   }
 
-  bool Begin(uint64_t len) noexcept;
+  bool Begin() noexcept;
   void End() noexcept;
 
   void NextLayerHeader(Layer layer, float height) noexcept;

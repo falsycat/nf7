@@ -11,7 +11,7 @@
 
 namespace nf7::gui {
 
-bool Timeline::Begin(uint64_t len) noexcept {
+bool Timeline::Begin() noexcept {
   assert(frame_state_ == kRoot);
   layer_idx_ = 0;
   layer_y_   = 0;
@@ -20,8 +20,6 @@ bool Timeline::Begin(uint64_t len) noexcept {
   layer_idx_first_display_ = 0;
   layer_offset_y_.clear();
 
-  len_               = len;
-  scroll_size_.x     = GetXFromTime(len_) + 100;
   scroll_x_to_mouse_ = false;
   scroll_y_to_mouse_ = false;
 
@@ -32,8 +30,9 @@ bool Timeline::Begin(uint64_t len) noexcept {
     return false;
   }
 
-  body_offset_ = {headerWidth(), xgridHeight()};
-  body_size_   = ImGui::GetContentRegionMax() - body_offset_;
+  body_offset_   = {headerWidth(), xgridHeight()};
+  body_size_     = ImGui::GetContentRegionMax() - body_offset_;
+  scroll_size_.x = std::max(body_size_.x, GetXFromTime(len_) + 16*ImGui::GetFontSize());
 
   ImGui::SetCursorPos({body_offset_.x, 0});
   if (ImGui::BeginChild("xgrid", {body_size_.x, body_offset_.y})) {
@@ -149,6 +148,7 @@ bool Timeline::BeginBody() noexcept {
       }
     }
 
+    len_       = 0;
     layer_     = nullptr;
     layer_idx_ = 0;
     layer_y_   = 0;
@@ -236,6 +236,7 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
   assert(frame_state_ == kBody);
   frame_state_ = kItem;
 
+  len_  = std::max(len_, end);
   item_ = item;
 
   const auto em    = ImGui::GetFontSize();
@@ -260,7 +261,7 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
     ImGui::SetCursorPos({w-resizer_w, 0});
     ImGui::InvisibleButton("end", {resizer_w, h});
     ImGui::SetItemAllowOverlap();
-    HandleGrip(item, w-resizer_w, kResizeEnd, kResizeEndDone, ImGuiMouseCursor_ResizeEW);
+    HandleGrip(item, -resizer_w, kResizeEnd, kResizeEndDone, ImGuiMouseCursor_ResizeEW);
 
     const auto mover_w = std::max(1.f, w-resizer_w*2);
     ImGui::SetCursorPos({resizer_w, 0});
@@ -286,7 +287,7 @@ void Timeline::Cursor(const char* name, uint64_t t, uint32_t col) noexcept {
   const auto size   = ImGui::GetWindowSize();
   const auto grid_h = xgridHeight();
   const auto x      = GetScreenXFromTime(t);
-  if (x < body_offset_.x || x > body_offset_.x+body_size_.x) return;
+  if (x < body_screen_offset_.x || x > body_screen_offset_.x+body_size_.x) return;
 
   d->AddLine({x, spos.y}, {x, spos.y+size.y}, col);
 
@@ -320,7 +321,7 @@ void Timeline::UpdateXGrid() noexcept {
   const auto size  = ImGui::GetContentRegionMax();
   const auto color = ImGui::GetColorU32(ImGuiCol_TextDisabled);
   const auto left  = GetTimeFromX(scroll_.x)/unit*unit;
-  const auto right = std::min(len_-1, GetTimeFromX(scroll_.x+body_size_.x)+1);
+  const auto right = GetTimeFromX(scroll_.x+body_size_.x)+1;
 
   const auto d = ImGui::GetWindowDrawList();
 
