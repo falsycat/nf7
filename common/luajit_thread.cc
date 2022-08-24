@@ -7,7 +7,6 @@
 #include <tuple>
 
 #include "common/async_buffer.hh"
-#include "common/luajit_obj.hh"
 
 
 namespace nf7::luajit {
@@ -18,11 +17,6 @@ constexpr size_t kBufferSizeMax    = 64 * 1024 * 1024;
 
 // Pushes a metatable for Thread object, available on global table as 'nf7'.
 static void PushMeta(lua_State*) noexcept;
-
-// Pushes Lua object built by a file who implements luajit::Obj interface.
-static void GetLuaObjAndPush(
-    lua_State* L, const std::shared_ptr<Thread>& th, File& f);
-
 
 lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
@@ -107,6 +101,17 @@ static void PushMeta(lua_State* L) noexcept {
       });
       lua_setfield(L, -2, "resolve");
 
+      // nf7:ref(obj)
+      lua_pushcfunction(L, [](auto L) {
+        auto th = Thread::GetPtr(L, 1);
+        lua_pushvalue(L, 2);
+
+        auto ref = std::make_shared<nf7::luajit::Ref>(th->ctx(), th->ljq(), L);
+        PushValue(L, nf7::Value {std::move(ref)});
+        return 1;
+      });
+      lua_setfield(L, -2, "ref");
+
       // nf7:query(file_id, interface)
       lua_pushcfunction(L, [](auto L) {
         auto th = Thread::GetPtr(L, 1);
@@ -121,7 +126,7 @@ static void PushMeta(lua_State* L) noexcept {
             } else if (iface == "exbuffer") {
               Thread::Lock<nf7::AsyncBuffer>::AcquireAndPush(L, th, f, true);
             } else if (iface == "lua") {
-              GetLuaObjAndPush(L, th, f);
+              // WIP GetLuaObjAndPush(L, th, f);
             } else if (iface == "node") {
               Thread::Lambda::CreateAndPush(L, th, f);
             } else {
@@ -183,25 +188,6 @@ static void PushMeta(lua_State* L) noexcept {
     }
     lua_setfield(L, -2, "__index");
   }
-}
-
-static void GetLuaObjAndPush(
-    lua_State* L, const std::shared_ptr<Thread>& th, File& f) {
-  f.interfaceOrThrow<nf7::luajit::Obj>().Build().
-      Then([th, L](auto fu) {
-        th->ljq()->Push(th->ctx(), [th, L, fu](auto) mutable {
-          try {
-            const auto& obj = fu.value();
-            if (th->ljq() != obj->ljq()) {
-              throw nf7::Exception {"the object is built on other LuaJIT context"};
-            }
-            obj->PushSelf(L);
-            th->Resume(L, 1);
-          } catch (nf7::Exception& e) {
-            th->Resume(L, luajit::PushAll(L, nullptr, e.msg()));
-          }
-        });
-      });
 }
 
 }  // namespace nf7::luajit

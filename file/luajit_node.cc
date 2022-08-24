@@ -17,6 +17,7 @@
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
 #include "common/file_holder.hh"
+#include "common/future.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
@@ -24,14 +25,13 @@
 #include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
-#include "common/luajit_obj.hh"
 #include "common/luajit_queue.hh"
 #include "common/luajit_ref.hh"
 #include "common/luajit_thread.hh"
 #include "common/memento.hh"
 #include "common/node.hh"
+#include "common/node_root_lambda.hh"
 #include "common/ptr_selector.hh"
-#include "common/task.hh"
 #include "common/util_string.hh"
 
 
@@ -62,13 +62,11 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   Node(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&obj_, &obj_editor_, &socket_popup_}),
-      nf7::DirItem(nf7::DirItem::kMenu |
-                   nf7::DirItem::kTooltip |
-                   nf7::DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kTooltip | nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>()),
       obj_(*this, "obj_factory"),
-      obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::luajit::Obj"); }),
+      obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data)) {
     mem_.data().obj.SetTarget(obj_);
     mem_.CommitAmend();
@@ -81,6 +79,13 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
             mem_.data().outputs = std::move(o);
             mem_.Commit();
           });
+    };
+
+    obj_.onChildUpdate = [this]() {
+      if (fu_) {
+        log_->Info("factory update detected, dropping cache");
+      }
+      fu_ = std::nullopt;
     };
 
     obj_.onChildMementoChange = [this]() { mem_.Commit(); };
@@ -113,7 +118,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   }
 
   void Handle(const Event&) noexcept override;
-  void UpdateMenu() noexcept override;
+  void Update() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
 
@@ -127,8 +132,6 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  nf7::Task<std::shared_ptr<nf7::luajit::Ref>>::Holder fetch_;
-
   nf7::FileHolder            obj_;
   nf7::gui::FileHolderEditor obj_editor_;
 
@@ -138,26 +141,41 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   const Data& data() const noexcept { return mem_.data(); }
   Data& data() noexcept { return mem_.data(); }
 
-
-  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> FetchHandler() noexcept;
+  // factory context
+  std::shared_ptr<nf7::NodeRootLambda> factory_;
+  std::optional<nf7::Future<nf7::Value>> fu_;
 };
 
 class Node::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
   Lambda(Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), file_(f.life_), log_(f.log_) {
+      nf7::Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
   }
 
-  void Handle(std::string_view name, const nf7::Value& v,
+  void Handle(std::string_view k, const nf7::Value& v,
               const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
   try {
-    file_.EnforceAlive();
-
-    auto fu   = file_->FetchHandler();
+    f_.EnforceAlive();
     auto self = shared_from_this();
-    fu.ThenSub(self, [self, name = std::string(name), v = v, caller](auto fu) mutable {
-      self->CallHandler({std::move(name), std::move(v)}, fu, caller);
+
+    if (!f_->fu_) {
+      auto& n = f_->obj_.GetFileOrThrow().interfaceOrThrow<nf7::Node>();
+      auto  b = nf7::NodeRootLambda::Builder {*f_, n};
+      f_->fu_ = b.Receive("product");
+
+      f_->factory_ = b.Build();
+      b.Send("create", nf7::Value::Pulse {});
+    }
+
+    assert(f_->fu_);
+    f_->fu_->ThenSub(self, [this, k = std::string {k}, v = v, caller](auto fu) mutable {
+      try {
+        auto ref = fu.value().template data<nf7::luajit::Ref>();
+        CallFunc(ref, std::move(k), std::move(v), caller);
+      } catch (nf7::Exception& e) {
+        log_->Error("failed to call lua function: "+e.msg());
+      }
     });
   } catch (nf7::LifeExpiredException&) {
   } catch (nf7::Exception& e) {
@@ -172,7 +190,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
   }
 
  private:
-  nf7::Life<Node>::Ref file_;
+  nf7::Life<Node>::Ref f_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
@@ -181,35 +199,45 @@ class Node::Lambda final : public nf7::Node::Lambda,
   std::optional<nf7::luajit::Ref> ctxtable_;
 
 
-  using Param = std::pair<std::string, nf7::Value>;
-  void CallHandler(Param&& p, auto& fu, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept
-  try {
+  void CallFunc(const std::shared_ptr<nf7::luajit::Ref>& func,
+                std::string&& k, nf7::Value&& v,
+                const std::shared_ptr<nf7::Node::Lambda>& caller) {
     auto self = shared_from_this();
     th_.erase(
         std::remove_if(th_.begin(), th_.end(), [](auto& x) { return x.expired(); }),
         th_.end());
 
-    auto handler = fu.value();
-    auto ljq     = handler->ljq();
-
-    auto th = std::make_shared<nf7::luajit::Thread>(
+    auto ljq = func->ljq();
+    auto th  = std::make_shared<nf7::luajit::Thread>(
         self, ljq, [self, ljq](auto& th, auto L) { self->HandleThread(ljq, th, L); });
     th->Install(log_);
     th_.emplace_back(th);
 
-    ljq->Push(self, [this, self, ljq, p = std::move(p), caller, handler, th](auto L) mutable {
+    ljq->Push(self, [this, self, ljq, k = std::move(k), v = std::move(v), caller, func, th](auto L) mutable {
       auto thL = th->Init(L);
-      handler->PushSelf(thL);
-      lua_pushstring(thL, p.first.c_str());
-      nf7::luajit::PushValue(thL, p.second);
+      func->PushSelf(thL);
+
+      // push args
+      lua_pushstring(thL, k.c_str());
+      nf7::luajit::PushValue(thL, v);
       nf7::luajit::PushNodeLambda(thL, caller, self);
-      PushContextTable(ljq, thL);
+
+      // push context table
+      if (ctxtable_ && ctxtable_->ljq() != ljq) {
+        ctxtable_ = std::nullopt;
+      }
+      if (!ctxtable_) {
+        lua_createtable(thL, 0, 0);
+        lua_pushvalue(thL, -1);
+        ctxtable_.emplace(shared_from_this(), ljq, thL);
+      } else {
+        ctxtable_->PushSelf(thL);
+      }
+
+      // execute
       th->Resume(thL, 4);
     });
-  } catch (nf7::Exception& e) {
-    log_->Error("failed to call handler: "+e.msg());
   }
-
   void HandleThread(const std::shared_ptr<nf7::luajit::Queue>& ljq,
                     nf7::luajit::Thread& th, lua_State* L) noexcept {
     switch (th.state()) {
@@ -227,32 +255,12 @@ class Node::Lambda final : public nf7::Node::Lambda,
       return;
     }
   }
-
-  void PushContextTable(const std::shared_ptr<nf7::luajit::Queue>& ljq,
-                        lua_State* L) noexcept {
-    if (ctxtable_ && ctxtable_->ljq() != ljq) {
-      ctxtable_ = std::nullopt;
-    }
-    if (!ctxtable_) {
-      lua_createtable(L, 0, 0);
-      lua_pushvalue(L, -1);
-      ctxtable_.emplace(shared_from_this(), ljq, L);
-    } else {
-      ctxtable_->PushSelf(L);
-    }
-  }
 };
 
 
 std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
-}
-nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::FetchHandler() noexcept
-try {
-  return obj_.GetFileOrThrow().interfaceOrThrow<nf7::luajit::Obj>().Build();
-} catch (nf7::Exception&) {
-  return {std::current_exception()};
 }
 
 void Node::Handle(const Event& ev) noexcept {
@@ -271,9 +279,11 @@ void Node::Handle(const Event& ev) noexcept {
     return;
   }
 }
-void Node::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("fetch handler")) {
-    FetchHandler();
+
+void Node::Update() noexcept {
+  nf7::FileBase::Update();
+  if (factory_) {
+    factory_->KeepAlive();
   }
 }
 void Node::UpdateTooltip() noexcept {

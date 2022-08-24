@@ -49,7 +49,7 @@ namespace {
 class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Network> kType = {
-    "Node/Network", {"nf7::DirItem", ""}};
+    "Node/Network", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("A Node composed of multiple child Nodes, whose sockets are linked to each other");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");

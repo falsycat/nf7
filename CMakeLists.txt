@@ -79,7 +79,6 @@ target_sources(nf7
     common/logger_ref.hh
     common/luajit.hh
     common/luajit.cc
-    common/luajit_obj.hh
     common/luajit_queue.hh
     common/luajit_ref.hh
     common/luajit_thread.hh
@@ -90,6 +89,7 @@ target_sources(nf7
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh
+    common/node_root_lambda.hh
     common/ptr_selector.hh
     common/queue.hh
     common/sequencer.hh
@@ -115,7 +115,6 @@ target_sources(nf7
     file/luajit_context.cc
     file/luajit_inline_node.cc
     file/luajit_node.cc
-    file/luajit_obj.cc
     file/node_imm.cc
     file/node_network.cc
     file/node_ref.cc

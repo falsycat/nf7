@@ -103,7 +103,10 @@ class FileHolder : public nf7::FileBase::Feature {
     return own()? nf7::File::Path {{id_}}: std::get<nf7::File::Path>(entity_);
   }
 
-  // called when child's memento tag id is changed
+  // called when kUpdate event is caused by the child
+  std::function<void(void)> onChildUpdate = [](){};
+
+  // called when the child's memento tag id is changed
   std::function<void(void)> onChildMementoChange = [](){};
 
   // called right before returning from Emplace()

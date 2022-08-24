@@ -59,14 +59,15 @@ void FileHolder::SetUp() noexcept {
       watcher_->AddHandler(nf7::File::Event::kRemove, [this](auto&) {
         file_ = nullptr;
       });
-      if (mem) {
-        watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
+      watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
+        if (mem) {
           auto ptag = std::exchange(tag_, mem->Save());
           if (ptag != tag_) {
             onChildMementoChange();
           }
-        });
-      }
+        }
+        onChildUpdate();
+      });
     }
 
     // memento setup

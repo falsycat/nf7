@@ -240,8 +240,7 @@ class Future final {
         return *this;
       }
     }
-    assert(imm_);
-    ctx->env().ExecSub(ctx, std::bind(f, Future(*imm_)));
+    ctx->env().ExecSub(ctx, std::bind(f, *this));
     return *this;
   }
 

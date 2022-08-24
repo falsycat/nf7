@@ -7,11 +7,12 @@
 #include "nf7.hh"
 
 #include "common/luajit_queue.hh"
+#include "common/value.hh"
 
 
 namespace nf7::luajit {
 
-class Ref final {
+class Ref final : public nf7::Value::Data {
  public:
   Ref() = delete;
   Ref(const std::shared_ptr<nf7::Context>& ctx,
