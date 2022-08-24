@@ -357,6 +357,43 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
   lua_setmetatable(L, -2);
 }
 
+void PushNodeLambda(lua_State* L,
+                    const std::shared_ptr<nf7::Node::Lambda>& callee,
+                    const std::weak_ptr<nf7::Node::Lambda>& caller) noexcept {
+  constexpr auto kTypeName = "nf7::Node::Lambda";
+  struct Data {
+    std::shared_ptr<nf7::Node::Lambda> callee;
+    std::weak_ptr<nf7::Node::Lambda>   caller;
+  };
+  new (lua_newuserdata(L, sizeof(Data))) Data { .callee = callee, .caller = caller };
+
+  if (luaL_newmetatable(L, kTypeName)) {
+    lua_pushcfunction(L, [](auto L) {
+      const auto& d = *reinterpret_cast<Data*>(luaL_checkudata(L, 1, kTypeName));
+
+      auto caller = d.caller.lock();
+      if (!caller) return luaL_error(L, "caller expired");
+
+      std::string n = luaL_checkstring(L, 2);
+      auto        v = nf7::luajit::CheckValue(L, 3);
+
+      auto callee = d.callee;
+      callee->env().ExecSub(callee, [callee, caller, n = std::move(n), v = std::move(v)]() {
+        callee->Handle(n, v, caller);
+      });
+      return 0;
+    });
+    lua_setfield(L, -2, "__call");
+
+    lua_pushcfunction(L, [](auto L) {
+      reinterpret_cast<Data*>(luaL_checkudata(L, 1, kTypeName))->~Data();
+      return 0;
+    });
+    lua_setfield(L, -2, "__gc");
+  }
+  lua_setmetatable(L, -2);
+}
+
 
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
   if (lua_isnoneornil(L, idx)) {

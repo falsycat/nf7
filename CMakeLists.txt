@@ -113,6 +113,7 @@ target_sources(nf7
     file/audio_context.cc
     file/audio_device.cc
     file/luajit_context.cc
+    file/luajit_inline_node.cc
     file/luajit_node.cc
     file/luajit_obj.cc
     file/node_imm.cc

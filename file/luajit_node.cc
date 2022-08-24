@@ -202,7 +202,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
       lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
       lua_pushstring(thL, p.first.c_str());
       nf7::luajit::PushValue(thL, p.second);
-      PushCaller(thL, caller);
+      nf7::luajit::PushNodeLambda(thL, caller, self);
       PushContextTable(ljq, thL);
       th->Resume(thL, 4);
     });
@@ -226,41 +226,6 @@ class Node::Lambda final : public nf7::Node::Lambda,
       log_->Warn("luajit execution error: "s+lua_tostring(L, -1));
       return;
     }
-  }
-
-  void PushCaller(lua_State* L, const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept {
-    constexpr auto kTypeName = "nf7::File/LuaJIT/Node::Owner";
-    struct D final {
-      std::weak_ptr<Lambda>              self;
-      std::shared_ptr<nf7::Node::Lambda> caller;
-    };
-    new (lua_newuserdata(L, sizeof(D))) D { .self = weak_from_this(), .caller = caller };
-
-    if (luaL_newmetatable(L, kTypeName)) {
-      lua_pushcfunction(L, [](auto L) {
-        const auto& d = *reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName));
-
-        auto self = d.self.lock();
-        if (!self) return luaL_error(L, "context expired");
-
-        std::string n = luaL_checkstring(L, 2);
-        auto        v = nf7::luajit::CheckValue(L, 3);
-
-        auto caller = d.caller;
-        caller->env().ExecSub(self, [self, caller, n, v]() mutable {
-          caller->Handle(n, std::move(v), self);
-        });
-        return 0;
-      });
-      lua_setfield(L, -2, "__call");
-
-      lua_pushcfunction(L, [](auto L) {
-        reinterpret_cast<D*>(luaL_checkudata(L, 1, kTypeName))->~D();
-        return 0;
-      });
-      lua_setfield(L, -2, "__gc");
-    }
-    lua_setmetatable(L, -2);
   }
 
   void PushContextTable(const std::shared_ptr<nf7::luajit::Queue>& ljq,

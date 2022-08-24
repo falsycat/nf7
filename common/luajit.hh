@@ -9,6 +9,7 @@
 
 #include <lua.hpp>
 
+#include "common/node.hh"
 #include "common/value.hh"
 
 
@@ -19,6 +20,9 @@ void PushImmEnv(lua_State*) noexcept;
 void PushValue(lua_State*, const nf7::Value&) noexcept;
 void PushVector(lua_State*, const nf7::Value::ConstVector&) noexcept;
 void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
+void PushNodeLambda(lua_State*,
+                    const std::shared_ptr<nf7::Node::Lambda>& callee,
+                    const std::weak_ptr<nf7::Node::Lambda>& caller) noexcept;
 
 std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
 std::optional<nf7::Value::ConstVector> ToVector(lua_State*, int) noexcept;
