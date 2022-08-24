@@ -95,8 +95,6 @@ class InlineNode final : public nf7::File, public nf7::DirItem, public nf7::Node
  private:
   nf7::Life<InlineNode> life_;
 
-  std::shared_ptr<std::mutex> mtx_;
-
   std::shared_ptr<nf7::LoggerRef> log_;
 
   nf7::GenericMemento<Data> mem_;
