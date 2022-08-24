@@ -18,6 +18,10 @@ class Ref final {
       const std::shared_ptr<nf7::luajit::Queue>& q, int idx) noexcept :
       ctx_(ctx), q_(q), idx_(idx) {
   }
+  Ref(const std::shared_ptr<nf7::Context>& ctx,
+      const std::shared_ptr<nf7::luajit::Queue>& q, lua_State* L) noexcept :
+      ctx_(ctx), q_(q), idx_(luaL_ref(L, LUA_REGISTRYINDEX)) {
+  }
   ~Ref() noexcept {
     q_->Push(ctx_, [idx = idx_](auto L) { luaL_unref(L, LUA_REGISTRYINDEX, idx); });
   }
@@ -25,6 +29,10 @@ class Ref final {
   Ref(Ref&&) = delete;
   Ref& operator=(const Ref&) = delete;
   Ref& operator=(Ref&&) = delete;
+
+  void PushSelf(lua_State* L) noexcept {
+    lua_rawgeti(L, LUA_REGISTRYINDEX, idx_);
+  }
 
   int index() const noexcept { return idx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return q_; }

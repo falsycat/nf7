@@ -30,7 +30,7 @@ lua_State* Thread::Init(lua_State* L) noexcept {
   th_ = lua_newthread(L);
   PushImmEnv(L);
   lua_setfenv(L, -2);
-  th_ref_.emplace(ctx_, ljq_, luaL_ref(L, LUA_REGISTRYINDEX));
+  th_ref_.emplace(ctx_, ljq_, L);
 
   state_ = kPaused;
   return th_;
@@ -195,7 +195,7 @@ static void GetLuaObjAndPush(
             if (th->ljq() != obj->ljq()) {
               throw nf7::Exception {"the object is built on other LuaJIT context"};
             }
-            lua_rawgeti(L, LUA_REGISTRYINDEX, obj->index());
+            obj->PushSelf(L);
             th->Resume(L, 1);
           } catch (nf7::Exception& e) {
             th->Resume(L, luajit::PushAll(L, nullptr, e.msg()));

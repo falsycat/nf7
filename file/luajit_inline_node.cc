@@ -140,11 +140,14 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
 
       // push function
       if (scr) {
-        luaL_loadstring(thL, scr->c_str());
+        if (0 != luaL_loadstring(thL, scr->c_str())) {
+          log_->Error("luajit parse error: "s+lua_tostring(L, -1));
+          return;
+        }
         lua_pushvalue(thL, -1);
-        func_.emplace(self, ljq, luaL_ref(thL, LUA_REGISTRYINDEX));
+        func_.emplace(self, ljq, thL);
       } else {
-        lua_rawgeti(thL, LUA_REGISTRYINDEX, func_->index());
+        func_->PushSelf(thL);
       }
 
       // push args
@@ -158,11 +161,11 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
         log_->Warn("LuaJIT queue changed, ctxtable is cleared");
       }
       if (ctxtable_) {
-        lua_rawgeti(thL, LUA_REGISTRYINDEX, ctxtable_->index());
+        ctxtable_->PushSelf(thL);
       } else {
         lua_createtable(thL, 0, 0);
         lua_pushvalue(thL, -1);
-        ctxtable_.emplace(self, ljq, luaL_ref(thL, LUA_REGISTRYINDEX));
+        ctxtable_.emplace(self, ljq, thL);
       }
 
       // start function

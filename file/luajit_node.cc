@@ -199,7 +199,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
 
     ljq->Push(self, [this, self, ljq, p = std::move(p), caller, handler, th](auto L) mutable {
       auto thL = th->Init(L);
-      lua_rawgeti(thL, LUA_REGISTRYINDEX, handler->index());
+      handler->PushSelf(thL);
       lua_pushstring(thL, p.first.c_str());
       nf7::luajit::PushValue(thL, p.second);
       nf7::luajit::PushNodeLambda(thL, caller, self);
@@ -236,10 +236,9 @@ class Node::Lambda final : public nf7::Node::Lambda,
     if (!ctxtable_) {
       lua_createtable(L, 0, 0);
       lua_pushvalue(L, -1);
-      const int idx = luaL_ref(L, LUA_REGISTRYINDEX);
-      ctxtable_.emplace(shared_from_this(), ljq, idx);
+      ctxtable_.emplace(shared_from_this(), ljq, L);
     } else {
-      lua_rawgeti(L, LUA_REGISTRYINDEX, ctxtable_->index());
+      ctxtable_->PushSelf(L);
     }
   }
 };
