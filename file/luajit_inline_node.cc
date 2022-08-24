@@ -141,12 +141,16 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
       // push function
       if (scr) {
         if (0 != luaL_loadstring(thL, scr->c_str())) {
-          log_->Error("luajit parse error: "s+lua_tostring(L, -1));
+          log_->Error("luajit parse error: "s+lua_tostring(thL, -1));
           return;
         }
         lua_pushvalue(thL, -1);
         func_.emplace(self, ljq, thL);
       } else {
+        if (!func_) {
+          log_->Error("last cache is broken");
+          return;
+        }
         func_->PushSelf(thL);
       }
 
