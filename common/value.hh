@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -120,6 +121,20 @@ class Value {
   const ConstTuple tuple() const { return get<Tuple>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
 
+  template <typename I>
+  I integer() const {
+    const auto ret = integer();
+    if constexpr (std::is_unsigned<I>::value) {
+      if (ret < 0) {
+        throw IncompatibleException("integer underflow");
+      }
+    } else {
+      if (ret != static_cast<Integer>(static_cast<I>(ret))) {
+        throw IncompatibleException("integer out of range");
+      }
+    }
+    return static_cast<I>(ret);
+  }
   const Value& tuple(size_t idx) const {
     auto& tup = *tuple();
     return idx < tup.size()? tup[idx].second:

@@ -1,12 +1,9 @@
 #include "common/luajit_thread.hh"
 #include "common/luajit_thread_lambda.hh"
-#include "common/luajit_thread_lock.hh"
 
 #include <chrono>
 #include <sstream>
 #include <tuple>
-
-#include "common/async_buffer.hh"
 
 
 namespace nf7::luajit {
@@ -121,13 +118,7 @@ static void PushMeta(lua_State* L) noexcept {
         th->env().ExecSub(th->ctx(), [th, L, id, iface = std::move(iface)]() {
           try {
             auto& f = th->env().GetFileOrThrow(static_cast<nf7::File::Id>(id));
-            if (iface == "buffer") {
-              Thread::Lock<nf7::AsyncBuffer>::AcquireAndPush(L, th, f, false);
-            } else if (iface == "exbuffer") {
-              Thread::Lock<nf7::AsyncBuffer>::AcquireAndPush(L, th, f, true);
-            } else if (iface == "lua") {
-              // WIP GetLuaObjAndPush(L, th, f);
-            } else if (iface == "node") {
+            if (iface == "node") {
               Thread::Lambda::CreateAndPush(L, th, f);
             } else {
               throw nf7::Exception {"unknown interface: "+iface};

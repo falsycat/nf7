@@ -45,10 +45,7 @@ target_sources(nf7
     nf7.hh
 
     common/aggregate_command.hh
-    common/async_buffer.hh
-    common/async_buffer_adaptor.hh
     common/audio_queue.hh
-    common/buffer.hh
     common/dir.hh
     common/dir_item.hh
     common/file_base.hh
@@ -74,7 +71,6 @@ target_sources(nf7
     common/gui_window.hh
     common/history.hh
     common/life.hh
-    common/lock.hh
     common/logger.hh
     common/logger_ref.hh
     common/luajit.hh
@@ -94,7 +90,6 @@ target_sources(nf7
     common/queue.hh
     common/sequencer.hh
     common/squashed_history.hh
-    common/task.hh
     common/thread.hh
     common/timed_queue.hh
     common/util_string.hh

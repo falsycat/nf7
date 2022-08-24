@@ -8,54 +8,48 @@
 
 #include "nf7.hh"
 
-#include "common/buffer.hh"
-
 
 namespace nf7 {
 
-class NativeFile final : public nf7::Buffer, public nf7::Context {
+class NativeFile final : public nf7::Context {
  public:
+  class Exception final : public nf7::Exception {
+    using nf7::Exception::Exception;
+  };
+
   enum Flag : uint8_t {
-    kCreateIf  = 1 << 0,
-    kExclusive = 1 << 1,
+    kRead  = 1 << 0,
+    kWrite = 1 << 1,
   };
   using Flags = uint8_t;
 
   NativeFile() = delete;
-  NativeFile(nf7::File&                   f,
-             const std::filesystem::path& path,
-             Buffer::Flags                flags,
-             Flags                        nflags) noexcept :
-      Context(f.env(), f.id()), path_(path), flags_(flags), nflags_(nflags) {
+  NativeFile(nf7::Env& env, nf7::File::Id id,
+             const std::filesystem::path& path, Flags flags) :
+      Context(env, id), path_(path), flags_(flags) {
+    Init();
   }
+  ~NativeFile() noexcept;
   NativeFile(const NativeFile&) = delete;
   NativeFile(NativeFile&&) = delete;
   NativeFile& operator=(const NativeFile&) = delete;
   NativeFile& operator=(NativeFile&&) = delete;
 
-  void Lock() override;
-  void Unlock() override;
-  size_t Read(size_t offset, uint8_t* buf, size_t size) override;
-  size_t Write(size_t offset, const uint8_t* buf, size_t size) override;
-  size_t Truncate(size_t size) override;
+  size_t Read(size_t offset, uint8_t* buf, size_t size);
+  size_t Write(size_t offset, const uint8_t* buf, size_t size);
+  size_t Truncate(size_t size);
 
-  size_t size() const override;
-  Buffer::Flags flags() const noexcept override {
+  Flags flags() const noexcept {
     return flags_;
   }
 
-  void CleanUp() noexcept override;
-  void Abort() noexcept override;
-
-  size_t GetMemoryUsage() const noexcept override;
-  std::string GetDescription() const noexcept override;
-
  private:
   const std::filesystem::path path_;
-  const Buffer::Flags     flags_;
-  const NativeFile::Flags nflags_;
+  const Flags flags_;
 
-  std::optional<uintptr_t> handle_;
+  uintptr_t handle_;
+
+  void Init();
 };
 
 }  // namespace nf7

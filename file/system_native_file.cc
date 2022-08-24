@@ -1,6 +1,5 @@
 #include <chrono>
 #include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -12,161 +11,265 @@
 #include <imgui.h>
 #include <imgui_stdlib.h>
 #include <yas/serialize.hpp>
-#include <yas/types/std/chrono.hpp>
-#include <yas/types/std/string.hpp>
 
 #include "nf7.hh"
 
-#include "common/async_buffer.hh"
-#include "common/async_buffer_adaptor.hh"
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
+#include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_popup.hh"
 #include "common/gui_window.hh"
+#include "common/life.hh"
 #include "common/native_file.hh"
+#include "common/node.hh"
 #include "common/ptr_selector.hh"
-#include "common/queue.hh"
+#include "common/thread.hh"
 #include "common/yas_std_filesystem.hh"
 
 
 namespace nf7 {
 namespace {
 
-class NativeFile final : public File,
-    public nf7::DirItem {
+class NativeFile final : public nf7::File,
+    public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<NativeFile> kType = {
-    "System/NativeFile", {"nf7::AsyncBuffer", "nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<NativeFile> kType = {
+    "System/NativeFile", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Reads/Writes a file placed on native filesystem.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::AsyncBuffer");
-    ImGui::Bullet(); ImGui::TextUnformatted("basepath is environment native path");
+    ImGui::TextUnformatted("Read/Write a file placed on native filesystem.");
+    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
   }
 
-  NativeFile(Env& env, const std::filesystem::path& path = "", std::string_view mode = "") noexcept :
+  class Lambda;
+
+  struct SharedData final {
+    std::optional<nf7::NativeFile> nfile;
+    std::atomic<bool> refresh;
+  };
+  struct Runner final {
+    struct Task {
+      std::shared_ptr<nf7::Node::Lambda> callee;
+      std::shared_ptr<nf7::Node::Lambda> caller;
+      std::function<nf7::Value(const std::shared_ptr<SharedData>&)> func;
+
+      std::filesystem::path  npath;
+      nf7::NativeFile::Flags flags;
+    };
+
+    Runner(const std::shared_ptr<SharedData>& shared) noexcept :
+        shared_(shared) {
+    }
+    void operator()(Task&&) noexcept;
+
+   private:
+    std::shared_ptr<SharedData> shared_;
+  };
+  using Thread = nf7::Thread<Runner, Runner::Task>;
+
+  struct Data final {
+    std::filesystem::path npath;
+    std::string mode;
+  };
+
+  NativeFile(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
-      nf7::DirItem(
-          nf7::DirItem::kTooltip |
-          nf7::DirItem::kWidget),
-      npath_(path), mode_(mode) {
+      nf7::DirItem(nf7::DirItem::kWidget),
+      life_(*this),
+      shared_(std::make_shared<SharedData>()),
+      th_(std::make_shared<Thread>(*this, Runner {shared_})),
+      mem_(std::move(data)),
+      config_popup_(*this) {
+    mem_.onRestore = [this]() { Touch(); };
+    mem_.onCommit  = [this]() { Touch(); };
   }
 
-  NativeFile(Env& env, Deserializer& ar) : NativeFile(env) {
-    ar(npath_, mode_, lastmod_);
+  NativeFile(nf7::Env& env, nf7::Deserializer&) : NativeFile(env) {
+    // TODO
   }
-  void Serialize(Serializer& ar) const noexcept override {
-    ar(npath_, mode_, lastmod_);
+  void Serialize(nf7::Serializer&) const noexcept override {
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
-    return std::make_unique<NativeFile>(env, npath_, mode_);
+  std::unique_ptr<nf7::File> Clone(Env& env) const noexcept override {
+    return std::make_unique<NativeFile>(env, Data {data()});
+  }
+
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
+
+  std::span<const std::string> GetInputs() const noexcept override {
+    static const std::vector<std::string> kInputs = {"command"};
+    return kInputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    static const std::vector<std::string> kOutputs = {"result"};
+    return kOutputs;
   }
 
   void Update() noexcept override;
-  void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
 
-  void Handle(const Event& ev) noexcept override {
-    switch (ev.type) {
-    case Event::kAdd:
-      Reset();
-      return;
-    case Event::kRemove:
-      buf_ = nullptr;
-      return;
-    default:
-      return;
-    }
-  }
-
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::AsyncBuffer, nf7::DirItem>(t).Select(this, buf_.get());
+    return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:
-  std::shared_ptr<nf7::AsyncBufferAdaptor> buf_;
+  nf7::Life<NativeFile> life_;
 
-  // persistent params
-  std::filesystem::path npath_;
-  std::string mode_;
+  std::shared_ptr<SharedData> shared_;
+  std::shared_ptr<Thread>     th_;
+
   std::filesystem::file_time_type lastmod_;
 
+  nf7::GenericMemento<Data> mem_;
 
-  void Reset() noexcept {
-    bool exlock = false;
-    nf7::Buffer::Flags flags = 0;
-    for (auto c : mode_) {
-      if (c == 'x') exlock = true;
-      flags |=
-          c == 'r'? nf7::Buffer::kRead:
-          c == 'w'? nf7::Buffer::kWrite: 0;
+  const Data& data() const noexcept { return mem_.data(); }
+  Data& data() noexcept { return mem_.data(); }
+
+
+  // GUI popup
+  struct ConfigPopup final : private nf7::gui::Popup {
+   public:
+    ConfigPopup(NativeFile& f) noexcept :
+        nf7::gui::Popup("ConfigPopup"), f_(&f) {
     }
-    auto buf = std::make_shared<
-        nf7::NativeFile>(*this, env().npath()/npath_, flags, exlock);
-    buf_ = std::make_shared<nf7::AsyncBufferAdaptor>(buf, buf);
+
+    void Open() noexcept {
+      npath_ = f_->data().npath.generic_string();
+      nf7::gui::Popup::Open();
+    }
+    void Update() noexcept;
+
+   private:
+    NativeFile* const f_;
+
+    std::string npath_;
+    bool read_, write_;
+  } config_popup_;
+};
+
+class NativeFile::Lambda final : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<NativeFile::Lambda> {
+ public:
+  Lambda(NativeFile& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+      nf7::Node::Lambda(f, parent), f_(f.life_) {
+  }
+
+  void Handle(std::string_view, const nf7::Value& v,
+              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+  try {
+    f_.EnforceAlive();
+
+    const auto type = v.tuple("type").string();
+    if (type == "read") {
+      const auto offset = v.tuple("offset").integer<size_t>();
+      const auto size   = v.tuple("size").integer<size_t>();
+      Push(caller, [offset, size](auto& shared) {
+        std::vector<uint8_t> buf;
+        buf.resize(size);
+        const auto actual = shared->nfile->Read(offset, buf.data(), size);
+        buf.resize(actual);
+        return nf7::Value {std::move(buf)};
+      });
+    } else if (type == "write") {
+      const auto offset = v.tuple("offset").integer<size_t>();
+      const auto buf    = v.tuple("buf").vector();
+      Push(caller, [offset, buf](auto& shared) {
+        const auto ret = shared->nfile->Write(offset, buf->data(), buf->size());
+        return nf7::Value {static_cast<nf7::Value::Integer>(ret)};
+      });
+    } else if (type == "truncate") {
+      const auto size = v.tuple("size").integer<size_t>();
+      Push(caller, [size](auto& shared) {
+        shared->nfile->Truncate(size);
+        return nf7::Value::Pulse {};
+      });
+    } else {
+      throw nf7::Exception {"unknown command type: "+type};
+    }
+  } catch (nf7::Exception&) {
+    // TODO log
+  }
+
+ private:
+  nf7::Life<NativeFile>::Ref f_;
+
+  void Push(const std::shared_ptr<nf7::Node::Lambda>& caller, auto&& f) noexcept {
+    const auto& mode = f_->data().mode;
+    nf7::NativeFile::Flags flags = 0;
+    if (std::string::npos != mode.find('r')) flags |= nf7::NativeFile::kRead;
+    if (std::string::npos != mode.find('w')) flags |= nf7::NativeFile::kWrite;
+
+    auto self = shared_from_this();
+    f_->th_->Push(self, NativeFile::Runner::Task {
+      .callee = self,
+      .caller = caller,
+      .func   = std::move(f),
+      .npath  = f_->data().npath,
+      .flags  = flags,
+    });
   }
 };
+std::shared_ptr<nf7::Node::Lambda> NativeFile::CreateLambda(
+    const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
+  return std::make_shared<NativeFile::Lambda>(*this, parent);
+}
+void NativeFile::Runner::operator()(Task&& t) noexcept
+try {
+  auto callee = t.callee;
+  auto caller = t.caller;
+
+  if (shared_->refresh.exchange(false) || !shared_->nfile) {
+    shared_->nfile.emplace(callee->env(), callee->initiator(), t.npath, t.flags);
+  }
+  auto ret = t.func(shared_);
+  callee->env().ExecSub(callee, [callee, caller, ret = std::move(ret)]() {
+    caller->Handle("result", ret, callee);
+  });
+} catch (nf7::Exception&) {
+  // TODO log
+}
+
 
 void NativeFile::Update() noexcept {
   // file update check
   try {
-    const auto lastmod = std::filesystem::last_write_time(env().npath()/npath_);
+    const auto npath   = env().npath() / data().npath;
+    const auto lastmod = std::filesystem::last_write_time(npath);
     if (std::exchange(lastmod_, lastmod) < lastmod) {
       Touch();
     }
   } catch (std::filesystem::filesystem_error&) {
   }
 }
-void NativeFile::UpdateTooltip() noexcept {
-  ImGui::Text("basepath: %s", env().npath().generic_string().c_str());
-  ImGui::Text("path    : %s", npath_.generic_string().c_str());
-  ImGui::Text("mode    : %s", mode_.c_str());
-}
 void NativeFile::UpdateWidget() noexcept {
   ImGui::TextUnformatted("System/NativeFile");
 
-  if (ImGui::Button("change referencee")) {
-    ImGui::OpenPopup("ReplaceReferenceePopup");
+  if (ImGui::Button("config")) {
+    config_popup_.Open();
   }
-
-  if (ImGui::BeginPopup("ReplaceReferenceePopup")) {
-    static std::string path;
-    static bool flag_exlock;
-    static bool flag_readable;
-    static bool flag_writeable;
-
-    ImGui::TextUnformatted("System/NativeFile: config");
-    if (ImGui::IsWindowAppearing()) {
-      path           = npath_.generic_string();
-      flag_exlock    = mode_.find('x') != std::string::npos;
-      flag_readable  = mode_.find('r') != std::string::npos;
-      flag_writeable = mode_.find('w') != std::string::npos;
-    }
-
-    ImGui::InputText("path", &path);
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip(
-          "path to the native file system (base: '%s')",
-          env().npath().generic_string().c_str());
-    }
-    ImGui::Checkbox("exclusive lock", &flag_exlock);
-    ImGui::Checkbox("readable",       &flag_readable);
-    ImGui::Checkbox("writeable",      &flag_writeable);
+  config_popup_.Update();
+}
+void NativeFile::ConfigPopup::Update() noexcept {
+  if (nf7::gui::Popup::Begin()) {
+    ImGui::InputText("path", &npath_);
+    ImGui::Checkbox("read", &read_);
+    ImGui::Checkbox("write", &write_);
 
     if (ImGui::Button("ok")) {
       ImGui::CloseCurrentPopup();
 
-      npath_ = path;
-      mode_  = "";
-      if (flag_exlock)    mode_ += 'x';
-      if (flag_readable)  mode_ += 'r';
-      if (flag_writeable) mode_ += 'w';
+      auto& d = f_->data();
+      d.npath = npath_;
 
-      auto ctx = std::make_shared<nf7::GenericContext>(*this, "resetting native file handle");
-      env().ExecMain(ctx, [this]() { Reset(); Touch(); });
+      d.mode = "";
+      if (read_)  d.mode += "r";
+      if (write_) d.mode += "w";
+
+      f_->mem_.Commit();
     }
-
-    if (!std::filesystem::exists(env().npath()/path)) {
-      ImGui::Bullet(); ImGui::TextUnformatted("target file seems to be missing...");
+    if (!std::filesystem::exists(f_->env().npath()/npath_)) {
+      ImGui::Bullet();
+      ImGui::TextUnformatted("file not found");
     }
     ImGui::EndPopup();
   }
