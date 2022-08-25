@@ -92,10 +92,11 @@ class NativeFile final : public nf7::FileBase,
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  NativeFile(nf7::Env& env, nf7::Deserializer&) : NativeFile(env) {
-    // TODO
+  NativeFile(nf7::Env& env, nf7::Deserializer& ar) : NativeFile(env) {
+    ar(data().npath, data().mode);
   }
-  void Serialize(nf7::Serializer&) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
+    ar(data().npath, data().mode);
   }
   std::unique_ptr<nf7::File> Clone(Env& env) const noexcept override {
     return std::make_unique<NativeFile>(env, Data {data()});
@@ -143,6 +144,10 @@ class NativeFile final : public nf7::FileBase,
 
     void Open() noexcept {
       npath_ = f_->data().npath.generic_string();
+
+      const auto& mode = f_->data().mode;
+      read_  = std::string::npos != mode.find('r');
+      write_ = std::string::npos != mode.find('w');
       nf7::gui::Popup::Open();
     }
     void Update() noexcept;
