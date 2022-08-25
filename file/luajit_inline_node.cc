@@ -243,6 +243,8 @@ void InlineNode::Handle(const Event& ev) noexcept {
 void InlineNode::UpdateMenu() noexcept {
 }
 void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
+  const auto em = ImGui::GetFontSize();
+
   ImGui::TextUnformatted("LuaJIT/InlineNode");
 
   if (ImNodes::BeginInputSlot("in", 1)) {
@@ -251,7 +253,7 @@ void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
     ImNodes::EndSlot();
   }
   ImGui::SameLine();
-  ImGui::InputTextMultiline("##script", &data().script);
+  ImGui::InputTextMultiline("##script", &data().script, {24*em, 8*em});
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
