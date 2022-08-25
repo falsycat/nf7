@@ -51,7 +51,6 @@ class NativeFile final : public nf7::FileBase,
 
     nf7::LoggerRef log;
     std::optional<nf7::NativeFile> nfile;
-    std::atomic<bool> refresh;
   };
   struct Runner final {
     struct Task {
@@ -61,6 +60,8 @@ class NativeFile final : public nf7::FileBase,
 
       std::filesystem::path  npath;
       nf7::NativeFile::Flags flags;
+
+      std::function<void(const std::shared_ptr<SharedData>&)> preproc;
     };
 
     Runner(const std::shared_ptr<SharedData>& shared) noexcept :
@@ -79,8 +80,10 @@ class NativeFile final : public nf7::FileBase,
   };
 
   NativeFile(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env),
-      nf7::DirItem(nf7::DirItem::kWidget),
+      nf7::FileBase(kType, env, {&config_popup_}),
+      nf7::DirItem(nf7::DirItem::kMenu |
+                   nf7::DirItem::kTooltip |
+                   nf7::DirItem::kWidget),
       life_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
@@ -88,8 +91,8 @@ class NativeFile final : public nf7::FileBase,
       config_popup_(*this) {
     nf7::FileBase::Install(shared_->log);
 
-    mem_.onRestore = [this]() { Touch(); };
-    mem_.onCommit  = [this]() { Touch(); };
+    mem_.onRestore = [this]() { Refresh(); Touch(); };
+    mem_.onCommit  = [this]() { Refresh(); Touch(); };
   }
 
   NativeFile(nf7::Env& env, nf7::Deserializer& ar) : NativeFile(env) {
@@ -115,6 +118,8 @@ class NativeFile final : public nf7::FileBase,
   }
 
   void Update() noexcept override;
+  void UpdateMenu() noexcept override;
+  void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -136,7 +141,8 @@ class NativeFile final : public nf7::FileBase,
 
 
   // GUI popup
-  struct ConfigPopup final : private nf7::gui::Popup {
+  struct ConfigPopup final :
+      public nf7::FileBase::Feature, private nf7::gui::Popup {
    public:
     ConfigPopup(NativeFile& f) noexcept :
         nf7::gui::Popup("ConfigPopup"), f_(&f) {
@@ -150,7 +156,7 @@ class NativeFile final : public nf7::FileBase,
       write_ = std::string::npos != mode.find('w');
       nf7::gui::Popup::Open();
     }
-    void Update() noexcept;
+    void Update() noexcept override;
 
    private:
     NativeFile* const f_;
@@ -158,6 +164,13 @@ class NativeFile final : public nf7::FileBase,
     std::string npath_;
     bool read_, write_;
   } config_popup_;
+
+
+  void Refresh() noexcept {
+    Runner::Task t;
+    t.preproc = [](auto& shared) { shared->nfile = std::nullopt; };
+    th_->Push(std::make_shared<nf7::GenericContext>(*this), std::move(t));
+  }
 };
 
 class NativeFile::Lambda final : public nf7::Node::Lambda,
@@ -216,11 +229,12 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
 
     auto self = shared_from_this();
     f_->th_->Push(self, NativeFile::Runner::Task {
-      .callee = self,
-      .caller = caller,
-      .func   = std::move(f),
-      .npath  = f_->data().npath,
-      .flags  = flags,
+      .callee  = self,
+      .caller  = caller,
+      .func    = std::move(f),
+      .npath   = f_->data().npath,
+      .flags   = flags,
+      .preproc = {},
     });
   }
 };
@@ -230,16 +244,20 @@ std::shared_ptr<nf7::Node::Lambda> NativeFile::CreateLambda(
 }
 void NativeFile::Runner::operator()(Task&& t) noexcept
 try {
+  if (t.preproc) {
+    t.preproc(shared_);
+  }
   auto callee = t.callee;
   auto caller = t.caller;
-
-  if (shared_->refresh.exchange(false) || !shared_->nfile) {
-    shared_->nfile.emplace(callee->env(), callee->initiator(), t.npath, t.flags);
+  if (callee && caller) {
+    if (!shared_->nfile) {
+      shared_->nfile.emplace(callee->env(), callee->initiator(), t.npath, t.flags);
+    }
+    auto ret = t.func(shared_);
+    callee->env().ExecSub(callee, [callee, caller, ret = std::move(ret)]() {
+      caller->Handle("result", ret, callee);
+    });
   }
-  auto ret = t.func(shared_);
-  callee->env().ExecSub(callee, [callee, caller, ret = std::move(ret)]() {
-    caller->Handle("result", ret, callee);
-  });
 } catch (nf7::Exception& e) {
   shared_->log.Error("operation failure: "+e.msg());
 }
@@ -257,6 +275,15 @@ void NativeFile::Update() noexcept {
     }
   } catch (std::filesystem::filesystem_error&) {
   }
+}
+void NativeFile::UpdateMenu() noexcept {
+  if (ImGui::MenuItem("config")) {
+    config_popup_.Open();
+  }
+}
+void NativeFile::UpdateTooltip() noexcept {
+  ImGui::Text("npath: %s", data().npath.generic_string().c_str());
+  ImGui::Text("mode : %s", data().mode.c_str());
 }
 void NativeFile::UpdateWidget() noexcept {
   ImGui::TextUnformatted("System/NativeFile");
