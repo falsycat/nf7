@@ -42,11 +42,16 @@ class FileHolder : public nf7::FileBase::Feature {
   FileHolder& operator=(const FileHolder&) = delete;
   FileHolder& operator=(FileHolder&&) = delete;
 
-  void Serialize(auto& ar) const {
+  void Serialize(nf7::Serializer& ar) const {
     ar(entity_);
   }
-  void Deserialize(auto& ar) {
-    ar(entity_);
+  void Deserialize(nf7::Deserializer& ar) {
+    try {
+      ar(entity_);
+    } catch (nf7::Exception&) {
+      entity_ = std::monostate {};
+      ar.env().Throw(std::current_exception());
+    }
     SetUp();
   }
 

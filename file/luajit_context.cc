@@ -33,12 +33,12 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  LuaContext(Env& env) :
+  LuaContext(nf7::Env& env) :
       File(kType, env), DirItem(DirItem::kTooltip) {
     q_ = std::make_shared<Queue>(*this);
   }
 
-  LuaContext(Env& env, Deserializer&) : LuaContext(env) {
+  LuaContext(nf7::Deserializer& ar) : LuaContext(ar.env()) {
   }
   void Serialize(Serializer&) const noexcept override {
   }

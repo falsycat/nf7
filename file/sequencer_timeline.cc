@@ -67,7 +67,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   using ItemId = uint64_t;
 
-  TL(Env& env,
+  TL(nf7::Env& env,
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
@@ -87,18 +87,18 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     history_.Clear();
   }
 
-  TL(Env& env, Deserializer& ar) : TL(env) {
-    ar(layers_, seq_inputs_, seq_outputs_, win_, tl_);
+  TL(nf7::Deserializer& ar) : TL(ar.env()) {
+    ar(seq_inputs_, seq_outputs_, win_, tl_, layers_);
     AssignId();
     ApplySeqSocketChanges();
   }
-  void Serialize(Serializer& ar) const noexcept override {
-    ar(layers_, seq_inputs_, seq_outputs_, win_, tl_);
+  void Serialize(nf7::Serializer& ar) const noexcept override {
+    ar(seq_inputs_, seq_outputs_, win_, tl_, layers_);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override;
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override;
 
-  std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::span<const std::string> GetInputs() const noexcept override {
     return inputs_;
   }
@@ -106,7 +106,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     return outputs_;
   }
 
-  void Handle(const Event& ev) noexcept;
+  void Handle(const nf7::File::Event& ev) noexcept;
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateWidget() noexcept override;
@@ -117,7 +117,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   void UpdateParamPanelWindow() noexcept;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
@@ -281,13 +281,13 @@ class TL::Item final : nf7::Env::Watcher {
   Item& operator=(Item&&) = delete;
 
   void Save(auto& ar) {
-    ar(id_, file_, timing_);
+    ar(id_, timing_, file_);
   }
-  static std::unique_ptr<TL::Item> Load(auto& ar) noexcept {
+  static std::unique_ptr<TL::Item> Load(auto& ar) {
     ItemId id;
     std::unique_ptr<nf7::File> file;
     Timing timing;
-    ar(id, file, timing);
+    ar(id, timing, file);
     return std::make_unique<TL::Item>(id, std::move(file), timing);
   }
   std::unique_ptr<TL::Item> Clone(nf7::Env& env, ItemId id) const {
@@ -396,7 +396,7 @@ class TL::Layer final {
   void Save(auto& ar) {
     ar(items_, enabled_, height_);
   }
-  static std::unique_ptr<TL::Layer> Load(auto& ar) noexcept {
+  static std::unique_ptr<TL::Layer> Load(auto& ar) {
     std::vector<std::unique_ptr<nf7::TL::Item>> items;
     bool enabled;
     float height;
@@ -1645,7 +1645,40 @@ struct serializer<
   }
   template <typename Archive>
   static Archive& load(Archive& ar, std::unique_ptr<nf7::TL::Item>& item) {
-    item = nf7::TL::Item::Load(ar);
+    try {
+      item = nf7::TL::Item::Load(ar);
+    } catch (nf7::Exception&) {
+      item = nullptr;
+      ar.env().Throw(std::current_exception());
+    }
+    return ar;
+  }
+};
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
+    std::vector<std::unique_ptr<nf7::TL::Item>>> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive& ar, const std::vector<std::unique_ptr<nf7::TL::Item>>& v) {
+    ar(static_cast<uint64_t>(v.size()));
+    for (auto& item : v) {
+      ar(item);
+    }
+    return ar;
+  }
+  template <typename Archive>
+  static Archive& load(Archive& ar, std::vector<std::unique_ptr<nf7::TL::Item>>& v) {
+    uint64_t size;
+    ar(size);
+    v.resize(size);
+    for (auto& item : v) {
+      ar(item);
+    }
+    v.erase(std::remove(v.begin(), v.end(), nullptr), v.end());
     return ar;
   }
 };

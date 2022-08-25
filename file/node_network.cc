@@ -72,10 +72,10 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   using ItemId   = uint64_t;
   using ItemList = std::vector<std::unique_ptr<Item>>;
 
-  Network(Env& env,
-          const gui::Window* win   = nullptr,
-          ItemList&&         items = {},
-          NodeLinkStore&&    links = {}) :
+  Network(nf7::Env& env,
+          const gui::Window*   win   = nullptr,
+          ItemList&&           items = {},
+          nf7::NodeLinkStore&& links = {}) :
       nf7::FileBase(kType, env, {&add_popup_, &socket_popup_}),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
@@ -93,14 +93,14 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
     history_.Clear();
   }
 
-  Network(Env& env, Deserializer& ar) : Network(env) {
-    ar(win_, items_, links_, canvas_, inputs_, outputs_);
+  Network(nf7::Deserializer& ar) : Network(ar.env()) {
+    ar(win_, links_, canvas_, inputs_, outputs_, items_);
     Sanitize();
   }
-  void Serialize(Serializer& ar) const noexcept override {
-    ar(win_, items_, links_, canvas_, inputs_, outputs_);
+  void Serialize(nf7::Serializer& ar) const noexcept override {
+    ar(win_, links_, canvas_, inputs_, outputs_, items_);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<File> Clone(nf7::Env& env) const noexcept override {
     ItemList items;
     items.reserve(items_.size());
     for (const auto& item : items_) {
@@ -120,8 +120,8 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   void UpdateWidget() noexcept override;
   void UpdateNode(Node::Editor&) noexcept override;
 
-  std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
   std::span<const std::string> GetInputs() const noexcept override {
     return inputs_;
@@ -266,7 +266,7 @@ class Network::Item final {
       id_(id), file_(std::move(file)) {
     Initialize();
   }
-  Item(Env& env, const Item& src) noexcept :
+  Item(nf7::Env& env, const Item& src) noexcept :
       id_(src.id_), file_(src.file_->Clone(env)), pos_(src.pos_), select_(src.select_) {
     Initialize();
   }
@@ -276,13 +276,13 @@ class Network::Item final {
 
   explicit Item(Deserializer& ar)
   try {
-    ar(id_, file_, pos_, select_);
+    ar(id_, pos_, select_, file_);
     Initialize();
   } catch (std::exception&) {
     throw DeserializeException("failed to deserialize Node/Network item");
   }
   void Serialize(Serializer& ar) {
-    ar(id_, file_, pos_, select_);
+    ar(id_, pos_, select_, file_);
   }
 
   void Attach(Network& owner) noexcept;
@@ -703,11 +703,11 @@ class Network::Initiator final : public nf7::File,
   Initiator(nf7::Env& env) noexcept : File(kType, env) {
   }
 
-  Initiator(nf7::Env& env, Deserializer&) : Initiator(env) {
+  Initiator(nf7::Deserializer& ar) : Initiator(ar.env()) {
   }
-  void Serialize(Serializer&) const noexcept override {
+  void Serialize(nf7::Serializer&) const noexcept override {
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Initiator>(env);
   }
 
@@ -741,7 +741,7 @@ class Network::Initiator final : public nf7::File,
   InternalNode::Flags flags() const noexcept override {
     return InternalNode::kInputHandler;
   }
-  File::Interface* interface(const std::type_info& t) noexcept {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept {
     return nf7::InterfaceSelector<nf7::Node>(t).Select(this);
   }
 };
@@ -760,17 +760,17 @@ class Network::Terminal : public nf7::File,
     std::string name;
   };
 
-  Terminal(Env& env, Data&& data = {}) noexcept :
+  Terminal(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
       life_(*this), mem_(std::move(data)) {
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Terminal(nf7::Env& env, Deserializer& ar) : Terminal(env) {
+  Terminal(nf7::Deserializer& ar) : Terminal(ar.env()) {
     ar(data().type, data().name);
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(data().type, data().name);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
@@ -1323,7 +1323,40 @@ struct serializer<
   }
   template <typename Archive>
   static Archive& load(Archive& ar, std::unique_ptr<nf7::Network::Item>& item) {
-    item = std::make_unique<nf7::Network::Item>(ar);
+    try {
+      item = std::make_unique<nf7::Network::Item>(ar);
+    } catch (nf7::Exception&) {
+      item = nullptr;
+      ar.env().Throw(std::current_exception());
+    }
+    return ar;
+  }
+};
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
+    std::vector<std::unique_ptr<nf7::Network::Item>>> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive& ar, const std::vector<std::unique_ptr<nf7::Network::Item>>& v) {
+    ar(static_cast<uint64_t>(v.size()));
+    for (auto& item : v) {
+      ar(item);
+    }
+    return ar;
+  }
+  template <typename Archive>
+  static Archive& load(Archive& ar, std::vector<std::unique_ptr<nf7::Network::Item>>& v) {
+    uint64_t size;
+    ar(size);
+    v.resize(size);
+    for (auto& item : v) {
+      ar(item);
+    }
+    v.erase(std::remove(v.begin(), v.end(), nullptr), v.end());
     return ar;
   }
 };

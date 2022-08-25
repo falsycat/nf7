@@ -54,7 +54,7 @@ class Ref final : public nf7::FileBase, public nf7::Node {
     std::vector<std::string> outputs;
   };
 
-  Ref(Env& env, Data&& data = {}) noexcept :
+  Ref(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
@@ -65,18 +65,18 @@ class Ref final : public nf7::FileBase, public nf7::Node {
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Ref(Env& env, Deserializer& ar) : Ref(env) {
+  Ref(nf7::Deserializer& ar) : Ref(ar.env()) {
     ar(data().target, data().inputs, data().outputs);
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(data().target, data().inputs, data().outputs);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Ref>(env, Data {data()});
   }
 
-  std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>&) noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::span<const std::string> GetInputs() const noexcept override {
     return data().inputs;
   }
@@ -85,9 +85,9 @@ class Ref final : public nf7::FileBase, public nf7::Node {
   }
 
   void Update() noexcept override;
-  void UpdateNode(Node::Editor&) noexcept override;
+  void UpdateNode(nf7::Node::Editor&) noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 

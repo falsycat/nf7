@@ -23,7 +23,6 @@ set(NF7_CXX_FLAGS
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
-add_subdirectory(tool)
 
 
 # ---- application ----
@@ -40,6 +39,7 @@ target_compile_definitions(nf7
 )
 target_sources(nf7
   PRIVATE
+    init.hh
     main.cc
     nf7.cc
     nf7.hh
@@ -135,14 +135,3 @@ target_link_libraries(nf7
     source_location
     yas
 )
-
-# ---- resource compile ----
-set(NF7_DEFAULT_ROOT_INC "${NF7_GENERATED_INCLUDE_DIR}/root.nf7.inc")
-add_custom_command(
-  OUTPUT ${NF7_DEFAULT_ROOT_INC}
-  DEPENDS nf7-init
-  COMMAND $<TARGET_FILE:nf7-init> > ${NF7_DEFAULT_ROOT_INC}
-  COMMENT "generating root.nf7..."
-  VERBATIM
-)
-target_sources(nf7 PRIVATE ${NF7_DEFAULT_ROOT_INC})

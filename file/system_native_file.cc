@@ -95,13 +95,13 @@ class NativeFile final : public nf7::FileBase,
     mem_.onCommit  = [this]() { Refresh(); Touch(); };
   }
 
-  NativeFile(nf7::Env& env, nf7::Deserializer& ar) : NativeFile(env) {
+  NativeFile(nf7::Deserializer& ar) : NativeFile(ar.env()) {
     ar(data().npath, data().mode);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(data().npath, data().mode);
   }
-  std::unique_ptr<nf7::File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<NativeFile>(env, Data {data()});
   }
 

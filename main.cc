@@ -24,22 +24,18 @@
 // Include glfw lastly to prevent conflict with windows.h.
 #include <GLFW/glfw3.h>
 
+#include "init.hh"
+
 
 using namespace nf7;
 using namespace std::literals;
 
 class Env final : public nf7::Env {
  public:
-  static constexpr auto kFileName = "root.nf7";
-  static constexpr char kDefaultRoot[] = {
-#   include "generated/root.nf7.inc"
-  };
-
+  static constexpr auto   kFileName    = "root.nf7";
   static constexpr size_t kSubTaskUnit = 64;
 
   Env() noexcept : nf7::Env(std::filesystem::current_path()) {
-    ::Env::Push(*this);
-
     // start threads
     main_thread_ = std::thread([this]() { MainThread(); });
     async_threads_.resize(std::max<size_t>(std::thread::hardware_concurrency(), 2));
@@ -48,22 +44,16 @@ class Env final : public nf7::Env {
     }
 
     // deserialize
-    try {
-      if (!std::filesystem::exists(kFileName)) {
-        std::ofstream of(kFileName, std::ios::binary);
-        if (!of) throw Exception("failed to open native file: "s+kFileName);
-        of.write(kDefaultRoot, sizeof(kDefaultRoot));
-        of.flush();
-        if (!of) throw Exception("failed to write to native file: "s+kFileName);
-      }
+    if (!std::filesystem::exists(kFileName)) {
+      root_ = CreateRoot(*this);
+      root_->MakeAsRoot();
+    } else {
       try {
-        yas::load<yas::file|yas::binary>("root.nf7", root_);
+        nf7::Deserializer::Load(*this, kFileName, root_);
         root_->MakeAsRoot();
-      } catch (std::exception& e) {
-        throw Exception("failed to read: "s+kFileName+" ("+e.what()+")");
+      } catch (nf7::Exception&) {
+        Panic();
       }
-    } catch (Exception&) {
-      Panic();
     }
   }
   ~Env() noexcept {
@@ -81,8 +71,6 @@ class Env final : public nf7::Env {
 
     async_.Notify();
     for (auto& th : async_threads_) th.join();
-
-    ::Env::Pop();
   }
 
   void ExecMain(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
@@ -112,9 +100,14 @@ class Env final : public nf7::Env {
   }
 
   void Save() noexcept override {
-    yas::file_ostream os(kFileName, yas::file_trunc);
-    yas::binary_oarchive<yas::file_ostream, yas::binary> oa(os);
-    oa & root_;
+    try {
+      nf7::Serializer::Save(kFileName, root_);
+    } catch (nf7::Exception&) {
+      Panic();
+    }
+  }
+  void Throw(std::exception_ptr&& eptr) noexcept override {
+    Panic(std::move(eptr));
   }
 
   void Update() noexcept {

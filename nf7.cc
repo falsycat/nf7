@@ -18,8 +18,6 @@ using namespace std::literals;
 
 namespace nf7 {
 
-static std::vector<Env*> env_stack_;
-
 // static variable in function ensures that entity is initialized before using
 static inline auto& registry_() noexcept {
   static std::map<std::string, const File::TypeInfo*> registry_;
@@ -246,16 +244,6 @@ Context::Context(Env& env, File::Id initiator, const std::shared_ptr<Context>& p
 Context::~Context() noexcept {
 }
 
-void Env::Push(Env& env) noexcept {
-  env_stack_.push_back(&env);
-}
-Env& Env::Peek() noexcept {
-  return *env_stack_.back();
-}
-void Env::Pop() noexcept {
-  env_stack_.pop_back();
-}
-
 File& Env::GetFileOrThrow(File::Id id) const {
   if (auto ret = GetFile(id)) return *ret;
   throw ExpiredException("file ("+std::to_string(id)+") is expired");
@@ -272,6 +260,65 @@ Env::Watcher::~Watcher() noexcept {
 }
 void Env::Watcher::Watch(File::Id id) noexcept {
   env_->AddWatcher(id, *this);
+}
+
+
+SerializerStream::SerializerStream(const char* path, const char* mode) :
+    fp_(std::fopen(path, mode)), off_(0) {
+  if (!fp_) {
+    throw nf7::Exception {"failed to open file: "+std::string {path}};
+  }
+
+  if (0 != std::fseek(fp_, 0, SEEK_END)) {
+    throw nf7::Exception {"failed to seek file: "+std::string {path}};
+  }
+  size_ = static_cast<size_t>(std::ftell(fp_));
+  if (0 != std::fseek(fp_, 0, SEEK_SET)) {
+    throw nf7::Exception {"failed to seek file: "+std::string {path}};
+  }
+}
+
+Serializer::ChunkGuard::ChunkGuard(nf7::Serializer& ar) : ar_(&ar) {
+  ar_->st_->Seek(ar_->st_->offset()+sizeof(uint64_t));
+  begin_ = ar_->st_->offset();
+}
+Serializer::ChunkGuard::~ChunkGuard() noexcept {
+  try {
+    const auto end = ar_->st_->offset();
+    ar_->st_->Seek(begin_-sizeof(uint64_t));
+    *ar_ & static_cast<uint64_t>(end - begin_);
+    ar_->st_->Seek(end);
+  } catch (nf7::Exception&) {
+    // TODO
+  }
+}
+
+Deserializer::ChunkGuard::ChunkGuard(nf7::Deserializer& ar) : ar_(&ar) {
+  *ar_ & expect_;
+  begin_ = ar_->st_->offset();
+}
+Deserializer::ChunkGuard::ChunkGuard(nf7::Deserializer& ar, nf7::Env& env) :
+    ChunkGuard(ar) {
+  env_prev_ = ar_->env_;
+  ar_->env_ = &env;
+}
+Deserializer::ChunkGuard::~ChunkGuard() {
+  try {
+    if (env_prev_) {
+      ar_->env_ = env_prev_;
+    }
+    const auto end = begin_ + expect_;
+    if (ar_->st_->offset() != end) {
+      ar_->st_->Seek(end);
+    }
+  } catch (nf7::Exception&) {
+    // TODO
+  }
+}
+void Deserializer::ChunkGuard::ValidateEnd() {
+  if (begin_+expect_ != ar_->st_->offset()) {
+    throw nf7::DeserializeException {"invalid chunk size"};
+  }
 }
 
 }  // namespace nf7

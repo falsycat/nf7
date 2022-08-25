@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -25,8 +26,9 @@ class File;
 class Context;
 class Env;
 
-using Serializer   = yas::binary_oarchive<yas::file_ostream, yas::binary>;
-using Deserializer = yas::binary_iarchive<yas::file_istream, yas::binary>;
+class SerializerStream;
+class Serializer;
+class Deserializer;
 
 class Exception : public std::nested_exception {
  public:
@@ -157,7 +159,7 @@ class File::TypeInfo {
   TypeInfo& operator=(const TypeInfo&) = delete;
   TypeInfo& operator=(TypeInfo&&) = delete;
 
-  virtual std::unique_ptr<File> Deserialize(Env&, Deserializer&) const = 0;
+  virtual std::unique_ptr<File> Deserialize(Deserializer&) const = 0;
   virtual std::unique_ptr<File> Create(Env&) const = 0;
 
   virtual void UpdateTooltip() const noexcept = 0;
@@ -252,10 +254,6 @@ class Env {
 
   class Watcher;
 
-  static void Push(Env&) noexcept;
-  static Env& Peek() noexcept;
-  static void Pop() noexcept;
-
   Env() = delete;
   Env(const std::filesystem::path& npath) noexcept : npath_(npath) {
   }
@@ -278,6 +276,7 @@ class Env {
   void ExecHandle(const File::Event&) noexcept;
 
   virtual void Save() noexcept = 0;
+  virtual void Throw(std::exception_ptr&&) noexcept = 0;
 
   const std::filesystem::path& npath() const noexcept { return npath_; }
 
@@ -307,6 +306,174 @@ class Env::Watcher {
 
  private:
   Env* const env_;
+};
+
+
+class SerializerStream final {
+ public:
+  SerializerStream(const char* path, const char* mode);
+  ~SerializerStream() noexcept {
+    std::fclose(fp_);
+  }
+
+  // serializer requires write/flush
+  size_t write(const void* ptr, size_t size) {
+    const auto ret = static_cast<size_t>(std::fwrite(ptr, 1, size, fp_));
+    off_ += ret;
+    return ret;
+  }
+  void flush() {
+    std::fflush(fp_);
+  }
+
+  // deserializer requires read/available/empty/peekch/getch/ungetch
+  size_t read(void* ptr, size_t size) {
+    const auto ret = static_cast<size_t>(std::fread(ptr, 1, size, fp_));
+    off_ += ret;
+    return ret;
+  }
+  size_t available() const {
+    return size_ - off_;
+  }
+  bool empty() const {
+    return available() == 0;
+  }
+  char peekch() const {
+    const auto c = std::getc(fp_);
+    std::ungetc(c, fp_);
+    return static_cast<char>(c);
+  }
+  char getch() {
+    return static_cast<char>(std::getc(fp_));
+  }
+  void ungetch(char c) {
+    std::ungetc(c, fp_);
+  }
+
+  void Seek(size_t off) {
+    if (0 != std::fseek(fp_, static_cast<long int>(off), SEEK_SET)) {
+      throw nf7::Exception {"failed to seek"};
+    }
+    off_ = off;
+  }
+
+  size_t offset() const noexcept { return off_; }
+
+ private:
+  std::FILE* fp_;
+  size_t off_;
+  size_t size_;
+};
+class Serializer final :
+    public yas::detail::binary_ostream<nf7::SerializerStream, yas::binary>,
+    public yas::detail::oarchive_header<yas::binary> {
+ public:
+  using this_type = Serializer;
+
+  class ChunkGuard final {
+   public:
+    ChunkGuard(nf7::Serializer&);
+    ChunkGuard(nf7::Serializer& ar, nf7::Env&) : ChunkGuard(ar) { }
+    ~ChunkGuard() noexcept;  // use Env::Throw to handle errors
+   private:
+    Serializer* const ar_;
+    size_t begin_;
+  };
+
+  static void Save(const char* path, auto& v) {
+    SerializerStream st {path, "wb"};
+    Serializer ar {st};
+    ar(v);
+  }
+
+  Serializer(nf7::SerializerStream& st) :
+      binary_ostream(st), oarchive_header(st), st_(&st) {
+  }
+
+  template<typename T>
+  Serializer& operator& (const T& v) {
+    return yas::detail::serializer<
+        yas::detail::type_properties<T>::value,
+        yas::detail::serialization_method<T, this_type>::value, yas::binary, T>::
+            save(*this, v);
+  }
+  Serializer& serialize() {
+    return *this;
+  }
+  template<typename Head, typename... Tail>
+  Serializer& serialize(const Head& head, const Tail&... tail) {
+    return operator& (head).serialize(tail...);
+  }
+  template<typename... Args>
+  Serializer& operator()(const Args&... args) {
+    return serialize(args...);
+  }
+
+ private:
+  nf7::SerializerStream* const st_;
+};
+class Deserializer final :
+    public yas::detail::binary_istream<nf7::SerializerStream, yas::binary>,
+    public yas::detail::iarchive_header<yas::binary> {
+ public:
+  using this_type = Deserializer;
+
+  class ChunkGuard final {
+   public:
+    ChunkGuard(Deserializer& ar);
+    ChunkGuard(Deserializer&, nf7::Env&);
+    ~ChunkGuard() noexcept;  // use Env::Throw to handle errors
+    void ValidateEnd();
+   private:
+    Deserializer* const ar_;
+    size_t    expect_;
+    size_t    begin_;
+    nf7::Env* env_prev_ = nullptr;
+  };
+
+  static void Load(nf7::Env& env, const char* path, auto& v) {
+    try {
+      SerializerStream st {path, "rb"};
+      Deserializer ar {env, st};
+      ar(v);
+    } catch (nf7::Exception&) {
+      throw;
+    } catch (std::exception&) {
+      throw nf7::Exception {"deserialization failure"};
+    }
+  }
+
+  Deserializer(nf7::Env& env, SerializerStream& st) :
+      binary_istream(st), iarchive_header(st), env_(&env), st_(&st) {
+  }
+
+  template<typename T>
+  Deserializer& operator& (T&& v) {
+    using RealType =
+        typename std::remove_reference<typename std::remove_const<T>::type>::type;
+    return yas::detail::serializer<
+        yas::detail::type_properties<RealType>::value,
+        yas::detail::serialization_method<RealType, Deserializer>::value,
+        yas::binary, RealType>
+            ::load(*this, v);
+  }
+  Deserializer& serialize() {
+    return *this;
+  }
+  template<typename Head, typename... Tail>
+  Deserializer& serialize(Head&& head, Tail&&... tail) {
+      return operator& (std::forward<Head>(head)).serialize(std::forward<Tail>(tail)...);
+  }
+  template<typename... Args>
+  Deserializer& operator()(Args&& ... args) {
+      return serialize(std::forward<Args>(args)...);
+  }
+
+  Env& env() const noexcept { return *env_; }
+
+ private:
+  nf7::Env* env_;
+  nf7::SerializerStream* const st_;
 };
 
 }  // namespace nf7

@@ -32,13 +32,13 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  AudioContext(Env&) noexcept;
+  AudioContext(nf7::Env&) noexcept;
 
-  AudioContext(Env& env, Deserializer&) noexcept : AudioContext(env) {
+  AudioContext(nf7::Deserializer& ar) noexcept : AudioContext(ar.env()) {
   }
-  void Serialize(Serializer&) const noexcept override {
+  void Serialize(nf7::Serializer&) const noexcept override {
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<AudioContext>(env);
   }
 
@@ -46,7 +46,7 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
         nf7::DirItem, nf7::audio::Queue>(t).Select(this, q_.get());
   }

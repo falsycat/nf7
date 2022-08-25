@@ -51,10 +51,10 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Imm(nf7::Env& env, Deserializer& ar) : Imm(env) {
+  Imm(nf7::Deserializer& ar) : Imm(ar.env()) {
     ar(mem_.data());
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {

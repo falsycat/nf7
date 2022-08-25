@@ -69,34 +69,34 @@ class Logger final : public nf7::File,
   };
   class ItemStore;
 
-  Logger(Env& env, uint32_t max_rows = 1024, bool propagate = false, bool freeze = false) noexcept :
+  Logger(nf7::Env& env, uint32_t max_rows = 1024, bool propagate = false, bool freeze = false) noexcept :
       File(kType, env), DirItem(DirItem::kMenu),
       param_(std::make_shared<Param>(max_rows, propagate, freeze)),
       win_(*this, "LogView") {
     win_.shown() = true;
   }
 
-  Logger(Env& env, Deserializer& ar) : Logger(env) {
+  Logger(nf7::Deserializer& ar) : Logger(ar.env()) {
     ar(win_, param_->max_rows, param_->propagate, param_->freeze);
 
     if (param_->max_rows == 0) {
       throw DeserializeException("max_rows must be 1 or more");
     }
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(win_, param_->max_rows, param_->propagate, param_->freeze);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Logger>(
         env, param_->max_rows, param_->propagate, param_->freeze);
   }
 
-  void Handle(const Event& ev) noexcept override;
+  void Handle(const nf7::File::Event& ev) noexcept override;
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateRowMenu(const Row&) noexcept;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<nf7::DirItem, nf7::Logger>(t).
         Select(this, store_.get());
   }

@@ -72,7 +72,7 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
     nf7::FileBase::Install(data_->log);
   }
 
-  Device(nf7::Env& env, nf7::Deserializer& ar) : Device(env) {
+  Device(nf7::Deserializer& ar) : Device(ar.env()) {
     ar(selector_, cfg_);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {

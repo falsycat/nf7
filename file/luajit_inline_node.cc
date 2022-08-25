@@ -63,7 +63,7 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  InlineNode(nf7::Env& env, nf7::Deserializer& ar) : InlineNode(env) {
+  InlineNode(nf7::Deserializer& ar) : InlineNode(ar.env()) {
     ar(data().script);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {

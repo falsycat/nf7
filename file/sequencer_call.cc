@@ -48,7 +48,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
     bool pure;
   };
 
-  Call(Env& env, Data&& data = {}) noexcept :
+  Call(nf7::Env& env, Data&& data = {}) noexcept :
       FileBase(kType, env, {&callee_, &callee_editor_}),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
@@ -68,24 +68,24 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Call(Env& env, Deserializer& ar) : Call(env) {
+  Call(nf7::Deserializer& ar) : Call(ar.env()) {
     ar(callee_, data().expects, data().pure);
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(callee_, data().expects, data().pure);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Call>(env, Data {data()});
   }
 
-  std::shared_ptr<Sequencer::Lambda> CreateLambda(
+  std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Context>&) noexcept override;
 
-  void UpdateItem(Sequencer::Editor&) noexcept override;
-  void UpdateParamPanel(Sequencer::Editor&) noexcept override;
-  void UpdateTooltip(Sequencer::Editor&) noexcept override;
+  void UpdateItem(nf7::Sequencer::Editor&) noexcept override;
+  void UpdateParamPanel(nf7::Sequencer::Editor&) noexcept override;
+  void UpdateTooltip(nf7::Sequencer::Editor&) noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
         nf7::Memento, nf7::Sequencer>(t).Select(this, &mem_);
   }

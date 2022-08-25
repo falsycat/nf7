@@ -97,16 +97,16 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     mem_.onCommit  = [this]() { Touch(); };
   }
 
-  Node(Env& env, Deserializer& ar) : Node(env) {
+  Node(nf7::Deserializer& ar) : Node(ar.env()) {
     ar(obj_, data().desc, data().inputs, data().outputs);
 
     nf7::util::Uniq(data().inputs);
     nf7::util::Uniq(data().outputs);
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(obj_, data().desc, data().inputs, data().outputs);
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Node>(env, Data {data()});
   }
 
@@ -123,7 +123,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
         nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }

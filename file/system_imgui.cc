@@ -31,7 +31,7 @@ class ImGui_ final : public nf7::File, public nf7::DirItem {
   ImGui_(nf7::Env& env) noexcept :
       nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kNone) {
   }
-  ImGui_(nf7::Env& env, Deserializer& ar) noexcept : ImGui_(env) {
+  ImGui_(nf7::Deserializer& ar) : ImGui_(ar.env()) {
     std::string config;
     ar(config);
 
@@ -39,7 +39,7 @@ class ImGui_ final : public nf7::File, public nf7::DirItem {
       ImGui::LoadIniSettingsFromMemory(config.data(), config.size());
     }
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     size_t n;
     const char* config = ImGui::SaveIniSettingsToMemory(&n);
     ar(std::string_view(config, n));

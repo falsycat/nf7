@@ -8,7 +8,6 @@
 #include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <yas/serialize.hpp>
-#include <yas/types/std/map.hpp>
 #include <yas/types/std/unordered_set.hpp>
 #include <yas/types/std/string.hpp>
 
@@ -39,7 +38,7 @@ class Dir final : public nf7::FileBase,
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
-  Dir(Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
+  Dir(nf7::Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
       nf7::FileBase(kType, env, {&widget_popup_, &add_popup_, &rename_popup_}),
       nf7::DirItem(nf7::DirItem::kTree |
                    nf7::DirItem::kMenu |
@@ -49,13 +48,33 @@ class Dir final : public nf7::FileBase,
       widget_popup_(*this), add_popup_(*this), rename_popup_(*this) {
   }
 
-  Dir(Env& env, Deserializer& ar) : Dir(env) {
-    ar(items_, opened_, win_);
+  Dir(nf7::Deserializer& ar) : Dir(ar.env()) {
+    ar(opened_, win_);
+
+    uint64_t size;
+    ar(size);
+    for (size_t i = 0; i < size; ++i) {
+      std::string name;
+      ar(name);
+
+      std::unique_ptr<nf7::File> f;
+      try {
+        ar(f);
+        items_[name] = std::move(f);
+      } catch (nf7::Exception& e) {
+        env().Throw(std::current_exception());
+      }
+    }
   }
-  void Serialize(Serializer& ar) const noexcept override {
-    ar(items_, opened_, win_);
+  void Serialize(nf7::Serializer& ar) const noexcept override {
+    ar(opened_, win_);
+
+    ar(static_cast<uint64_t>(items_.size()));
+    for (auto& p : items_) {
+      ar(p.first, p.second);
+    }
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     ItemMap items;
     for (const auto& item : items_) {
       items[item.first] = item.second->Clone(env);
@@ -99,6 +118,10 @@ class Dir final : public nf7::FileBase,
     nf7::FileBase::Handle(ev);
     switch (ev.type) {
     case Event::kAdd:
+      // force to show window if this is the root
+      if (name() == "$") {
+        win_.shown() = true;
+      }
       for (const auto& item : items_) item.second->MoveUnder(*this, item.first);
       break;
     case Event::kRemove:

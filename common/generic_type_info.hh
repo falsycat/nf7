@@ -1,5 +1,6 @@
 #pragma once
 
+#include <exception>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -21,20 +22,22 @@ concept GenericTypeInfo_Description_ = requires() { T::kTypeDescription; };
 
 
 template <typename T>
-class GenericTypeInfo : public File::TypeInfo {
+class GenericTypeInfo : public nf7::File::TypeInfo {
  public:
   GenericTypeInfo(const std::string& name, std::unordered_set<std::string>&& v) noexcept :
       TypeInfo(name, AddFlags(std::move(v))) {
   }
 
-  std::unique_ptr<File> Deserialize(Env& env, Deserializer& d) const override
+  std::unique_ptr<nf7::File> Deserialize(nf7::Deserializer& ar) const override
   try {
-    return std::make_unique<T>(env, d);
+    return std::make_unique<T>(ar);
   } catch (nf7::Exception&) {
     throw nf7::DeserializeException {"deserialization failed"};
+  } catch (std::exception&) {
+    throw nf7::DeserializeException {"deserialization failed"};
   }
-  std::unique_ptr<File> Create(Env& env) const override {
-    if constexpr (std::is_constructible<T, Env&>::value) {
+  std::unique_ptr<File> Create(nf7::Env& env) const override {
+    if constexpr (std::is_constructible<T, nf7::Env&>::value) {
       return std::make_unique<T>(env);
     } else {
       throw nf7::Exception {name()+" has no factory without parameters"};
@@ -54,7 +57,7 @@ class GenericTypeInfo : public File::TypeInfo {
  private:
   static std::unordered_set<std::string> AddFlags(
       std::unordered_set<std::string>&& flags) noexcept {
-    if (std::is_constructible<T, Env&>::value) {
+    if (std::is_constructible<T, nf7::Env&>::value) {
       flags.insert("nf7::File::TypeInfo::Factory");
     }
     return flags;

@@ -20,7 +20,9 @@ struct serializer<
  public:
   template <typename Archive>
   static Archive& save(Archive& ar, const std::unique_ptr<nf7::File>& f) {
-    ar(std::string(f->type().name()));
+    ar(std::string {f->type().name()});
+
+    typename Archive::ChunkGuard guard {ar};
     f->Serialize(ar);
     return ar;
   }
@@ -28,7 +30,16 @@ struct serializer<
   static Archive& load(Archive& ar, std::unique_ptr<nf7::File>& f) {
     std::string name;
     ar(name);
-    f = nf7::File::registry(name).Deserialize(nf7::Env::Peek(), ar);
+    auto& type = nf7::File::registry(name);
+
+    try {
+      typename Archive::ChunkGuard guard {ar};
+      f = type.Deserialize(ar);
+      guard.ValidateEnd();
+    } catch (...) {
+      f = nullptr;
+      throw;
+    }
     return ar;
   }
 };
