@@ -161,7 +161,8 @@ class Ref::Lambda final : public Node::Lambda,
   }
 
   void Handle(std::string_view name, const Value& v,
-              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
+              const std::shared_ptr<Node::Lambda>& caller) noexcept override
+  try {
     if (!f_) return;
 
     auto parent = this->parent();
@@ -180,6 +181,8 @@ class Ref::Lambda final : public Node::Lambda,
       }
       base_->Handle(name, v, shared_from_this());
     }
+  } catch (nf7::Exception& e) {
+    log_->Error("failed to call referencee: "+e.msg());
   }
 
   void Abort() noexcept override {
