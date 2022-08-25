@@ -14,6 +14,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
 #include "common/gui_file.hh"
@@ -34,9 +35,9 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class InlineNode final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<InlineNode> kType =
+  static inline const nf7::GenericTypeInfo<InlineNode> kType =
       {"LuaJIT/InlineNode", {"nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Defines new Node using Lua object factory.");
@@ -51,11 +52,13 @@ class InlineNode final : public nf7::File, public nf7::DirItem, public nf7::Node
   };
 
   InlineNode(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
       life_(*this),
-      log_(std::make_shared<nf7::LoggerRef>()),
+      log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data)) {
+    nf7::FileBase::Install(*log_);
+
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -82,7 +85,6 @@ class InlineNode final : public nf7::File, public nf7::DirItem, public nf7::Node
     return kOutputs;
   }
 
-  void Handle(const Event&) noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
   void UpdateWidget() noexcept override;
@@ -226,20 +228,6 @@ std::shared_ptr<nf7::Node::Lambda> InlineNode::CreateLambda(
   return std::make_shared<Lambda>(*this, parent);
 }
 
-void InlineNode::Handle(const Event& ev) noexcept {
-  switch (ev.type) {
-  case Event::kAdd:
-    log_->SetUp(*this);
-    return;
-
-  case Event::kRemove:
-    log_->TearDown();
-    return;
-
-  default:
-    return;
-  }
-}
 void InlineNode::UpdateMenu() noexcept {
 }
 void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {

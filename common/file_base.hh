@@ -27,7 +27,7 @@ class FileBase : public nf7::File {
 
   FileBase(const nf7::File::TypeInfo& t,
            nf7::Env&                  env,
-           std::vector<Feature*>&&    feats) noexcept :
+           std::vector<Feature*>&&    feats = {}) noexcept :
       nf7::File(t, env), feats_(std::move(feats)) {
   }
 
@@ -48,6 +48,11 @@ class FileBase : public nf7::File {
     for (auto feat : feats_) {
       feat->Update();
     }
+  }
+
+ protected:
+  void Install(Feature& f) noexcept {
+    feats_.push_back(&f);
   }
 
  private:

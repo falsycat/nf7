@@ -2,37 +2,48 @@
 
 #include <cassert>
 #include <memory>
+#include <mutex>
 #include <source_location>
 #include <string_view>
 
 #include "nf7.hh"
 
+#include "common/file_base.hh"
 #include "common/logger.hh"
 
 
 namespace nf7 {
 
-class LoggerRef final {
+class LoggerRef final : public nf7::FileBase::Feature {
  public:
-  LoggerRef() noexcept {
+  LoggerRef(nf7::File& f, nf7::File::Path&& p = {"_logger"}) noexcept :
+      file_(&f), path_(std::move(p)) {
   }
   LoggerRef(const LoggerRef&) = default;
   LoggerRef(LoggerRef&&) = default;
   LoggerRef& operator=(const LoggerRef&) = default;
   LoggerRef& operator=(LoggerRef&&) = default;
 
-  void SetUp(nf7::File& f, std::string_view name = "_logger") noexcept {
-    try {
-      id_ = f.id();
-      logger_ = f.ResolveUpwardOrThrow(name).
-          interfaceOrThrow<nf7::Logger>().self();
-    } catch (Exception&) {
-      id_ = 0;
+  void Handle(const nf7::File::Event& ev) noexcept override {
+    std::unique_lock<std::mutex> k(mtx_);
+    switch (ev.type) {
+    case nf7::File::Event::kAdd:
+      try {
+        id_     = file_->id();
+        logger_ = file_->
+            ResolveUpwardOrThrow(path_).interfaceOrThrow<nf7::Logger>().self();
+      } catch (nf7::Exception&) {
+        id_     = 0;
+        logger_ = nullptr;
+      }
+      break;
+    case nf7::File::Event::kRemove:
+      id_     = 0;
+      logger_ = nullptr;
+      break;
+    default:
+      break;
     }
-  }
-  void TearDown() noexcept {
-    id_     = 0;
-    logger_ = nullptr;
   }
 
   // thread-safe
@@ -49,14 +60,18 @@ class LoggerRef final {
     Write({nf7::Logger::kError, msg, 0, s});
   }
   void Write(nf7::Logger::Item&& item) noexcept {
+    std::unique_lock<std::mutex> k(mtx_);
     if (!id_ || !logger_) return;
     item.file = id_;
     logger_->Write(std::move(item));
   }
 
  private:
-  File::Id id_;
+  nf7::File* const file_;
+  const nf7::File::Path path_;
 
+  std::mutex mtx_;
+  File::Id id_;
   std::shared_ptr<nf7::Logger> logger_;
 };
 

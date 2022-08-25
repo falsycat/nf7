@@ -15,6 +15,7 @@
 
 #include "nf7.hh"
 
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -30,7 +31,7 @@
 namespace nf7 {
 namespace {
 
-class Ref final : public nf7::File, public nf7::Node {
+class Ref final : public nf7::FileBase, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Ref> kType = {
     "Node/Ref", {"nf7::Node"}};
@@ -54,10 +55,12 @@ class Ref final : public nf7::File, public nf7::Node {
   };
 
   Ref(Env& env, Data&& data = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       life_(*this),
-      log_(std::make_shared<nf7::LoggerRef>()),
+      log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data)) {
+    nf7::FileBase::Install(*log_);
+
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -79,19 +82,6 @@ class Ref final : public nf7::File, public nf7::Node {
   }
   std::span<const std::string> GetOutputs() const noexcept override {
     return data().outputs;
-  }
-
-  void Handle(const Event& ev) noexcept {
-    switch (ev.type) {
-    case Event::kAdd:
-      log_->SetUp(*this);
-      /* fallthrough */
-    case Event::kRemove:
-      log_->TearDown();
-      return;
-    default:
-      return;
-    }
   }
 
   void Update() noexcept override;
@@ -217,6 +207,8 @@ try {
 
 
 void Ref::Update() noexcept {
+  nf7::FileBase::Update();
+
   if (auto popup = std::exchange(popup_, nullptr)) {
     ImGui::OpenPopup(popup);
   }

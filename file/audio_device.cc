@@ -21,6 +21,7 @@
 
 #include "common/audio_queue.hh"
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/life.hh"
@@ -35,7 +36,7 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Device> kType = {
     "Audio/Device", {"nf7::DirItem",}};
@@ -62,17 +63,19 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
     cfg.capture.channels  = 2;
     return cfg;
   }
-  Device(Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
-      File(kType, env), nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
-      data_(std::make_shared<AsyncData>()),
+  Device(nf7::Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
+      nf7::FileBase(kType, env),
+      nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
+      data_(std::make_shared<AsyncData>(*this)),
       selector_(std::move(sel)), cfg_(cfg),
       config_popup_(std::make_shared<ConfigPopup>()) {
+    nf7::FileBase::Install(data_->log);
   }
 
-  Device(Env& env, Deserializer& ar) : Device(env) {
+  Device(nf7::Env& env, nf7::Deserializer& ar) : Device(env) {
     ar(selector_, cfg_);
   }
-  void Serialize(Serializer& ar) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(selector_, cfg_);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
@@ -100,7 +103,8 @@ class Device final : public nf7::File, public nf7::DirItem, public nf7::Node {
  private:
   struct AsyncData {
    public:
-    AsyncData() noexcept : ring(std::make_unique<Ring>()) {
+    AsyncData(nf7::File& f) noexcept :
+        log(f), ring(std::make_unique<Ring>()) {
     }
 
     nf7::LoggerRef log;
@@ -509,9 +513,10 @@ void Device::DeinitDev() noexcept {
 
 
 void Device::Handle(const Event& ev) noexcept {
+  nf7::FileBase::Handle(ev);
+
   switch (ev.type) {
   case Event::kAdd:
-    data_->log.SetUp(*this);
     try {
       data_->aq =
           ResolveUpwardOrThrow("_audio").
@@ -527,7 +532,6 @@ void Device::Handle(const Event& ev) noexcept {
       DeinitDev();
     }
     data_->aq = nullptr;
-    data_->log.TearDown();
     return;
 
   default:
@@ -536,6 +540,8 @@ void Device::Handle(const Event& ev) noexcept {
 }
 
 void Device::Update() noexcept {
+  nf7::FileBase::Update();
+
   if (std::exchange(config_popup_->open, false)) {
     ImGui::OpenPopup("ConfigPopup");
   }

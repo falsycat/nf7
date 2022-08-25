@@ -64,10 +64,12 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
       nf7::FileBase(kType, env, {&obj_, &obj_editor_, &socket_popup_}),
       nf7::DirItem(nf7::DirItem::kTooltip | nf7::DirItem::kWidget),
       life_(*this),
-      log_(std::make_shared<nf7::LoggerRef>()),
+      log_(std::make_shared<nf7::LoggerRef>(*this)),
       obj_(*this, "obj_factory"),
       obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data)) {
+    nf7::FileBase::Install(*log_);
+
     mem_.data().obj.SetTarget(obj_);
     mem_.CommitAmend();
 
@@ -117,7 +119,6 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     return data().outputs;
   }
 
-  void Handle(const Event&) noexcept override;
   void Update() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
@@ -261,23 +262,6 @@ class Node::Lambda final : public nf7::Node::Lambda,
 std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
-}
-
-void Node::Handle(const Event& ev) noexcept {
-  nf7::FileBase::Handle(ev);
-
-  switch (ev.type) {
-  case Event::kAdd:
-    log_->SetUp(*this);
-    return;
-
-  case Event::kRemove:
-    log_->TearDown();
-    return;
-
-  default:
-    return;
-  }
 }
 
 void Node::Update() noexcept {
