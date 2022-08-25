@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <map>
+#include <sstream>
 
 #include <imgui.h>
 #include <yas/serialize.hpp>
@@ -27,10 +28,32 @@ static inline auto& registry_() noexcept {
 
 
 void Exception::UpdatePanic() const noexcept {
+  ImGui::BeginGroup();
   ImGui::TextUnformatted(msg_.c_str());
   ImGui::Indent();
   ImGui::Text("from %s:%d", srcloc_.file_name(), srcloc_.line());
   ImGui::Unindent();
+  ImGui::EndGroup();
+}
+std::string Exception::Stringify() const noexcept {
+  return msg() + "\n  "+srcloc_.file_name()+":"+std::to_string(srcloc_.line());
+}
+std::string Exception::StringifyRecursive() const noexcept {
+  std::stringstream st;
+  st << Stringify() << "\n";
+
+  auto ptr = reason();
+  while (ptr)
+  try {
+    std::rethrow_exception(ptr);
+  } catch (nf7::Exception& e) {
+    st << e.Stringify() << "\n";
+    ptr = e.reason();
+  } catch (std::exception& e) {
+    st << e.what() << "\n";
+    ptr = nullptr;
+  }
+  return st.str();
 }
 
 const std::map<std::string, const File::TypeInfo*>& File::registry() noexcept {

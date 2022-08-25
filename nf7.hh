@@ -41,6 +41,9 @@ class Exception : public std::nested_exception {
   Exception& operator=(Exception&&) = delete;
 
   virtual void UpdatePanic() const noexcept;
+  virtual std::string Stringify() const noexcept;
+
+  std::string StringifyRecursive() const noexcept;
 
   const std::string& msg() const noexcept { return msg_; }
   const std::source_location& srcloc() const noexcept { return srcloc_; }

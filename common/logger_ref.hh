@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <source_location>
@@ -53,16 +54,26 @@ class LoggerRef final : public nf7::FileBase::Feature {
   void Info(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
     Write({nf7::Logger::kInfo, msg, 0, s});
   }
+  void Info(nf7::Exception& e, std::source_location s = std::source_location::current()) noexcept {
+    Info(e.StringifyRecursive(), s);
+  }
   void Warn(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
     Write({nf7::Logger::kWarn, msg, 0, s});
   }
+  void Warn(nf7::Exception& e, std::source_location s = std::source_location::current()) noexcept {
+    Warn(e.StringifyRecursive(), s);
+  }
   void Error(std::string_view msg, std::source_location s = std::source_location::current()) noexcept {
     Write({nf7::Logger::kError, msg, 0, s});
+  }
+  void Error(nf7::Exception& e, std::source_location s = std::source_location::current()) noexcept {
+    Error(e.StringifyRecursive(), s);
   }
   void Write(nf7::Logger::Item&& item) noexcept {
     std::unique_lock<std::mutex> k(mtx_);
     if (!id_ || !logger_) return;
     item.file = id_;
+    item.ex   = std::current_exception();
     logger_->Write(std::move(item));
   }
 

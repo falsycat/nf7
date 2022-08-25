@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <deque>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <typeinfo>
@@ -47,6 +48,7 @@ class Logger final : public nf7::File,
     std::string msg;
     std::string path;
     std::string location;
+    std::exception_ptr ex;
 
     std::string Stringify() const noexcept {
       std::stringstream st;
@@ -136,7 +138,7 @@ class Logger final : public nf7::File,
     }
   }
   static std::string GetLocationString(const std::source_location loc) noexcept {
-    return loc.file_name()+":"s+loc.function_name()+":"s+std::to_string(loc.line());
+    return loc.file_name()+":"s+std::to_string(loc.line());
   }
 };
 
@@ -186,6 +188,7 @@ class Logger::ItemStore final : public nf7::Context,
         .msg      = std::move(itr->msg),
         .path     = owner.GetPathString(itr->file),
         .location = GetLocationString(itr->srcloc),
+        .ex       = itr->ex,
       };
       rows.push_back(std::move(row));
     }
@@ -322,10 +325,19 @@ void Logger::Update() noexcept {
           ImGui::TextUnformatted(row.location.c_str());
           if (ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();
-            ImGui::Text("file: %s", row.srcloc.file_name());
-            ImGui::Text("func: %s", row.srcloc.function_name());
-            ImGui::Text("line: %zu", static_cast<size_t>(row.srcloc.line()));
-            ImGui::Text("col : %zu", static_cast<size_t>(row.srcloc.column()));
+            ImGui::Text(row.location.c_str());
+            for (auto ptr = row.ex; ptr;)
+            try {
+              ImGui::Bullet();
+              std::rethrow_exception(ptr);
+            } catch (Exception& e) {
+              e.UpdatePanic();
+              ImGui::Spacing();
+              ptr = e.reason();
+            } catch (std::exception& e) {
+              ImGui::Text("std::exception (%s)", e.what());
+              ptr = nullptr;
+            }
             ImGui::EndTooltip();
           }
         }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <exception>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -44,6 +45,8 @@ struct Logger::Item final {
 
   File::Id file;
   std::source_location srcloc;
+
+  std::exception_ptr ex;
 };
 
 }  // namespace nf7
