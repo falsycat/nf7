@@ -87,7 +87,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
     socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
       ExecSwapSocket(std::move(i), std::move(o));
     };
-    Initialize();
+    Sanitize();
   }
   ~Network() noexcept {
     history_.Clear();
@@ -95,7 +95,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
 
   Network(Env& env, Deserializer& ar) : Network(env) {
     ar(win_, items_, links_, canvas_, inputs_, outputs_);
-    Initialize();
+    Sanitize();
   }
   void Serialize(Serializer& ar) const noexcept override {
     ar(win_, items_, links_, canvas_, inputs_, outputs_);
@@ -180,10 +180,11 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   } add_popup_;
 
 
-  void Initialize();
+  // initialization
+  void Sanitize();
   void AttachLambda(const std::shared_ptr<Network::Lambda>&) noexcept;
 
-
+  // history operation
   void UnDo() {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting command to undo"),
@@ -195,8 +196,28 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
         [this]() { history_.ReDo(); Touch(); });
   }
 
+  // IO socket operation
   void ExecSwapSocket(std::vector<std::string>&&, std::vector<std::string>&&) noexcept;
 
+  // item operation
+  void ExecAddItem(std::unique_ptr<Item>&&) noexcept;
+  void ExecAddItem(std::unique_ptr<Item>&& item, const ImVec2& pos) noexcept;
+  void ExecRemoveItem(ItemId) noexcept;
+
+  // link operation
+  void ExecLink(nf7::NodeLinkStore::Link&& lk) noexcept {
+    history_.
+        Add(nf7::NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk))).
+        ExecApply(std::make_shared<nf7::GenericContext>(*this, "adding new link"));
+  }
+  void ExecUnlink(const nf7::NodeLinkStore::Link& lk) noexcept {
+    history_.
+        Add(nf7::NodeLinkStore::SwapCommand::
+            CreateToRemove(links_, nf7::NodeLinkStore::Link {lk})).
+        ExecApply(std::make_shared<nf7::GenericContext>(*this, "removing link"));
+  }
+
+  // accessors
   Item& GetItem(ItemId id) const {
     auto itr = item_map_.find(id);
     if (itr == item_map_.end()) {
@@ -570,6 +591,7 @@ void Network::ExecSwapSocket(std::vector<std::string>&& i, std::vector<std::stri
   history_.Add(std::move(cmd)).ExecApply(ctx);
 }
 
+
 // A command that add or remove a Node.
 class Network::Item::SwapCommand final : public nf7::History::Command {
  public:
@@ -612,6 +634,26 @@ class Network::Item::SwapCommand final : public nf7::History::Command {
     }
   }
 };
+void Network::ExecAddItem(std::unique_ptr<Network::Item>&& item) noexcept {
+  history_.
+      Add(std::make_unique<Network::Item::SwapCommand>(*this, std::move(item))).
+      ExecApply(std::make_shared<nf7::GenericContext>(*this, "adding new item"));
+}
+void Network::ExecRemoveItem(Network::ItemId id) noexcept {
+  auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing items");
+
+  // remove links connected to the item
+  for (const auto& lk : links_.items()) {
+    if (lk.src_id == id || lk.dst_id == id) {
+      ExecUnlink(lk);
+    }
+  }
+
+  // do remove
+  history_.
+      Add(std::make_unique<Network::Item::SwapCommand>(*this, id)).ExecApply(ctx);
+}
+
 
 // A command that moves displayed position of a Node on Node/Network.
 class Network::Item::MoveCommand final : public nf7::History::Command {
@@ -632,6 +674,17 @@ class Network::Item::MoveCommand final : public nf7::History::Command {
     target_->prev_pos_ = target_->pos_;
   }
 };
+void Network::ExecAddItem(
+    std::unique_ptr<Network::Item>&& item, const ImVec2& pos) noexcept {
+  auto  ctx = std::make_shared<nf7::GenericContext>(*this, "adding new item");
+  auto& ref = *item;
+  history_.
+      Add(std::make_unique<Network::Item::SwapCommand>(*this, std::move(item))).
+      ExecApply(ctx);
+  history_.
+      Add(std::make_unique<Network::Item::MoveCommand>(ref, pos)).
+      ExecApply(ctx);
+}
 
 
 // Node that emits a pulse when Network lambda receives the first input.
@@ -809,7 +862,8 @@ class Network::Terminal : public nf7::File,
 };
 
 
-void Network::Initialize() {
+void Network::Sanitize() {
+  // id duplication check and get next id
   std::unordered_set<ItemId> ids;
   for (const auto& item : items_) {
     const auto id = item->id();
@@ -819,14 +873,32 @@ void Network::Initialize() {
     next_ = std::max(next_, id+1);
   }
 
-  for (auto& name : inputs_) {
-    nf7::File::Path::ValidateTerm(name);
+  // sanitize IO sockets
+  nf7::util::Uniq(inputs_);
+  for (auto itr = inputs_.begin(); itr < inputs_.end(); ++itr) {
+    try {
+      nf7::File::Path::ValidateTerm(*itr);
+    } catch (nf7::Exception&) {
+      inputs_.erase(itr);
+    }
   }
-  for (auto& name : outputs_) {
-    nf7::File::Path::ValidateTerm(name);
+  nf7::util::Uniq(outputs_);
+  for (auto itr = outputs_.begin(); itr < outputs_.end(); ++itr) {
+    try {
+      nf7::File::Path::ValidateTerm(*itr);
+    } catch (nf7::Exception&) {
+      outputs_.erase(itr);
+    }
   }
 
-  // TODO: remove expired links
+  // remove expired links
+  for (const auto& item : items_) {
+    auto cmd = links_.CreateCommandToRemoveExpired(
+        item->id(), item->node().GetInputs(), item->node().GetOutputs());
+    if (cmd) {
+      cmd->Apply();
+    }
+  }
 }
 File* Network::Find(std::string_view name) const noexcept
 try {
@@ -915,10 +987,6 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
     }
     return;
 
-  case File::Event::kReqFocus:
-    // TODO: handle Node focus
-    return;
-
   default:
     return;
   }
@@ -1005,9 +1073,7 @@ void Network::Update() noexcept {
         const auto src_name = lk.src_name.c_str();
         const auto dst_name = lk.dst_name.c_str();
         if (!ImNodes::Connection(dst_id, dst_name, src_id, src_name)) {
-          auto cmd = NodeLinkStore::SwapCommand::CreateToRemove(links_, NodeLinkStore::Link(lk));
-          auto ctx = std::make_shared<nf7::GenericContext>(*this, "removing link");
-          history_.Add(std::move(cmd)).ExecApply(ctx);
+          ExecUnlink(lk);
         }
       }
 
@@ -1017,15 +1083,12 @@ void Network::Update() noexcept {
       void*       dst_ptr;
       const char* dst_name;
       if (ImNodes::GetNewConnection(&dst_ptr, &dst_name, &src_ptr, &src_name)) {
-        auto lk = NodeLinkStore::Link {
+        ExecLink({
           .src_id   = reinterpret_cast<ItemId>(src_ptr),
           .src_name = src_name,
           .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
           .dst_name = dst_name,
-        };
-        auto cmd = NodeLinkStore::SwapCommand::CreateToAdd(links_, std::move(lk));
-        auto ctx = std::make_shared<nf7::GenericContext>(*this, "adding new link");
-        history_.Add(std::move(cmd)).ExecApply(ctx);
+        });
       }
       ImNodes::EndCanvas();
 
@@ -1112,17 +1175,11 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
       ImGuiPopupFlags_NoOpenOverExistingPopup;
   if (ImGui::BeginPopupContextItem(nullptr, kFlags)) {
     if (ImGui::MenuItem("remove")) {
-      auto ctx = std::make_shared<nf7::GenericContext>(*owner_, "removing existing node");
-      owner_->history_.
-          Add(std::make_unique<Item::SwapCommand>(*owner_, id_)).
-          ExecApply(ctx);
+      owner_->ExecRemoveItem(id_);
     }
     if (ImGui::MenuItem("clone")) {
-      auto item = std::make_unique<Item>(owner_->next_++, file_->Clone(env()));
-      auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "cloning existing node");
-      owner_->history_.
-          Add(std::make_unique<Item::SwapCommand>(*owner_, std::move(item))).
-          ExecApply(ctx);
+      owner_->ExecAddItem(
+          std::make_unique<Item>(owner_->next_++, file_->Clone(env())));
     }
     ImGui::EndPopup();
   }
@@ -1140,17 +1197,9 @@ void Network::AddPopup::Update() noexcept {
     ImGui::TextUnformatted("Node/Network: adding new Node...");
     if (factory_.Update()) {
       ImGui::CloseCurrentPopup();
-
-      auto item = std::make_unique<Item>(owner_->next_++, factory_.Create(owner_->env()));
-      auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "adding new node");
-
-      auto& item_ref = *item;
-      owner_->history_.
-          Add(std::make_unique<Item::SwapCommand>(*owner_, std::move(item))).
-          ExecApply(ctx);
-      owner_->history_.
-          Add(std::make_unique<Item::MoveCommand>(item_ref, pos_)).
-          ExecApply(ctx);
+      owner_->ExecAddItem(
+          std::make_unique<Item>(owner_->next_++, factory_.Create(owner_->env())),
+          pos_);
     }
     ImGui::EndPopup();
   }
