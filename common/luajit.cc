@@ -244,6 +244,13 @@ void PushVector(lua_State* L, const nf7::Value::ConstVector& v) noexcept {
 
       lua_pushcfunction(L, [](auto L) {
         const auto& v = CheckRef<nf7::Value::ConstVector>(L, 1, "nf7::Value::ConstVector");
+        lua_pushlstring(L, reinterpret_cast<const char*>(v->data()), v->size());
+        return 1;
+      });
+      lua_setfield(L, -2, "str");
+
+      lua_pushcfunction(L, [](auto L) {
+        const auto& v = CheckRef<nf7::Value::ConstVector>(L, 1, "nf7::Value::ConstVector");
         lua_pushinteger(L, static_cast<lua_Integer>(v->size()));
         return 1;
       });
