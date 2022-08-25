@@ -15,12 +15,14 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_popup.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
+#include "common/logger_ref.hh"
 #include "common/native_file.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -31,7 +33,7 @@
 namespace nf7 {
 namespace {
 
-class NativeFile final : public nf7::File,
+class NativeFile final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<NativeFile> kType = {
@@ -44,6 +46,10 @@ class NativeFile final : public nf7::File,
   class Lambda;
 
   struct SharedData final {
+    SharedData(NativeFile& f) noexcept : log(f) {
+    }
+
+    nf7::LoggerRef log;
     std::optional<nf7::NativeFile> nfile;
     std::atomic<bool> refresh;
   };
@@ -73,13 +79,15 @@ class NativeFile final : public nf7::File,
   };
 
   NativeFile(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
       life_(*this),
-      shared_(std::make_shared<SharedData>()),
+      shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
       mem_(std::move(data)),
       config_popup_(*this) {
+    nf7::FileBase::Install(shared_->log);
+
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
   }
@@ -151,7 +159,7 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<NativeFile::Lambda> {
  public:
   Lambda(NativeFile& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), f_(f.life_) {
+      nf7::Node::Lambda(f, parent), f_(f.life_), shared_(f.shared_) {
   }
 
   void Handle(std::string_view, const nf7::Value& v,
@@ -186,12 +194,14 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     } else {
       throw nf7::Exception {"unknown command type: "+type};
     }
-  } catch (nf7::Exception&) {
-    // TODO log
+  } catch (nf7::Exception& e) {
+    shared_->log.Error(e.msg());
   }
 
  private:
   nf7::Life<NativeFile>::Ref f_;
+
+  std::shared_ptr<SharedData> shared_;
 
   void Push(const std::shared_ptr<nf7::Node::Lambda>& caller, auto&& f) noexcept {
     const auto& mode = f_->data().mode;
@@ -225,12 +235,14 @@ try {
   callee->env().ExecSub(callee, [callee, caller, ret = std::move(ret)]() {
     caller->Handle("result", ret, callee);
   });
-} catch (nf7::Exception&) {
-  // TODO log
+} catch (nf7::Exception& e) {
+  shared_->log.Error("operation failure: "+e.msg());
 }
 
 
 void NativeFile::Update() noexcept {
+  nf7::FileBase::Update();
+
   // file update check
   try {
     const auto npath   = env().npath() / data().npath;
