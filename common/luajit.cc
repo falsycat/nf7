@@ -18,6 +18,7 @@
 namespace nf7::luajit {
 
 // pushes original libraries
+static void PushLuaLib(lua_State* L) noexcept;
 static void PushMathLib(lua_State* L) noexcept;
 static void PushTableLib(lua_State* L) noexcept;
 static void PushTimeLib(lua_State* L) noexcept;
@@ -34,6 +35,9 @@ static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end);
 
 void PushGlobalTable(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushGlobalTable")) {
+    PushLuaLib(L);
+    lua_setfield(L, -2, "lua");
+
     PushMathLib(L);
     lua_setfield(L, -2, "math");
 
@@ -456,6 +460,53 @@ std::optional<std::vector<uint8_t>> ToMutableVector(lua_State* L, int idx) noexc
 }
 
 
+static void PushLuaLib(lua_State* L) noexcept {
+  lua_newuserdata(L, 0);
+
+  lua_createtable(L, 0, 0);
+  lua_createtable(L, 0, 0);
+  {
+    lua_pushcfunction(L, [](auto L) {
+      if (lua_toboolean(L, 1)) {
+        return 0;
+      }
+      if (lua_gettop(L) >= 2) {
+        return luaL_error(L, lua_tostring(L, 2));
+      } else {
+        return luaL_error(L, "assertion failure");
+      }
+    });
+    lua_setfield(L, -2, "assert");
+
+    lua_pushcfunction(L, [](auto L) {
+      return luaL_error(L, luaL_checkstring(L, 1));
+    });
+    lua_setfield(L, -2, "error");
+
+    lua_pushcfunction(L, [](auto L) {
+      if (0 != luaL_loadstring(L, luaL_checkstring(L, 1))) {
+        return luaL_error(L, "lua.load error: %s", lua_tostring(L, -1));
+      }
+      return 1;
+    });
+    lua_setfield(L, -2, "load");
+
+    lua_pushcfunction(L, [](auto L) {
+      if (0 == lua_pcall(L, lua_gettop(L)-1, LUA_MULTRET, 0)) {
+        lua_pushboolean(L, true);
+        lua_insert(L, 1);
+        return lua_gettop(L);
+      } else {
+        lua_pushboolean(L, false);
+        lua_insert(L, 1);
+        return 2;
+      }
+    });
+    lua_setfield(L, -2, "pcall");
+  }
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+}
 static void PushMathLib(lua_State* L) noexcept {
   lua_newuserdata(L, 0);
 
