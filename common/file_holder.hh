@@ -16,6 +16,7 @@
 #include "common/file_base.hh"
 #include "common/generic_watcher.hh"
 #include "common/memento.hh"
+#include "common/mutable_memento.hh"
 #include "common/yas_nf7.hh"
 #include "common/yas_std_variant.hh"
 
@@ -34,8 +35,13 @@ class FileHolder : public nf7::FileBase::Feature {
   using Entity = std::variant<
       std::monostate, nf7::File::Path, std::shared_ptr<nf7::File>>;
 
-  FileHolder(nf7::File& owner, std::string_view id) noexcept :
-      owner_(&owner), id_(id) {
+  FileHolder(nf7::File& owner, std::string_view id,
+             nf7::MutableMemento* mem = nullptr) noexcept :
+      owner_(&owner), mem_(mem), id_(id) {
+  }
+  FileHolder(nf7::File& owner, std::string_view id,
+             nf7::MutableMemento& mem) noexcept :
+      FileHolder(owner, id, &mem) {
   }
   FileHolder(const FileHolder&) = delete;
   FileHolder(FileHolder&&) = delete;
@@ -62,6 +68,7 @@ class FileHolder : public nf7::FileBase::Feature {
     SetUp();
 
     onEmplace();
+    if (mem_) mem_->Commit();
   }
   void Emplace(std::unique_ptr<nf7::File>&& f) noexcept {
     TearDown();
@@ -70,6 +77,7 @@ class FileHolder : public nf7::FileBase::Feature {
     SetUp();
 
     onEmplace();
+    if (mem_) mem_->Commit();
   }
 
   nf7::File& GetFileOrThrow() {
@@ -108,7 +116,7 @@ class FileHolder : public nf7::FileBase::Feature {
     return own()? nf7::File::Path {{id_}}: std::get<nf7::File::Path>(entity_);
   }
 
-  // called when kUpdate event is caused by the child
+  // called when kUpdate event is happened on the child
   std::function<void(void)> onChildUpdate = [](){};
 
   // called when the child's memento tag id is changed
@@ -118,7 +126,9 @@ class FileHolder : public nf7::FileBase::Feature {
   std::function<void(void)> onEmplace = [](){};
 
  private:
-  nf7::File* const  owner_;
+  nf7::File*           const owner_;
+  nf7::MutableMemento* const mem_;
+
   const std::string id_;
 
   Entity entity_;

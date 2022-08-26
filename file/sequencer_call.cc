@@ -54,15 +54,12 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      callee_(*this, "callee"),
+      callee_(*this, "callee", mem_),
       callee_editor_(callee_,
                      [](auto& t) { return t.flags().contains("nf7::Node"); }),
-      mem_(std::move(data), *this){
+      mem_(std::move(data), *this) {
     mem_.data().callee.SetTarget(callee_);
     mem_.CommitAmend();
-
-    callee_.onChildMementoChange = [this]() { mem_.Commit(); };
-    callee_.onEmplace            = [this]() { mem_.Commit(); };
   }
 
   Call(nf7::Deserializer& ar) : Call(ar.env()) {

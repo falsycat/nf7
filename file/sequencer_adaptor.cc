@@ -69,15 +69,12 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      target_(*this, "target"),
+      target_(*this, "target", mem_),
       target_editor_(target_,
                      [](auto& t) { return t.flags().contains("nf7::Sequencer"); }),
       mem_(std::move(data), *this) {
     mem_.data().target.SetTarget(target_);
     mem_.CommitAmend();
-
-    target_.onChildMementoChange = [this]() { mem_.Commit(); };
-    target_.onEmplace            = [this]() { mem_.Commit(); };
   }
 
   Adaptor(nf7::Deserializer& ar) : Adaptor(ar.env()) {

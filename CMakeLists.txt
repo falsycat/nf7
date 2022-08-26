@@ -82,6 +82,7 @@ target_sources(nf7
     common/luajit_thread_lambda.hh
     common/memento.hh
     common/memento_recorder.hh
+    common/mutable_memento.hh
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh

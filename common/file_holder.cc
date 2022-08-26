@@ -64,6 +64,7 @@ void FileHolder::SetUp() noexcept {
           auto ptag = std::exchange(tag_, mem->Save());
           if (ptag != tag_) {
             onChildMementoChange();
+            if (mem_) mem_->Commit();  // commit owner's memento
           }
         }
         onChildUpdate();

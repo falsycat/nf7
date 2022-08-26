@@ -65,7 +65,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
       nf7::DirItem(nf7::DirItem::kTooltip | nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      obj_(*this, "obj_factory"),
+      obj_(*this, "obj_factory", mem_),
       obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
@@ -83,15 +83,12 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
           });
     };
 
-    obj_.onChildUpdate = [this]() {
+    obj_.onEmplace = obj_.onChildUpdate = [this]() {
       if (fu_) {
         log_->Info("factory update detected, dropping cache");
       }
       fu_ = std::nullopt;
     };
-
-    obj_.onChildMementoChange = [this]() { mem_.Commit(); };
-    obj_.onEmplace            = [this]() { mem_.Commit(); };
   }
 
   Node(nf7::Deserializer& ar) : Node(ar.env()) {
