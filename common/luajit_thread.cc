@@ -147,9 +147,6 @@ static void PushMeta(lua_State* L) noexcept {
 
       // nf7:yield(results...)
       lua_pushcfunction(L, [](auto L) {
-        auto th = Thread::GetPtr(L, 1);
-        th->ExecResume(L);
-        th->ExpectYield(L);
         return lua_yield(L, lua_gettop(L)-1);
       });
       lua_setfield(L, -2, "yield");

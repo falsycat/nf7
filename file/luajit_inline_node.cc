@@ -138,7 +138,7 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
     auto self = shared_from_this();
     auto th   = std::make_shared<nf7::luajit::Thread>(
         self, ljq,
-        [self, ljq](auto& th, auto L) { self->HandleThread(ljq, th, L); });
+        nf7::luajit::Thread::CreateNodeLambdaHandler(caller, shared_from_this()));
     th->Install(log_);
     th_.emplace_back(th);
 
@@ -165,7 +165,6 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
       // push args
       lua_pushstring(thL, p.first.c_str());  // key
       nf7::luajit::PushValue(thL, p.second);  // value
-      nf7::luajit::PushNodeLambda(thL, caller, self);  // caller
 
       // push ctx table
       if (ctxtable_ && ctxtable_->ljq() != ljq) {
@@ -181,7 +180,7 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
       }
 
       // start function
-      th->Resume(thL, 4);
+      th->Resume(thL, 3);
     });
 
   } catch (nf7::LifeExpiredException&) {
@@ -209,25 +208,6 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
   // used on luajit thread
   std::optional<nf7::luajit::Ref> func_;
   std::optional<nf7::luajit::Ref> ctxtable_;
-
-
-  void HandleThread(const std::shared_ptr<nf7::luajit::Queue>& ljq,
-                    nf7::luajit::Thread& th, lua_State* L) noexcept {
-    switch (th.state()) {
-    case nf7::luajit::Thread::kFinished:
-      return;
-
-    case nf7::luajit::Thread::kPaused:
-      log_->Warn("unexpected yield");
-      ljq->Push(shared_from_this(),
-                [th = th.shared_from_this(), L](auto) { th->Resume(L, 0); });
-      return;
-
-    default:
-      log_->Warn("luajit execution error: "s+lua_tostring(L, -1));
-      return;
-    }
-  }
 };
 
 
