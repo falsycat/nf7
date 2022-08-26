@@ -19,6 +19,7 @@
 #include "common/generic_memento.hh"
 #include "common/gui_file.hh"
 #include "common/gui_node.hh"
+#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_queue.hh"
@@ -48,11 +49,15 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   class Lambda;
 
   struct Data {
+    Data() noexcept { }
+
     std::string script;
+    std::vector<std::string> inputs  = {"in"};
+    std::vector<std::string> outputs = {"out"};
   };
 
   InlineNode(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env),
+      nf7::FileBase(kType, env, {&socket_popup_}),
       nf7::DirItem(nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
@@ -61,13 +66,19 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
 
     mem_.onRestore = [this]() { Touch(); };
     mem_.onCommit  = [this]() { Touch(); };
+
+    socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
+      this->data().inputs  = std::move(i);
+      this->data().outputs = std::move(o);
+      mem_.Commit();
+    };
   }
 
   InlineNode(nf7::Deserializer& ar) : InlineNode(ar.env()) {
-    ar(data().script);
+    ar(data().script, data().inputs, data().outputs);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(data().script);
+    ar(data().script, data().inputs, data().outputs);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<InlineNode>(env, Data {data()});
@@ -77,12 +88,10 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
   std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"in"};
-    return kInputs;
+    return data().inputs;
   }
   std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"out"};
-    return kOutputs;
+    return data().outputs;
   }
 
   void UpdateMenu() noexcept override;
@@ -102,6 +111,8 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   nf7::GenericMemento<Data> mem_;
   const Data& data() const noexcept { return mem_.data(); }
   Data& data() noexcept { return mem_.data(); }
+
+  nf7::gui::IOSocketListPopup socket_popup_;
 };
 
 class InlineNode::Lambda final : public nf7::Node::Lambda,
@@ -229,35 +240,41 @@ std::shared_ptr<nf7::Node::Lambda> InlineNode::CreateLambda(
 }
 
 void InlineNode::UpdateMenu() noexcept {
+  if (ImGui::MenuItem("I/O list")) {
+    socket_popup_.Open(data().inputs, data().outputs);
+  }
 }
 void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
   ImGui::TextUnformatted("LuaJIT/InlineNode");
-
-  if (ImNodes::BeginInputSlot("in", 1)) {
-    ImGui::AlignTextToFramePadding();
-    nf7::gui::NodeSocket();
-    ImNodes::EndSlot();
+  ImGui::SameLine();
+  if (ImGui::SmallButton("I/O list")) {
+    socket_popup_.Open(data().inputs, data().outputs);
   }
+
+  nf7::gui::NodeInputSockets(data().inputs);
   ImGui::SameLine();
   ImGui::InputTextMultiline("##script", &data().script, {24*em, 8*em});
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
   ImGui::SameLine();
-  if (ImNodes::BeginOutputSlot("out", 1)) {
-    ImGui::AlignTextToFramePadding();
-    nf7::gui::NodeSocket();
-    ImNodes::EndSlot();
-  }
+  nf7::gui::NodeOutputSockets(data().outputs);
+
+  socket_popup_.Update();
 }
 void InlineNode::UpdateWidget() noexcept {
   ImGui::TextUnformatted("LuaJIT/InlineNode");
+  if (ImGui::Button("I/O list")) {
+    socket_popup_.Open(data().inputs, data().outputs);
+  }
   ImGui::InputTextMultiline("script", &data().script);
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
+
+  socket_popup_.Update();
 }
 
 }
