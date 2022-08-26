@@ -70,12 +70,9 @@ class Curve final : public nf7::File,
       nf7::DirItem(nf7::DirItem::kWidget),
       nf7::Sequencer(nf7::Sequencer::kCustomItem |
                      nf7::Sequencer::kParamPanel),
-      life_(*this), mem_(std::move(data)) {
+      life_(*this), mem_(std::move(data), *this) {
     AssignId();
     Sanitize();
-
-    mem_.onRestore = [this]() { Touch(); };
-    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Curve(nf7::Deserializer& ar) : Curve(ar.env()) {

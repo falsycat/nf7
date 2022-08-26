@@ -94,6 +94,8 @@ class File {
   void MakeAsRoot() noexcept;
   void Isolate() noexcept;
 
+  void Touch() noexcept;
+
   virtual void Update() noexcept { }
   virtual void Handle(const Event&) noexcept { }
 
@@ -121,9 +123,6 @@ class File {
   Id id() const noexcept { return id_; }
   File* parent() const noexcept { return parent_; }
   const std::string& name() const noexcept { return name_; }
-
- protected:
-  void Touch() noexcept;
 
  private:
   const TypeInfo* const type_;
@@ -273,7 +272,6 @@ class Env {
   virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
 
   virtual void Handle(const File::Event&) noexcept = 0;
-  void ExecHandle(const File::Event&) noexcept;
 
   virtual void Save() noexcept = 0;
   virtual void Throw(std::exception_ptr&&) noexcept = 0;

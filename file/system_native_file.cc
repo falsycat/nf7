@@ -87,12 +87,12 @@ class NativeFile final : public nf7::FileBase,
       life_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
-      mem_(std::move(data)),
+      mem_(std::move(data), *this),
       config_popup_(*this) {
     nf7::FileBase::Install(shared_->log);
 
-    mem_.onRestore = [this]() { Refresh(); Touch(); };
-    mem_.onCommit  = [this]() { Refresh(); Touch(); };
+    mem_.onRestore = [this]() { Refresh(); };
+    mem_.onCommit  = [this]() { Refresh(); };
   }
 
   NativeFile(nf7::Deserializer& ar) : NativeFile(ar.env()) {

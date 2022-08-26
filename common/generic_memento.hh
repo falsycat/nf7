@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include "nf7.hh"
+
 #include "common/memento.hh"
 
 
@@ -15,7 +17,11 @@ class GenericMemento : public nf7::Memento {
  public:
   class CustomTag;
 
-  GenericMemento(T&& data) noexcept : initial_(T(data)), data_(std::move(data)) {
+  GenericMemento(T&& data, nf7::File* f = nullptr) noexcept :
+      file_(f), initial_(T(data)), data_(std::move(data)) {
+  }
+  GenericMemento(T&& data, nf7::File& f) noexcept :
+      GenericMemento(std::move(data), &f) {
   }
   ~GenericMemento() noexcept {
     tag_  = nullptr;
@@ -37,10 +43,12 @@ class GenericMemento : public nf7::Memento {
     tag_  = tag;
     last_ = tag;
     onRestore();
+    if (file_) file_->Touch();
   }
   void Commit() noexcept {
     tag_ = nullptr;
     onCommit();
+    if (file_) file_->Touch();
   }
   void CommitAmend() noexcept {
     if (!tag_) return;
@@ -48,6 +56,7 @@ class GenericMemento : public nf7::Memento {
     assert(itr != map_.end());
     itr->second = data_;
     onCommit();
+    if (file_) file_->Touch();
   }
 
   T& data() noexcept { return data_; }
@@ -65,6 +74,8 @@ class GenericMemento : public nf7::Memento {
   std::function<void()> onCommit  = [](){};
 
  private:
+  nf7::File* const file_;
+
   const T initial_;
   T data_;
 

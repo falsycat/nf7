@@ -67,7 +67,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       obj_(*this, "obj_factory"),
       obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::Node"); }),
-      mem_(std::move(data)) {
+      mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
 
     mem_.data().obj.SetTarget(obj_);
@@ -92,9 +92,6 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
     obj_.onChildMementoChange = [this]() { mem_.Commit(); };
     obj_.onEmplace            = [this]() { mem_.Commit(); };
-
-    mem_.onRestore = [this]() { Touch(); };
-    mem_.onCommit  = [this]() { Touch(); };
   }
 
   Node(nf7::Deserializer& ar) : Node(ar.env()) {

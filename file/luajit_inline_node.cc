@@ -61,11 +61,8 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
       nf7::DirItem(nf7::DirItem::kWidget),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      mem_(std::move(data)) {
+      mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
-
-    mem_.onRestore = [this]() { Touch(); };
-    mem_.onCommit  = [this]() { Touch(); };
 
     socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
       this->data().inputs  = std::move(i);

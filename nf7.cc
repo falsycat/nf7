@@ -101,6 +101,13 @@ void File::Isolate() noexcept {
   parent_ = nullptr;
   name_   = "";
 }
+void File::Touch() noexcept {
+  env().ExecMain(std::make_shared<nf7::GenericContext>(*this), [this]() {
+    if (id()) {
+      env().Handle( {.id = id(), .type = Event::kUpdate});
+    }
+  });
+}
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;
   throw NotFoundException("missing child: "+std::string(name));
@@ -163,10 +170,6 @@ File& File::ancestorOrThrow(size_t dist) const {
   }
   if (!f) throw NotFoundException("cannot go up over the root");
   return const_cast<File&>(*f);
-}
-void File::Touch() noexcept {
-  if (!id()) return;
-  env().ExecHandle({.id = id(), .type = Event::kUpdate});
 }
 
 File::TypeInfo::TypeInfo(const std::string& name,
@@ -247,10 +250,6 @@ Context::~Context() noexcept {
 File& Env::GetFileOrThrow(File::Id id) const {
   if (auto ret = GetFile(id)) return *ret;
   throw ExpiredException("file ("+std::to_string(id)+") is expired");
-}
-void Env::ExecHandle(const File::Event& ev) noexcept {
-  ExecMain(std::make_shared<nf7::GenericContext>(*this, ev.id),
-           [this, ev]() { Handle(ev); });
 }
 
 Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {
