@@ -46,7 +46,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
       nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
 
   // Creates a handler to emit yielded value to Node::Lambda.
-  static inline Handler CreateNodeLambdaHandler(
+  static Handler CreateNodeLambdaHandler(
       const std::shared_ptr<nf7::Node::Lambda>& caller,
       const std::shared_ptr<nf7::Node::Lambda>& callee) noexcept;
 
@@ -179,44 +179,6 @@ Thread::Handler Thread::CreatePromiseHandler(
     default:
       assert(false);
       throw 0;
-    }
-  };
-}
-
-Thread::Handler Thread::CreateNodeLambdaHandler(
-    const std::shared_ptr<nf7::Node::Lambda>& caller,
-    const std::shared_ptr<nf7::Node::Lambda>& callee) noexcept {
-  return [caller, callee](auto& th, auto L) {
-    switch (th.state()) {
-    case nf7::luajit::Thread::kPaused:
-      switch (lua_gettop(L)) {
-      case 0:
-        th.ExecResume(L);
-        return;
-      case 2: {
-        auto k = luaL_checkstring(L, 1);
-        auto v = nf7::luajit::CheckValue(L, 2);
-        caller->env().ExecSub(
-            caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
-              caller->Handle(k, v, callee);
-            });
-      } return;
-      default:
-        if (auto log = th.logger()) {
-          log->Warn("invalid use of yield, nf7:yield() or nf7:yield(name, value)");
-        }
-        th.Resume(L, 0);
-        return;
-      }
-
-    case nf7::luajit::Thread::kFinished:
-      return;
-
-    default:
-      if (auto log = th.logger()) {
-        log->Warn(std::string {"luajit execution error: "}+lua_tostring(L, -1));
-      }
-      return;
     }
   };
 }

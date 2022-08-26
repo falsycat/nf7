@@ -15,6 +15,7 @@ constexpr size_t kBufferSizeMax    = 64 * 1024 * 1024;
 // Pushes a metatable for Thread object, available on global table as 'nf7'.
 static void PushMeta(lua_State*) noexcept;
 
+
 lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
 
@@ -70,6 +71,45 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
 void Thread::Abort() noexcept {
   std::unique_lock<std::mutex> k(mtx_);
   state_ = kAborted;
+}
+
+
+Thread::Handler Thread::CreateNodeLambdaHandler(
+    const std::shared_ptr<nf7::Node::Lambda>& caller,
+    const std::shared_ptr<nf7::Node::Lambda>& callee) noexcept {
+  return [caller, callee](auto& th, auto L) {
+    switch (th.state()) {
+    case nf7::luajit::Thread::kPaused:
+      switch (lua_gettop(L)) {
+      case 0:
+        th.ExecResume(L);
+        return;
+      case 2: {
+        auto k = luaL_checkstring(L, 1);
+        auto v = nf7::luajit::CheckValue(L, 2);
+        caller->env().ExecSub(
+            caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
+              caller->Handle(k, v, callee);
+            });
+      } return;
+      default:
+        if (auto log = th.logger()) {
+          log->Warn("invalid use of yield, nf7:yield() or nf7:yield(name, value)");
+        }
+        th.Resume(L, 0);
+        return;
+      }
+
+    case nf7::luajit::Thread::kFinished:
+      return;
+
+    default:
+      if (auto log = th.logger()) {
+        log->Warn(std::string {"luajit execution error: "}+lua_tostring(L, -1));
+      }
+      return;
+    }
+  };
 }
 
 

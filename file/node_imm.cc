@@ -45,7 +45,8 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   class Lambda;
 
   Imm(nf7::Env& env, nf7::gui::Value&& v = {}) noexcept :
-      nf7::File(kType, env), nf7::DirItem(DirItem::kNone),
+      nf7::File(kType, env),
+      nf7::DirItem(DirItem::kWidget),
       life_(*this), mem_(std::move(v), *this) {
   }
 
@@ -71,6 +72,7 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
+  void UpdateWidget() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
@@ -135,6 +137,12 @@ void Imm::UpdateNode(nf7::Node::Editor&) noexcept {
   }
 
   if (mod) {
+    mem_.Commit();
+  }
+}
+void Imm::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("Node/Imm");
+  if (mem_.data().UpdateEditor()) {
     mem_.Commit();
   }
 }
