@@ -91,12 +91,13 @@ Thread::Handler Thread::CreateNodeLambdaHandler(
             caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
               caller->Handle(k, v, callee);
             });
+        th.ExecResume(L);
       } return;
       default:
         if (auto log = th.logger()) {
           log->Warn("invalid use of yield, nf7:yield() or nf7:yield(name, value)");
         }
-        th.Resume(L, 0);
+        th.ExecResume(L);
         return;
       }
 
