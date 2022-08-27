@@ -80,6 +80,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
                    nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       win_(*this, "Editor Node/Network", win),
       items_(std::move(items)), links_(std::move(links)),
@@ -118,7 +119,8 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
-  void UpdateNode(Node::Editor&) noexcept override;
+  void UpdateMenu(nf7::Node::Editor&) noexcept override { UpdateMenu(); }
+  void UpdateNode(nf7::Node::Editor&) noexcept override;
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
@@ -700,7 +702,8 @@ class Network::Initiator final : public nf7::File,
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
   }
 
-  Initiator(nf7::Env& env) noexcept : File(kType, env) {
+  Initiator(nf7::Env& env) noexcept :
+      nf7::File(kType, env), nf7::Node(nf7::Node::kCustomNode) {
   }
 
   Initiator(nf7::Deserializer& ar) : Initiator(ar.env()) {
@@ -751,7 +754,7 @@ class Network::Terminal : public nf7::File,
     public nf7::Node,
     public Network::InternalNode {
  public:
-  static inline const GenericTypeInfo<Terminal> kType = {
+  static inline const nf7::GenericTypeInfo<Terminal> kType = {
     "Node/Network/Terminal", {}};
 
   enum Type { kInput, kOutput, };
@@ -762,6 +765,7 @@ class Network::Terminal : public nf7::File,
 
   Terminal(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
+      nf7::Node(nf7::Node::kCustomNode),
       life_(*this), mem_(std::move(data), *this) {
   }
 
@@ -1128,19 +1132,20 @@ void Network::Update() noexcept {
   }
 }
 void Network::UpdateMenu() noexcept {
+  if (ImGui::MenuItem("Editor", nullptr, &win_.shown()) && win_.shown()) {
+    win_.SetFocus();
+  }
   if (ImGui::MenuItem("I/O sockets")) {
     socket_popup_.Open(inputs_, outputs_);
   }
-  ImGui::Separator();
-  ImGui::MenuItem("Network Editor", nullptr, &win_.shown());
 }
 void Network::UpdateTooltip() noexcept {
   ImGui::Text("nodes active: %zu", items_.size());
 }
 void Network::UpdateWidget() noexcept {
   ImGui::TextUnformatted("Node/Network");
-  if (ImGui::Button("open network editor")) {
-    win_.shown() = true;
+  if (ImGui::Button("open editor")) {
+    win_.SetFocus();
   }
   if (ImGui::Button("I/O sockets")) {
     socket_popup_.Open(inputs_, outputs_);
@@ -1148,7 +1153,23 @@ void Network::UpdateWidget() noexcept {
 
   socket_popup_.Update();
 }
-void Network::UpdateNode(Node::Editor&) noexcept {
+void Network::UpdateNode(nf7::Node::Editor&) noexcept {
+  ImGui::TextUnformatted("Node/Network");
+
+  ImGui::BeginGroup();
+  nf7::gui::NodeInputSockets(inputs_);
+  ImGui::SameLine();
+  nf7::gui::NodeOutputSockets(outputs_);
+  ImGui::EndGroup();
+
+  if (ImGui::Button("open editor")) {
+    win_.SetFocus();
+  }
+  if (ImGui::Button("I/O sockets")) {
+    socket_popup_.Open(inputs_, outputs_);
+  }
+
+  socket_popup_.Update();
 }
 
 void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
@@ -1157,7 +1178,14 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
 
   const auto id = reinterpret_cast<void*>(id_);
   if (ImNodes::BeginNode(id, &pos_, &select_)) {
-    node_->UpdateNode(ed);
+    if (node_->flags() & nf7::Node::kCustomNode) {
+      node_->UpdateNode(ed);
+    } else {
+      ImGui::TextUnformatted(file_->type().name().c_str());
+      nf7::gui::NodeInputSockets(node_->GetInputs());
+      ImGui::SameLine();
+      nf7::gui::NodeOutputSockets(node_->GetOutputs());
+    }
   }
   ImNodes::EndNode();
 
@@ -1178,6 +1206,16 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
     if (ImGui::MenuItem("clone")) {
       owner_->ExecAddItem(
           std::make_unique<Item>(owner_->next_++, file_->Clone(env())));
+    }
+    if (node_->flags() & nf7::Node::kMenu_DirItem) {
+      ImGui::Separator();
+      auto dir = file_->interface<nf7::DirItem>();
+      assert(dir);
+      dir->UpdateMenu();
+    }
+    if (node_->flags() & nf7::Node::kMenu) {
+      ImGui::Separator();
+      node_->UpdateMenu(ed);
     }
     ImGui::EndPopup();
   }

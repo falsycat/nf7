@@ -65,7 +65,8 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
   }
   Device(nf7::Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
       nf7::FileBase(kType, env),
-      nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+      nf7::Node(nf7::Node::kNone),
       data_(std::make_shared<AsyncData>(*this)),
       selector_(std::move(sel)), cfg_(cfg),
       config_popup_(std::make_shared<ConfigPopup>()) {
@@ -90,7 +91,6 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
-  void UpdateNode(Node::Editor&) noexcept override { }
 
   static bool UpdateModeSelector(ma_device_type*) noexcept;
   static const ma_device_info* UpdateSelector(Selector*, ma_device_info*, size_t) noexcept;

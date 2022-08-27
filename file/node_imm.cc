@@ -46,7 +46,8 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
 
   Imm(nf7::Env& env, nf7::gui::Value&& v = {}) noexcept :
       nf7::File(kType, env),
-      nf7::DirItem(DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kCustomNode),
       life_(*this), mem_(std::move(v), *this) {
   }
 

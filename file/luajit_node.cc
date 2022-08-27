@@ -63,6 +63,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   Node(Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&obj_, &obj_editor_, &socket_popup_}),
       nf7::DirItem(nf7::DirItem::kTooltip | nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kNone),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       obj_(*this, "obj_factory", mem_),
@@ -294,7 +295,7 @@ void Node::UpdateWidget() noexcept {
     mem_.Commit();
   }
 
-  if (ImGui::Button("input/output list")) {
+  if (ImGui::Button("I/O list")) {
     socket_popup_.Open(data().inputs, data().outputs);
   }
 

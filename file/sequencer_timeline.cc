@@ -73,6 +73,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
      const nf7::gui::Window*               win    = nullptr) noexcept :
       nf7::FileBase(kType, env, {&popup_socket_, &popup_add_item_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this),
       layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
@@ -1237,16 +1238,21 @@ void TL::Update() noexcept {
   }
 }
 void TL::UpdateMenu() noexcept {
-  ImGui::MenuItem("Editor", nullptr, &win_.shown());
+  if (ImGui::MenuItem("editor", nullptr, &win_.shown()) && win_.shown()) {
+    win_.SetFocus();
+  }
+  if (ImGui::MenuItem("I/O list")) {
+    popup_socket_.Open(seq_inputs_, seq_outputs_);
+  }
 }
 void TL::UpdateWidget() noexcept {
   ImGui::TextUnformatted("Sequencer/Timeline");
 
 
-  if (ImGui::Button("Timeline Editor")) {
-    win_.shown() = true;
+  if (ImGui::Button("Editor")) {
+    win_.SetFocus();
   }
-  if (ImGui::Button("I/O socket list")) {
+  if (ImGui::Button("I/O list")) {
     popup_socket_.Open(seq_inputs_, seq_outputs_);
   }
 

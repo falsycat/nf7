@@ -84,6 +84,7 @@ class NativeFile final : public nf7::FileBase,
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
                    nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),

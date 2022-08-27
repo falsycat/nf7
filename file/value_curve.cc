@@ -68,6 +68,7 @@ class Curve final : public nf7::File,
   Curve(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::File(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
+      nf7::Node(nf7::Node::kCustomNode),
       nf7::Sequencer(nf7::Sequencer::kCustomItem |
                      nf7::Sequencer::kParamPanel),
       life_(*this), mem_(std::move(data), *this) {

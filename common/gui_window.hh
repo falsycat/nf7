@@ -47,6 +47,7 @@ class Window {
   }
 
   void SetFocus() noexcept {
+    shown_     = true;
     set_focus_ = true;
   }
 

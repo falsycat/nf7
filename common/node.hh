@@ -22,12 +22,14 @@ class Node : public File::Interface {
   class Lambda;
 
   enum Flag : uint8_t {
-    kUI   = 1 << 0,  // UpdateNode() is called to display node
-    kMenu = 1 << 1,
+    kNone = 0,
+    kCustomNode   = 1 << 0,
+    kMenu         = 1 << 1,
+    kMenu_DirItem = 1 << 2,  // use DirItem::UpdateMenu() method instead of Node's
   };
   using Flags = uint8_t;
 
-  Node(Flags f = 0) noexcept : flags_(f) { }
+  Node(Flags f) noexcept : flags_(f) { }
   Node(const Node&) = default;
   Node(Node&&) = default;
   Node& operator=(const Node&) = default;
