@@ -28,8 +28,12 @@ class GenericHistory : public nf7::History {
     return *cmds_.back();
   }
   void Clear() noexcept {
-    for (auto itr = cmds_.rbegin(); itr < cmds_.rend(); ++itr) {
-      *itr = nullptr;
+    for (size_t i = 0; i < cursor_; ++i) {
+      cmds_[i] = nullptr;
+    }
+    for (size_t i = cmds_.size(); i > cursor_;) {
+      --i;
+      cmds_[i] = nullptr;
     }
     cmds_.clear();
   }

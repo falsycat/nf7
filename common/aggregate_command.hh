@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <span>
 #include <vector>
@@ -13,45 +14,48 @@ class AggregateCommand : public nf7::History::Command {
  public:
   using CommandList = std::vector<std::unique_ptr<Command>>;
 
-  AggregateCommand(CommandList&& commands) noexcept :
-      commands_(std::move(commands)) {
+  AggregateCommand(CommandList&& commands, bool applied = false) noexcept :
+      commands_(std::move(commands)), applied_(applied) {
   }
   ~AggregateCommand() noexcept {
-    for (auto itr = commands_.rbegin(); itr < commands_.rend(); ++itr) {
-      *itr = nullptr;
+    if (applied_) {
+      for (auto itr = commands_.begin(); itr < commands_.end(); ++itr) {
+        *itr = nullptr;
+      }
+    } else {
+      for (auto itr = commands_.rbegin(); itr < commands_.rend(); ++itr) {
+        *itr = nullptr;
+      }
     }
   }
 
   void Apply() override {
-    auto itr = commands_.begin();
-    try {
-      try {
-        while (itr < commands_.end()) {
-          (*itr)->Apply();
-          ++itr;
-        }
-      } catch (History::CorruptException&) {
-        throw History::CorruptException("failed to apply AggregateCommand");
-      }
-    } catch (History::CorruptException&) {
-      try {
-        while (itr > commands_.begin()) {
-          --itr;
-          (*itr)->Revert();
-        }
-      } catch (History::CorruptException&) {
-        throw History::CorruptException(
-            "AggregateCommand gave up recovering from failure of apply");
-      }
-      throw;
-    }
+    Exec(commands_.begin(), commands_.end(),
+         [](auto& a) { a->Apply(); },
+         [](auto& a) { a->Revert(); });
+    applied_ = true;
   }
   void Revert() override {
-    auto itr = commands_.rbegin();
+    Exec(commands_.rbegin(), commands_.rend(),
+         [](auto& a) { a->Revert(); },
+         [](auto& a) { a->Apply(); });
+    applied_ = false;
+  }
+
+  std::span<const std::unique_ptr<Command>> commands() const noexcept { return commands_; }
+
+ private:
+  CommandList commands_;
+
+  bool applied_;
+
+
+  static void Exec(auto begin, auto end, const auto& apply, const auto& revert) {
+    auto itr = begin;
     try {
       try {
-        while (itr < commands_.rend()) {
-          (*itr)->Revert();
+        while (itr < end) {
+          apply(*itr);
           ++itr;
         }
       } catch (History::CorruptException&) {
@@ -59,9 +63,9 @@ class AggregateCommand : public nf7::History::Command {
       }
     } catch (History::CorruptException&) {
       try {
-        while (itr > commands_.rbegin()) {
+        while (itr > begin) {
           --itr;
-          (*itr)->Apply();
+          revert(*itr);
         }
       } catch (History::CorruptException&) {
         throw History::CorruptException(
@@ -70,11 +74,6 @@ class AggregateCommand : public nf7::History::Command {
       throw;
     }
   }
-
-  std::span<const std::unique_ptr<Command>> commands() const noexcept { return commands_; }
-
- private:
-  CommandList commands_;
 };
 
 }  // namespace nf7
