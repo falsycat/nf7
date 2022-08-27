@@ -100,7 +100,7 @@ struct NodeRootLambda::Builder final {
     return prod_;
   }
 
-  void Send(std::string_view name, const nf7::Value& v) noexcept {
+  void Send(std::string_view name, const nf7::Value& v) {
     assert(built_);
     CheckInput(name);
     target_->Handle(name, v, prod_);

@@ -82,7 +82,8 @@ class Node::Lambda : public nf7::Context {
   }
 
   virtual void Handle(
-      std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept = 0;
+      std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept {
+  }
 
   std::shared_ptr<Node::Lambda> parent() const noexcept { return parent_.lock(); }
 
