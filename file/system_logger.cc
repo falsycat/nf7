@@ -4,6 +4,8 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <typeinfo>
 #include <utility>
 #include <iostream>
@@ -11,16 +13,19 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_window.hh"
+#include "common/life.hh"
 #include "common/logger.hh"
+#include "common/logger_ref.hh"
+#include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_std_atomic.hh"
 
 
 using namespace std::literals;
-
 
 namespace nf7 {
 namespace {
@@ -28,7 +33,7 @@ namespace {
 class Logger final : public nf7::File,
     public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<Logger> kType = {
+  static inline const nf7::GenericTypeInfo<Logger> kType = {
     "System/Logger", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Records log output from other files.");
@@ -38,6 +43,8 @@ class Logger final : public nf7::File,
     ImGui::Bullet(); ImGui::TextUnformatted(
         "recorded logs won't be permanentized");
   }
+
+  class Node;
 
   struct Row final {
    public:
@@ -141,7 +148,6 @@ class Logger final : public nf7::File,
     return loc.file_name()+":"s+std::to_string(loc.line());
   }
 };
-
 class Logger::ItemStore final : public nf7::Context,
     public nf7::Logger,
     public std::enable_shared_from_this<ItemStore> {
@@ -210,6 +216,76 @@ class Logger::ItemStore final : public nf7::Context,
   std::shared_ptr<Param> param_;
 };
 
+
+class Logger::Node final : public nf7::FileBase, public nf7::Node {
+ public:
+  static inline const nf7::GenericTypeInfo<Logger::Node> kType = {
+    "System/Logger/Node", {"nf7::Node"}};
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("Sends message to logger.");
+    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
+  }
+
+  Node(nf7::Env& env) noexcept :
+      nf7::FileBase(kType, env, {&logger_}),
+      nf7::Node(nf7::Node::kNone),
+      life_(*this), logger_(*this) {
+  }
+
+  Node(nf7::Deserializer& ar) : Node(ar.env()) {
+  }
+  void Serialize(nf7::Serializer&) const noexcept override {
+  }
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
+    return std::make_unique<Logger::Node>(env);
+  }
+
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept override {
+    return std::make_shared<Logger::Node::Lambda>(*this, parent);
+  }
+  std::span<const std::string> GetInputs() const noexcept override {
+    static const std::vector<std::string> kInputs = {"msg"};
+    return kInputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    return {};
+  }
+
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
+    return InterfaceSelector<nf7::Node>(t).Select(this);
+  }
+
+ private:
+  nf7::Life<Logger::Node> life_;
+
+  nf7::LoggerRef logger_;
+
+
+  class Lambda final : public nf7::Node::Lambda {
+   public:
+    Lambda(Logger::Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+        nf7::Node::Lambda(f, parent), f_(f.life_) {
+    }
+
+    void Handle(std::string_view, const nf7::Value& v,
+                const std::shared_ptr<nf7::Node::Lambda>&) noexcept override
+    try {
+      f_.EnforceAlive();
+      if (v.isString()) {
+        f_->logger_.Info(v.string());
+      } else {
+        f_->logger_.Info("["s+v.typeName()+"]");
+      }
+    } catch (nf7::Exception&) {
+    }
+
+   private:
+    nf7::Life<Logger::Node>::Ref f_;
+  };
+};
+
+
 void Logger::Handle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
@@ -222,7 +298,6 @@ void Logger::Handle(const Event& ev) noexcept {
     return;
   }
 }
-
 void Logger::Update() noexcept {
   if (const auto name = std::exchange(popup_, nullptr)) {
     ImGui::OpenPopup(name);
