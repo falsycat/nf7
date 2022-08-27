@@ -114,7 +114,6 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     return data().outputs;
   }
 
-  void Update() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
 
@@ -162,6 +161,8 @@ class Node::Lambda final : public nf7::Node::Lambda,
 
       f_->factory_ = b.Build();
       b.Send("create", nf7::Value::Pulse {});
+
+      f_->fu_->ThenSub(self, [this](auto) { if (f_) f_->factory_ = nullptr; });
     }
 
     assert(f_->fu_);
@@ -242,12 +243,6 @@ std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
   return std::make_shared<Lambda>(*this, parent);
 }
 
-void Node::Update() noexcept {
-  nf7::FileBase::Update();
-  if (factory_) {
-    factory_->KeepAlive();
-  }
-}
 void Node::UpdateTooltip() noexcept {
   ImGui::Text("factory:");
   ImGui::Indent();

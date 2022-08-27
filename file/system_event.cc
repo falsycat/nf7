@@ -21,7 +21,6 @@
 #include "common/logger.hh"
 #include "common/logger_ref.hh"
 #include "common/node.hh"
-#include "common/node_root_lambda.hh"
 #include "common/ptr_selector.hh"
 #include "common/value.hh"
 

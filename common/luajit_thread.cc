@@ -84,15 +84,18 @@ Thread::Handler Thread::CreateNodeLambdaHandler(
       case 0:
         th.ExecResume(L);
         return;
-      case 2: {
-        auto k = luaL_checkstring(L, 1);
-        auto v = nf7::luajit::CheckValue(L, 2);
-        caller->env().ExecSub(
-            caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
-              caller->Handle(k, v, callee);
-            });
-        th.ExecResume(L);
-      } return;
+      case 2:
+        if (auto v = nf7::luajit::ToValue(L, 2)) {
+          auto k = luaL_checkstring(L, 1);
+          caller->env().ExecSub(
+              caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
+                caller->Handle(k, *v, callee);
+              });
+          th.ExecResume(L);
+          return;
+        } else {
+        }
+        /* FALLTHROUGH */
       default:
         if (auto log = th.logger()) {
           log->Warn("invalid use of yield, nf7:yield() or nf7:yield(name, value)");

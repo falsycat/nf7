@@ -24,19 +24,16 @@ class NodeRootLambda final : public nf7::Node::Lambda,
   NodeRootLambda(NodeRootLambda&&) = delete;
   NodeRootLambda& operator=(const NodeRootLambda&) = delete;
   NodeRootLambda& operator=(NodeRootLambda&&) = delete;
-
-  bool KeepAlive() noexcept {
-    if (target_.expired() && pro_.size()) {
-      for (auto& pro : pro_) {
-        pro.second.Throw(std::make_exception_ptr(
-                nf7::Exception {"output was never satisified"}));
-      }
+  ~NodeRootLambda() noexcept {
+    target_ = nullptr;
+    for (auto& pro : pro_) {
+      pro.second.Throw(std::make_exception_ptr(
+              nf7::Exception {"output was never satisified"}));
     }
-    return !target_.expired();
   }
 
  private:
-  std::weak_ptr<nf7::Node::Lambda> target_;
+  std::shared_ptr<nf7::Node::Lambda> target_;
 
   std::unordered_map<std::string, nf7::Future<nf7::Value>::Promise> pro_;
   std::unordered_map<std::string, std::function<void(const nf7::Value&)>> handler_;
