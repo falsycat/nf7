@@ -273,6 +273,9 @@ class Env {
 
   virtual void Handle(const File::Event&) noexcept = 0;
 
+  // thread-safe
+  virtual void Exit() noexcept = 0;
+
   virtual void Save() noexcept = 0;
   virtual void Throw(std::exception_ptr&&) noexcept = 0;
 

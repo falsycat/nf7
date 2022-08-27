@@ -99,6 +99,9 @@ class Env final : public nf7::Env {
   } catch (ExpiredException&) {
   }
 
+  void Exit() noexcept override {
+    exit_requested_ = true;
+  }
   void Save() noexcept override {
     try {
       nf7::Serializer::Save(kFileName, root_);
@@ -129,6 +132,8 @@ class Env final : public nf7::Env {
     cv_.notify_one();
   }
 
+  bool exitRequested() const noexcept { return exit_requested_; }
+
  protected:
   File* GetFile(File::Id id) const noexcept override {
     auto itr = files_.find(id);
@@ -158,6 +163,7 @@ class Env final : public nf7::Env {
  private:
   std::unique_ptr<File> root_;
 
+  std::atomic<bool> exit_requested_ = false;
   std::atomic<bool> alive_ = true;
   std::exception_ptr panic_;
 
@@ -185,7 +191,7 @@ class Env final : public nf7::Env {
   void UpdatePanic() noexcept {
     const auto em = ImGui::GetFontSize();
 
-    ImGui::SetNextWindowSize({16*em, 12*em}, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize({32*em, 24*em}, ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal("panic")) {
       ImGui::TextUnformatted("something went wrong X(");
 
@@ -315,7 +321,7 @@ int main(int, char**) {
   {
     ::Env env;
     glfwShowWindow(window);
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
       // new frame
       glfwPollEvents();
       ImGui_ImplOpenGL3_NewFrame();
