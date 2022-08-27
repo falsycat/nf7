@@ -25,6 +25,7 @@
 #include <GLFW/glfw3.h>
 
 #include "init.hh"
+#include "theme.hh"
 
 
 using namespace nf7;
@@ -313,7 +314,7 @@ int main(int, char**) {
   io.IniFilename  = nullptr;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsDark();
+  SetUpImGuiStyle();
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init(glsl_version);
 

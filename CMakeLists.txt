@@ -43,6 +43,7 @@ target_sources(nf7
     main.cc
     nf7.cc
     nf7.hh
+    theme.hh
 
     common/aggregate_command.hh
     common/audio_queue.hh
