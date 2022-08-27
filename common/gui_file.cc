@@ -31,12 +31,8 @@ bool FileFactory::Update() noexcept {
     type_filter_ = "";
   }
 
-  if (flags_ & kNameInput) {
-    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-    ImGui::InputText("name", &name_);
-    ImGui::Spacing();
-  }
-
+  bool submit = false;
+  ImGui::InputTextWithHint("##type_filter", "search...", &type_filter_);
   if (ImGui::BeginListBox("type", {16*em, 8*em})) {
     for (const auto& reg : nf7::File::registry()) {
       const auto& t = *reg.second;
@@ -63,13 +59,22 @@ bool FileFactory::Update() noexcept {
         ImGui::BeginTooltip();
         t.UpdateTooltip();
         ImGui::EndTooltip();
+
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+          submit = true;
+        }
       }
     }
     ImGui::EndListBox();
   }
-  ImGui::InputTextWithHint("##type_filter", "search...", &type_filter_);
   ImGui::PopItemWidth();
   ImGui::Spacing();
+
+  if (flags_ & kNameInput) {
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    ImGui::InputText("name", &name_);
+    ImGui::Spacing();
+  }
 
   // input validation
   bool err = false;
@@ -92,10 +97,9 @@ bool FileFactory::Update() noexcept {
     }
   }
 
-  bool ret = false;
   if (!err) {
     if (ImGui::Button("ok")) {
-      ret = true;
+      submit = true;
     }
     if (ImGui::IsItemHovered()) {
       const auto path = owner_->abspath().Stringify();
@@ -107,7 +111,7 @@ bool FileFactory::Update() noexcept {
       }
     }
   }
-  return ret;
+  return submit && !err;
 }
 
 
