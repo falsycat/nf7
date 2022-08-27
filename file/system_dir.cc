@@ -61,7 +61,7 @@ class Dir final : public nf7::FileBase,
       try {
         ar(f);
         items_[name] = std::move(f);
-      } catch (nf7::Exception& e) {
+      } catch (nf7::Exception&) {
         env().Throw(std::current_exception());
       }
     }
