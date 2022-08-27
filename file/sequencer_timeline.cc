@@ -132,6 +132,9 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   std::vector<std::string> inputs_, outputs_;  // for GetInputs/GetOutputs
 
+  uint64_t action_time_;
+  uint64_t action_layer_;
+
   // permanentized params
   uint64_t cursor_;
   std::vector<std::unique_ptr<Layer>> layers_;
@@ -182,6 +185,11 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
 
   void AssignId();
+
+  // item selection
+  void Deselect() noexcept {
+    selected_.clear();
+  }
 
   // layer operation
   void ExecInsertLayer(size_t, std::unique_ptr<TL::Layer>&& = nullptr) noexcept;
@@ -1280,9 +1288,22 @@ void TL::UpdateEditorWindow() noexcept {
       if (tl_.BeginBody()) {
         // context menu on timeline
         if (ImGui::BeginPopupContextWindow()) {
-          if (ImGui::MenuItem("add new item")) {
+          if (ImGui::IsWindowAppearing()) {
+            action_time_  = tl_.mouseTime();
+            action_layer_ = 0;
             if (auto layer = reinterpret_cast<TL::Layer*>(tl_.mouseLayer())) {
-              popup_add_item_.Open(tl_.mouseTime(), *layer);
+              action_layer_ = layer->index();
+            }
+          }
+          if (ImGui::MenuItem("add new item")) {
+            if (action_layer_ < layers_.size()) {
+              popup_add_item_.Open(action_time_, *layers_[action_layer_]);
+            }
+          }
+          if (selected_.size()) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("deselect")) {
+              Deselect();
             }
           }
           ImGui::Separator();
@@ -1303,11 +1324,23 @@ void TL::UpdateEditorWindow() noexcept {
         for (auto& layer : layers_) {
           tl_.NextLayer(layer.get(), layer->height());
           for (auto& item : layer->items()) {
-            const auto& t = item->displayTiming();
-            if (tl_.BeginItem(item.get(), t.begin(), t.end())) {
+            const auto& t      = item->displayTiming();
+            const bool  select = selected_.contains(item.get());
+
+            ImGui::PushStyleColor(
+                ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg, 0.3f));
+            ImGui::PushStyleColor(
+                ImGuiCol_Border,
+                ImGui::GetColorU32(select? ImGuiCol_FrameBgActive: ImGuiCol_Border));
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 2);
+            const bool shown = tl_.BeginItem(item.get(), t.begin(), t.end());
+            ImGui::PopStyleVar(1);
+            ImGui::PopStyleColor(2);
+            if (shown) {
               item->Update();
             }
             tl_.EndItem();
+
           }
         }
       }
@@ -1541,8 +1574,7 @@ void TL::Item::Update() noexcept {
   assert(layer_);
 
   TL::Editor ed {*this};
-  const auto sz     = ImGui::GetContentRegionMax();
-  const bool select = owner_->selected_.contains(this);
+  const auto sz = ImGui::GetContentRegionMax();
 
   // popup menu
   if (ImGui::BeginPopupContextWindow()) {
@@ -1576,14 +1608,6 @@ void TL::Item::Update() noexcept {
       ImGui::EndTooltip();
     }
   }
-
-  // border
-  const auto spos = ImGui::GetWindowPos();
-  const auto size = ImGui::GetWindowSize();
-  const auto col  = ImGui::GetColorU32(
-      select? ImGuiCol_TextSelectedBg: ImGuiCol_Text);
-  auto d = ImGui::GetWindowDrawList();
-  d->AddRect(spos + ImVec2 {0, 1}, spos+size - ImVec2 {0, 1}, col);
 }
 
 
@@ -1591,8 +1615,6 @@ void TL::AddItemPopup::Update() noexcept {
   if (Popup::Begin()) {
     ImGui::TextUnformatted("Sequencer/Timeline: adding new item...");
     if (factory_.Update()) {
-      ImGui::CloseCurrentPopup();
-
       auto& layer = *target_layer_;
       auto  time  = target_time_;
 
@@ -1600,12 +1622,16 @@ void TL::AddItemPopup::Update() noexcept {
       if (auto item = layer.FindItemAfter(time)) {
         dur = std::min(dur, item->timing().begin() - time);
       }
-      auto  file   = factory_.type().Create(owner_->env());
-      auto  timing = TL::Timing::BeginDur(time, dur);
-      auto  item   = std::make_unique<TL::Item>(owner_->next_++, std::move(file), timing);
-      auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
-      auto  ctx    = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
-      owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
+      if (dur > 0) {
+        ImGui::CloseCurrentPopup();
+
+        auto  file   = factory_.type().Create(owner_->env());
+        auto  timing = TL::Timing::BeginDur(time, dur);
+        auto  item   = std::make_unique<TL::Item>(owner_->next_++, std::move(file), timing);
+        auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
+        auto  ctx    = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
+        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
+      }
     }
     ImGui::EndPopup();
   }

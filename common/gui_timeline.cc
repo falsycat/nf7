@@ -249,8 +249,12 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
 
   ImGui::SetCursorPos({left, std::round(layer_y_+pad)});
 
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {0, 0});
   constexpr auto kFlags = ImGuiWindowFlags_NoScrollbar;
-  if (ImGui::BeginChild(ImGui::GetID(item), {w, h}, false, kFlags)) {
+  const bool shown = ImGui::BeginChild(ImGui::GetID(item), {w, h}, true, kFlags);
+  ImGui::PopStyleVar(1);
+
+  if (shown) {
     const auto resizer_w = std::min(1*em, w/2);
 
     ImGui::SetCursorPos({0, 0});
@@ -270,9 +274,8 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
     HandleGrip(item, resizer_w, kMove, kMoveDone, ImGuiMouseCursor_Hand);
 
     ImGui::SetCursorPos({0, 0});
-    return true;
   }
-  return false;
+  return shown;
 }
 void Timeline::EndItem() noexcept {
   assert(frame_state_ == kItem);
