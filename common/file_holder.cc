@@ -44,21 +44,19 @@ void FileHolder::SetUp() noexcept {
       try {
         file_ = &owner_->ResolveOrThrow(path());
       } catch (nf7::File::NotFoundException&) {
+        file_ = nullptr;
       }
     }
   }
 
   if (file_) {
-    auto mem = file_->interface<nf7::Memento>();
+    auto mem = own()? file_->interface<nf7::Memento>(): nullptr;
 
     // init watcher
-    if (owner_->id() && !watcher_) {
+    if (file_->id() && !watcher_) {
       watcher_.emplace(file_->env());
       watcher_->Watch(file_->id());
 
-      watcher_->AddHandler(nf7::File::Event::kRemove, [this](auto&) {
-        file_ = nullptr;
-      });
       watcher_->AddHandler(nf7::File::Event::kUpdate, [this, mem](auto&) {
         if (mem) {
           auto ptag = std::exchange(tag_, mem->Save());
