@@ -204,7 +204,11 @@ static void PushMeta(lua_State* L) noexcept {
         const int n = lua_gettop(L);
         std::stringstream st;
         for (int i = 2; i <= n; ++i) {
-          st << lua_tostring(L, i);
+          if (auto msg = lua_tostring(L, i)) {
+            st << msg;
+          } else {
+            return luaL_error(L, "cannot stringify %s", luaL_typename(L, i));
+          }
         }
         logger->Write({lv, st.str()});
         return 0;

@@ -188,7 +188,7 @@ void PushVector(lua_State* L, const nf7::Value::ConstVector& v) noexcept {
           if (lua_istable(L, -1)) {  // array
             lua_rawgeti(L, -1, 1);
             const std::string_view type = luaL_checkstring(L, -1);
-            lua_rawgeti(L, -1, 2);
+            lua_rawgeti(L, -2, 2);
             const size_t n = static_cast<size_t>(luaL_checkinteger(L, -1));
             lua_pop(L, 2);
 
@@ -553,6 +553,7 @@ static size_t PushArrayFromBytes(lua_State* L, size_t n, const uint8_t* ptr, con
       [] <bool F = false>() { static_assert(F, "T is invalid"); }();
     }
     lua_rawseti(L, -2, static_cast<int>(i + 1));
+    ptr += sizeof(T);
   }
   return size;
 }
