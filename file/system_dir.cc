@@ -449,11 +449,11 @@ void Dir::RenamePopup::Update() noexcept {
     }
 
     bool err = false;
-    if (!Find(before_)) {
+    if (!owner_->Find(before_)) {
       ImGui::Bullet(); ImGui::TextUnformatted("before is invalid: missing target");
       err = true;
     }
-    if (Find(after_)) {
+    if (owner_->Find(after_)) {
       ImGui::Bullet(); ImGui::TextUnformatted("after is invalid: duplicated name");
       err = true;
     }
@@ -482,7 +482,7 @@ void Dir::RenamePopup::Update() noexcept {
       auto ctx  = std::make_shared<nf7::GenericContext>(*owner_, "renaming item");
       auto task = [this, before = std::move(before_), after = std::move(after_)]() {
         auto f = owner_->Remove(before);
-        if (!f) throw Exception("missing target");
+        if (!f) throw nf7::Exception {"missing target"};
         owner_->Add(after, std::move(f));
       };
       owner_->env().ExecMain(ctx, std::move(task));
