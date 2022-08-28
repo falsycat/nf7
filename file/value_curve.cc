@@ -554,7 +554,6 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
     const auto y    = static_cast<float>(Calc(mposn.x));
     const auto diff = y - mposn.y;
     if (std::abs(diff * sz.y) < grip) {
-      ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
       ImGui::SetCursorPos(mpos-ImVec2 {grip/2, grip/2} + pad);
       ImGui::InvisibleButton("grip", {grip, grip});
       if (ImGui::IsItemActivated()) {
