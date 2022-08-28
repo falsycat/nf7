@@ -221,9 +221,7 @@ void Adaptor::UpdateItem(Sequencer::Editor&) noexcept {
       seq.UpdateItem(ed);
     }
   } catch (nf7::Exception&) {
-    const auto em = ImGui::GetFontSize();
-    ImGui::SetCursorPos({.25f*em, .25f*em});
-    target_editor_.SmallButton();
+    ImGui::Text("%s", target_editor_.GetDisplayText().c_str());
   }
 }
 void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {

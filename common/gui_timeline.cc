@@ -42,7 +42,8 @@ bool Timeline::Begin() noexcept {
 
   constexpr auto kFlags =
       ImGuiWindowFlags_NoScrollWithMouse |
-      ImGuiWindowFlags_NoScrollbar;
+      ImGuiWindowFlags_NoScrollbar |
+      ImGuiWindowFlags_NoBackground;
   ImGui::SetCursorPos({0, body_offset_.y});
   if (ImGui::BeginChild("layers", {0, 0}, false, kFlags)) {
     frame_state_ = kHeader;
@@ -119,8 +120,9 @@ bool Timeline::BeginBody() noexcept {
   }
 
   // beginnign of body
+  constexpr auto kFlags = ImGuiWindowFlags_NoBackground;
   ImGui::SameLine(0, 0);
-  if (ImGui::BeginChild("body", {0, scroll_size_.y})) {
+  if (ImGui::BeginChild("body", {0, scroll_size_.y}, false, kFlags)) {
     frame_state_ = kBody;
     body_screen_offset_ = ImGui::GetCursorScreenPos();
 
@@ -250,7 +252,9 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
   ImGui::SetCursorPos({left, std::round(layer_y_+pad)});
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {0, 0});
-  constexpr auto kFlags = ImGuiWindowFlags_NoScrollbar;
+  constexpr auto kFlags =
+      ImGuiWindowFlags_NoScrollbar |
+      ImGuiWindowFlags_NoScrollWithMouse;
   const bool shown = ImGui::BeginChild(ImGui::GetID(item), {w, h}, true, kFlags);
   ImGui::PopStyleVar(1);
 
@@ -273,13 +277,16 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
     ImGui::SetItemAllowOverlap();
     HandleGrip(item, resizer_w, kMove, kMoveDone, ImGuiMouseCursor_Hand);
 
-    ImGui::SetCursorPos({0, 0});
+    const auto pad = ImGui::GetStyle().WindowPadding / 2;
+    ImGui::SetCursorPosY(pad.y);
+    ImGui::Indent(pad.x);
   }
   return shown;
 }
 void Timeline::EndItem() noexcept {
   assert(frame_state_ == kItem);
   frame_state_ = kBody;
+  ImGui::Unindent();
   ImGui::EndChild();
 }
 

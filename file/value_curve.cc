@@ -344,8 +344,10 @@ std::shared_ptr<nf7::Sequencer::Lambda> Curve::CreateLambda(
 
 void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
   ImGui::TextUnformatted("Value/Curve");
-  ImGui::SetCursorPos({0, 0});
-  UpdateCurveEditor(ImGui::GetContentRegionAvail());
+
+  const auto pad = ImGui::GetStyle().WindowPadding / 2;
+  ImGui::SetCursorPos(pad);
+  UpdateCurveEditor(ImGui::GetContentRegionAvail()-pad);
 }
 void Curve::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
@@ -378,11 +380,15 @@ void Curve::UpdateWidget() noexcept {
 }
 void Curve::UpdateCurveEditorWindow(const ImVec2& size) noexcept {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {0, 0});
-  if (ImGui::BeginChild("CurveEditor", size, true, ImGuiWindowFlags_NoScrollbar)) {
-    UpdateCurveEditor(ImGui::GetContentRegionAvail());
+  const auto shown =
+      ImGui::BeginChild("CurveEditor", size, true, ImGuiWindowFlags_NoScrollbar);
+  ImGui::PopStyleVar(1);
+  if (shown) {
+    const auto pad = ImGui::GetStyle().WindowPadding / 2;
+    ImGui::SetCursorPos(pad);
+    UpdateCurveEditor(ImGui::GetContentRegionAvail()-pad*2);
     ImGui::EndChild();
   }
-  ImGui::PopStyleVar();
 }
 void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   const auto& io = ImGui::GetIO();
@@ -394,6 +400,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   const auto colg = ImGui::GetColorU32(ImGuiCol_Text, .5f);
   const auto cols = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
   const auto pos  = ImGui::GetCursorScreenPos();
+  const auto pad  = ImGui::GetCursorPos();
   const auto grip = em/2.4f;
 
   const auto mpos  = ImGui::GetMousePos() - pos;
@@ -436,7 +443,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
       d->AddCircleFilled(pos+p1, grip, cols);
     }
 
-    ImGui::SetCursorPos(p1 - ImVec2 {grip, grip});
+    ImGui::SetCursorPos(p1 - ImVec2 {grip, grip} + pad);
     if (!io.KeyShift) {
       ImGui::InvisibleButton("grip", {grip*2, grip*2});
       if (ImGui::IsItemActive()) {
@@ -501,7 +508,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
     // p2 control point
     if (ImGui::IsWindowFocused() && io.KeyShift && nt) {
       const auto p2 = ImVec2 {sz.x*t.p2.x, sz.y*(1-t.p2.y)};
-      ImGui::SetCursorPos(p2 - ImVec2 {grip, grip});
+      ImGui::SetCursorPos(p2 - ImVec2 {grip, grip} + pad);
       ImGui::InvisibleButton("grip-p2", {grip*2, grip*2});
       if (HandleControlPoint(t.p2, t.p1.x, nt->p1.x)) {
         if (!t.break_prev) {
@@ -518,7 +525,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
     // prev term's p3 control point
     if (ImGui::IsWindowFocused() && io.KeyShift && pt) {
       const auto p3 = ImVec2 {sz.x*pt->p3.x, sz.y*(1-pt->p3.y)};
-      ImGui::SetCursorPos(p3 - ImVec2 {grip, grip});
+      ImGui::SetCursorPos(p3 - ImVec2 {grip, grip} + pad);
       ImGui::InvisibleButton("grip-p3", {grip*2, grip*2});
       if (HandleControlPoint(pt->p3, pt->p1.x, t.p1.x)) {
         if (!t.break_prev && nt) {
@@ -548,7 +555,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
     const auto diff = y - mposn.y;
     if (std::abs(diff * sz.y) < grip) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
-      ImGui::SetCursorPos(mpos-ImVec2 {grip/2, grip/2});
+      ImGui::SetCursorPos(mpos-ImVec2 {grip/2, grip/2} + pad);
       ImGui::InvisibleButton("grip", {grip, grip});
       if (ImGui::IsItemActivated()) {
         SelectPoint(next_id_);

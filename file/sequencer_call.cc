@@ -221,7 +221,7 @@ void Call::Lambda::Abort() noexcept {
 
 
 void Call::UpdateItem(Sequencer::Editor&) noexcept {
-  callee_editor_.SmallButton();
+  ImGui::Text("%s", callee_editor_.GetDisplayText().c_str());
 }
 void Call::UpdateParamPanel(Sequencer::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
