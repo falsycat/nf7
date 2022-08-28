@@ -34,16 +34,16 @@ bool Timeline::Begin() noexcept {
   body_size_     = ImGui::GetContentRegionMax() - body_offset_;
   scroll_size_.x = std::max(body_size_.x, GetXFromTime(len_) + 16*ImGui::GetFontSize());
 
-  ImGui::SetCursorPos({body_offset_.x, 0});
-  if (ImGui::BeginChild("xgrid", {body_size_.x, body_offset_.y})) {
-    UpdateXGrid();
-  }
-  ImGui::EndChild();
-
   constexpr auto kFlags =
       ImGuiWindowFlags_NoScrollWithMouse |
       ImGuiWindowFlags_NoScrollbar |
       ImGuiWindowFlags_NoBackground;
+  ImGui::SetCursorPos({body_offset_.x, 0});
+  if (ImGui::BeginChild("xgrid", {body_size_.x, body_offset_.y}, false, kFlags)) {
+    UpdateXGrid();
+  }
+  ImGui::EndChild();
+
   ImGui::SetCursorPos({0, body_offset_.y});
   if (ImGui::BeginChild("layers", {0, 0}, false, kFlags)) {
     frame_state_ = kHeader;
