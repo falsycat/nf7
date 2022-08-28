@@ -102,10 +102,14 @@ void File::Isolate() noexcept {
   name_   = "";
 }
 void File::Touch() noexcept {
+  if (std::exchange(touch_, true)) {
+    return;
+  }
   env().ExecMain(std::make_shared<nf7::GenericContext>(*this), [this]() {
     if (id()) {
       env().Handle( {.id = id(), .type = Event::kUpdate});
     }
+    touch_ = false;
   });
 }
 File& File::FindOrThrow(std::string_view name) const {

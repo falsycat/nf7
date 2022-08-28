@@ -972,6 +972,7 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
   case File::Event::kUpdate:
     if (item.owner_) {
       auto& net  = *item.owner_;
+      net.Touch();
 
       const auto inputs  = node.GetInputs();
       const auto outputs = node.GetOutputs();

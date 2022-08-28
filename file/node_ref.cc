@@ -20,6 +20,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/generic_watcher.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_node.hh"
 #include "common/gui_popup.hh"
@@ -64,6 +65,8 @@ class Ref final : public nf7::FileBase, public nf7::Node {
       mem_(std::move(data), *this),
       config_popup_(*this) {
     nf7::FileBase::Install(*log_);
+
+    mem_.onRestore = mem_.onCommit = [this]() { SetUpWatcher(); };
   }
 
   Ref(nf7::Deserializer& ar) : Ref(ar.env()) {
@@ -85,6 +88,19 @@ class Ref final : public nf7::FileBase, public nf7::Node {
     return data().outputs;
   }
 
+  void Handle(const nf7::File::Event& ev) noexcept {
+    nf7::FileBase::Handle(ev);
+
+    switch (ev.type) {
+    case nf7::File::Event::kAdd:
+      env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
+                     std::bind(&Ref::SetUpWatcher, this));
+      break;
+    default:
+      break;
+    }
+  }
+
   void UpdateNode(nf7::Node::Editor&) noexcept override;
   void UpdateMenu(nf7::Node::Editor&) noexcept override;
 
@@ -96,6 +112,8 @@ class Ref final : public nf7::FileBase, public nf7::Node {
   nf7::Life<Ref> life_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
+
+  std::optional<nf7::GenericWatcher> watcher_;
 
   nf7::GenericMemento<Data> mem_;
   const Data& data() const noexcept { return mem_.data(); }
@@ -173,6 +191,20 @@ class Ref final : public nf7::FileBase, public nf7::Node {
           SyncQuiet();
           mem_.Commit();
         });
+  }
+
+  // target watcher
+  void SetUpWatcher() noexcept
+  try {
+    watcher_ = std::nullopt;
+
+    const auto id = target().id();
+    assert(id);
+
+    watcher_.emplace(env());
+    watcher_->AddHandler(nf7::File::Event::kUpdate, [this](auto&) { Touch(); });
+    watcher_->Watch(id);
+  } catch (nf7::File::NotFoundException&) {
   }
 };
 

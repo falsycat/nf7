@@ -68,6 +68,7 @@ void FileHolder::SetUp() noexcept {
           }
         }
         onChildUpdate();
+        owner_->Touch();
       });
     }
 

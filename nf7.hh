@@ -131,6 +131,8 @@ class File {
   Id          id_     = 0;
   File*       parent_ = nullptr;
   std::string name_;
+
+  bool touch_ = false;
 };
 struct File::Event final {
  public:
