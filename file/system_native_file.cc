@@ -51,12 +51,14 @@ class NativeFile final : public nf7::FileBase,
 
     nf7::LoggerRef log;
     std::optional<nf7::NativeFile> nfile;
+
+    std::atomic<bool> locked = false;
   };
   struct Runner final {
     struct Task {
-      std::shared_ptr<nf7::Node::Lambda> callee;
+      std::shared_ptr<NativeFile::Lambda> callee;
       std::shared_ptr<nf7::Node::Lambda> caller;
-      std::function<nf7::Value(const std::shared_ptr<SharedData>&)> func;
+      std::function<nf7::Value()> func;
 
       std::filesystem::path  npath;
       nf7::NativeFile::Flags flags;
@@ -180,6 +182,8 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
   Lambda(NativeFile& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
       nf7::Node::Lambda(f, parent), f_(f.life_), shared_(f.shared_) {
   }
+  ~Lambda() noexcept {
+  }
 
   void Handle(std::string_view, const nf7::Value& v,
               const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
@@ -187,27 +191,38 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     f_.EnforceAlive();
 
     const auto type = v.tuple("type").string();
-    if (type == "read") {
+    if (type == "lock") {
+      Push(caller, [this]() {
+        Lock();
+        return nf7::Value::Pulse {};
+      });
+    } else if (type == "unlock") {
+      Push(caller, [this]() {
+        shared_->nfile = std::nullopt;
+        Unlock();
+        return nf7::Value::Pulse {};
+      });
+    } else if (type == "read") {
       const auto offset = v.tuple("offset").integer<size_t>();
       const auto size   = v.tuple("size").integer<size_t>();
-      Push(caller, [offset, size](auto& shared) {
+      Push(caller, [this, offset, size]() {
         std::vector<uint8_t> buf;
         buf.resize(size);
-        const auto actual = shared->nfile->Read(offset, buf.data(), size);
+        const auto actual = shared_->nfile->Read(offset, buf.data(), size);
         buf.resize(actual);
         return nf7::Value {std::move(buf)};
       });
     } else if (type == "write") {
       const auto offset = v.tuple("offset").integer<size_t>();
       const auto buf    = v.tuple("buf").vector();
-      Push(caller, [offset, buf](auto& shared) {
-        const auto ret = shared->nfile->Write(offset, buf->data(), buf->size());
+      Push(caller, [this, offset, buf]() {
+        const auto ret = shared_->nfile->Write(offset, buf->data(), buf->size());
         return nf7::Value {static_cast<nf7::Value::Integer>(ret)};
       });
     } else if (type == "truncate") {
       const auto size = v.tuple("size").integer<size_t>();
-      Push(caller, [size](auto& shared) {
-        shared->nfile->Truncate(size);
+      Push(caller, [this, size]() {
+        shared_->nfile->Truncate(size);
         return nf7::Value::Pulse {};
       });
     } else {
@@ -217,10 +232,28 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     shared_->log.Error(e.msg());
   }
 
+  void Lock() {
+    if (!std::exchange(own_lock_, true)) {
+      if (shared_->locked.exchange(true)) {
+        throw nf7::Exception {"resource is busy"};
+      }
+    }
+  }
+  void Unlock() noexcept {
+    if (std::exchange(own_lock_, false)) {
+      assert(shared_->locked);
+      shared_->locked = false;
+    }
+  }
+
+  bool ownLock() const noexcept { return own_lock_; }
+
  private:
   nf7::Life<NativeFile>::Ref f_;
 
   std::shared_ptr<SharedData> shared_;
+
+  bool own_lock_ = false;
 
   void Push(const std::shared_ptr<nf7::Node::Lambda>& caller, auto&& f) noexcept {
     const auto& mode = f_->data().mode;
@@ -251,10 +284,11 @@ try {
   auto callee = t.callee;
   auto caller = t.caller;
   if (callee && caller) {
+    callee->Lock();
     if (!shared_->nfile) {
       shared_->nfile.emplace(callee->env(), callee->initiator(), t.npath, t.flags);
     }
-    auto ret = t.func(shared_);
+    auto ret = t.func();
     callee->env().ExecSub(callee, [callee, caller, ret = std::move(ret)]() {
       caller->Handle("result", ret, callee);
     });
