@@ -204,7 +204,7 @@ class Ref final : public nf7::FileBase, public nf7::Node {
     watcher_.emplace(env());
     watcher_->AddHandler(nf7::File::Event::kUpdate, [this](auto&) { Touch(); });
     watcher_->Watch(id);
-  } catch (nf7::File::NotFoundException&) {
+  } catch (nf7::Exception&) {
   }
 };
 

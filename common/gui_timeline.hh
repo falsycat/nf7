@@ -170,7 +170,7 @@ struct Timeline {
   // volatile params
   enum {kRoot, kHeader, kBody, kItem} frame_state_ = kRoot;
 
-  uint64_t len_;
+  uint64_t len_ = 0;
   ImVec2   scroll_size_;
   bool     scroll_x_to_mouse_;
   bool     scroll_y_to_mouse_;

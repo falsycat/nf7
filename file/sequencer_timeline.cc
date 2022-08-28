@@ -136,7 +136,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   uint64_t action_layer_;
 
   // permanentized params
-  uint64_t cursor_;
+  uint64_t cursor_ = 0;
   std::vector<std::unique_ptr<Layer>> layers_;
 
   std::vector<std::string> seq_inputs_;

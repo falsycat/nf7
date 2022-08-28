@@ -143,8 +143,10 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
     th->Install(log_);
     th_.emplace_back(th);
 
+    auto ctx = std::make_shared<nf7::GenericContext>(*file_);
+
     auto p = std::make_pair(std::string {k}, std::move(v));
-    ljq->Push(self, [self, this, ljq, caller, th, scr = std::move(scr), p = std::move(p)](auto L) {
+    ljq->Push(self, [this, ctx, ljq, caller, th, scr = std::move(scr), p = std::move(p)](auto L) {
       auto thL = th->Init(L);
 
       // push function
@@ -154,7 +156,7 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
           return;
         }
         lua_pushvalue(thL, -1);
-        func_.emplace(self, ljq, thL);
+        func_.emplace(ctx, ljq, thL);
       } else {
         if (!func_) {
           log_->Error("last cache is broken");
@@ -177,7 +179,7 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
       } else {
         lua_createtable(thL, 0, 0);
         lua_pushvalue(thL, -1);
-        ctxtable_.emplace(self, ljq, thL);
+        ctxtable_.emplace(ctx, ljq, thL);
       }
 
       // start function

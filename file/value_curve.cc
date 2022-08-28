@@ -124,7 +124,7 @@ class Curve final : public nf7::File,
 
   // GUI parameters
   std::unordered_set<uint64_t> selected_;
-  bool last_action_moved_;
+  bool last_action_moved_ = false;
 
 
   void AddPoint(const ImVec2& pos) noexcept {

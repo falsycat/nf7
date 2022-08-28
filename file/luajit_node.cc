@@ -211,7 +211,8 @@ class Node::Lambda final : public nf7::Node::Lambda,
     th->Install(log_);
     th_.emplace_back(th);
 
-    ljq->Push(self, [this, self, ljq, k = std::move(k), v = std::move(v), caller, func, th](auto L) mutable {
+    auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
+    ljq->Push(self, [this, ctx, ljq, k = std::move(k), v = std::move(v), caller, func, th](auto L) mutable {
       auto thL = th->Init(L);
       func->PushSelf(thL);
 
@@ -226,7 +227,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
       if (!ctxtable_) {
         lua_createtable(thL, 0, 0);
         lua_pushvalue(thL, -1);
-        ctxtable_.emplace(shared_from_this(), ljq, thL);
+        ctxtable_.emplace(ctx, ljq, thL);
       } else {
         ctxtable_->PushSelf(thL);
       }
