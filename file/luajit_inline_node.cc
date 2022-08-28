@@ -39,7 +39,7 @@ namespace {
 class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<InlineNode> kType =
-      {"LuaJIT/InlineNode", {"nf7::Node"}};
+      {"LuaJIT/InlineNode", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Defines new Node using Lua object factory.");
     ImGui::Bullet();
