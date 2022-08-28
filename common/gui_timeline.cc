@@ -277,9 +277,9 @@ bool Timeline::BeginItem(Item item, uint64_t begin, uint64_t end) noexcept {
     ImGui::SetItemAllowOverlap();
     HandleGrip(item, resizer_w, kMove, kMoveDone, ImGuiMouseCursor_Hand);
 
-    const auto pad = ImGui::GetStyle().WindowPadding / 2;
-    ImGui::SetCursorPosY(pad.y);
-    ImGui::Indent(pad.x);
+    const auto wpad = ImGui::GetStyle().WindowPadding / 2;
+    ImGui::SetCursorPosY(wpad.y);
+    ImGui::Indent(wpad.x);
   }
   return shown;
 }

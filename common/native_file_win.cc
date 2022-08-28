@@ -8,11 +8,17 @@ extern "C" {
 namespace nf7 {
 
 void NativeFile::Init() {
-  DWORD acc = 0;
-  if (flags_ & kRead)  acc |= GENERIC_READ;
-  if (flags_ & kWrite) acc |= GENERIC_WRITE;
+  DWORD acc   = 0;
+  DWORD flags = 0;
+  if (flags_ & kRead) {
+    acc   |= GENERIC_READ;
+    flags |= OPEN_EXISTING;
+  }
+  if (flags_ & kWrite) {
+    acc   |= GENERIC_WRITE;
+    flags |= OPEN_ALWAYS;
+  }
 
-  DWORD flags = OPEN_ALWAYS;
 
   HANDLE h = CreateFileA(
       path_.string().c_str(),
