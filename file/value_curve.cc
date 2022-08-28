@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -149,10 +150,12 @@ class Curve final : public nf7::File,
   }
   void RemoveSelectedPoints() noexcept {
     auto& terms = mem_.data().terms;
+    assert(terms.size() >= 2);
+
     terms.erase(
-        std::remove_if(terms.begin(), terms.end(),
+        std::remove_if(terms.begin()+1, terms.end()-1,
                        [&](auto& x) { return selected_.contains(x.id); }),
-        terms.end());
+        terms.end()-1);
     selected_.clear();
   }
   void ResetControlsOfSelectedPoints() noexcept {
@@ -199,12 +202,14 @@ class Curve final : public nf7::File,
       const auto adiff = t.p1 - pp1;
       t.p2   += adiff;
       t.p2.x  = std::clamp(t.p2.x, t.p1.x, nt? nt->p1.x: 0);
+      t.p2.y  = std::clamp(t.p2.y, 0.f, 1.f);
       t.p3.x  = std::clamp(t.p3.x, t.p1.x, nt? nt->p1.x: 0);
 
       if (pt) {
         pt->p3   += adiff;
-        pt->p2.x  = std::clamp(pt->p2.x, pt->p1.x, t.p1.x);
         pt->p3.x  = std::clamp(pt->p3.x, pt->p1.x, t.p1.x);
+        pt->p3.y  = std::clamp(pt->p3.y, 0.f, 1.f);
+        pt->p2.x  = std::clamp(pt->p2.x, pt->p1.x, t.p1.x);
       }
     }
   }
@@ -223,9 +228,11 @@ class Curve final : public nf7::File,
   }
   void Sanitize() noexcept {
     auto& terms = mem_.data().terms;
-
     std::sort(terms.begin(), terms.end(),
-              [](auto& a, auto& b) { return a.p1.x < b.p1.x; });
+              [](auto& a, auto& b) {
+                return
+                    a.p1.x < b.p1.x? true: a.p1.x == b.p1.x? a.id < b.id: false;
+              });
 
     for (auto itr = terms.begin(); itr+1 < terms.end(); ++itr) {
       auto& a = *itr;
@@ -426,6 +433,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   bool request_sort    = false;
   bool skip_adding     = false;
   bool remove_selected = false;
+  bool reset_controls  = false;
   for (size_t i = 0; i < terms.size(); ++i) {
     auto& t  = terms[i];
     auto  pt = i >= 1? &terms[i-1]: nullptr;
@@ -475,7 +483,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
           remove_selected = true;
         }
         if (ImGui::MenuItem("reset control points")) {
-          mem_.Commit();
+          reset_controls = true;
         }
         ImGui::EndPopup();
       }
@@ -493,6 +501,7 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
         if (io.MouseDelta.x != 0 || io.MouseDelta.y != 0) {
           p   = mposn;
           p.x = std::clamp(p.x, xmin, xmax);
+          p.y = std::clamp(p.y, 0.f, 1.f);
           last_action_moved_ = true;
         }
         ret = true;
@@ -546,6 +555,9 @@ void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   }
   if (remove_selected) {
     RemoveSelectedPoints();
+  }
+  if (reset_controls) {
+    ResetControlsOfSelectedPoints();
   }
 
   // add new point
