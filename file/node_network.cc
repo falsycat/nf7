@@ -948,9 +948,11 @@ void Network::Item::Attach(Network& owner) noexcept {
 
   auto [item_itr, item_inserted] = owner_->item_map_.emplace(id_, this);
   assert(item_inserted);
+  (void) item_inserted;
 
   auto [node_itr, node_inserted] = owner_->node_map_.emplace(node_, this);
   assert(node_inserted);
+  (void) node_inserted;
 
   file_->MoveUnder(owner, std::to_string(id_));
   watcher_.emplace(*this);

@@ -182,6 +182,7 @@ File::TypeInfo::TypeInfo(const std::string& name,
   auto& reg = registry_();
   auto [itr, uniq] = reg.emplace(std::string(name_), this);
   assert(uniq);
+  (void) uniq;
 }
 File::TypeInfo::~TypeInfo() noexcept {
   auto& reg = registry_();
