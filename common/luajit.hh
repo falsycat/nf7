@@ -9,6 +9,7 @@
 
 #include <lua.hpp>
 
+#include "common/node_root_select_lambda.hh"
 #include "common/value.hh"
 
 
@@ -19,6 +20,8 @@ void PushImmEnv(lua_State*) noexcept;
 void PushValue(lua_State*, const nf7::Value&) noexcept;
 void PushVector(lua_State*, const nf7::Value::ConstVector&) noexcept;
 void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
+void PushNodeRootSelectLambda(
+    lua_State*, const std::shared_ptr<nf7::NodeRootSelectLambda>&) noexcept;
 
 std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
 std::optional<nf7::Value::ConstVector> ToVector(lua_State*, int) noexcept;
@@ -51,6 +54,9 @@ inline void Push(lua_State* L, const std::vector<uint8_t>& v) noexcept {
 }
 inline void Push(lua_State* L, std::vector<uint8_t>&& v) noexcept {
   luajit::PushMutableVector(L, std::move(v));
+}
+inline void Push(lua_State* L, const std::shared_ptr<nf7::NodeRootSelectLambda>& la) noexcept {
+  luajit::PushNodeRootSelectLambda(L, la);
 }
 
 inline int PushAll(lua_State*) noexcept {
@@ -106,6 +112,11 @@ inline std::shared_ptr<T> CheckWeakPtr(lua_State* L, int idx, const char* type) 
 template <typename T>
 inline T& CheckRef(lua_State* L, int idx, const char* type) {
   return *reinterpret_cast<T*>(luaL_checkudata(L, idx, type));
+}
+inline const std::shared_ptr<nf7::NodeRootSelectLambda>& CheckNodeRootSelectLambda(
+    lua_State* L, int idx) {
+  return CheckRef<std::shared_ptr<nf7::NodeRootSelectLambda>>(
+      L, idx, "nf7::NodeRootSelectLambda");
 }
 inline nf7::Value CheckValue(lua_State* L, int idx) {
   auto v = ToValue(L, idx);

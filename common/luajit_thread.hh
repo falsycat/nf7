@@ -30,10 +30,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
 
-  // Registry keeps an objects used in the Thread and deletes immediately when the Thread ends.
-  class RegistryItem;
   class Lambda;
-  template <typename T> class Lock;
 
   class Exception final : public nf7::Exception {
    public:
@@ -93,17 +90,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     }
   }
 
-  // must be called on luajit thread
-  void Register(lua_State*, const std::shared_ptr<RegistryItem>& item) noexcept {
-    registry_.push_back(item);
-  }
-  void Forget(lua_State*, const RegistryItem& item) noexcept {
-    registry_.erase(
-        std::remove_if(registry_.begin(), registry_.end(),
-                       [&item](auto& x) { return x.get() == &item; }),
-        registry_.end());
-  }
-
   // thread-safe
   void Abort() noexcept;
 
@@ -144,21 +130,8 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
 
   // mutable params
-  std::vector<std::shared_ptr<RegistryItem>> registry_;
-
   bool active_      = false;  // true while executing lua_resume
   bool skip_handle_ = false;  // handler_ won't be called on next yield
-};
-
-
-class Thread::RegistryItem {
- public:
-  RegistryItem() = default;
-  virtual ~RegistryItem() = default;
-  RegistryItem(const RegistryItem&) = delete;
-  RegistryItem(RegistryItem&&) = delete;
-  RegistryItem& operator=(const RegistryItem&) = delete;
-  RegistryItem& operator=(RegistryItem&&) = delete;
 };
 
 

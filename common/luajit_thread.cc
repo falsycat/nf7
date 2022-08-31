@@ -1,9 +1,12 @@
 #include "common/luajit_thread.hh"
-#include "common/luajit_thread_lambda.hh"
 
 #include <chrono>
 #include <sstream>
 #include <tuple>
+#include <unordered_set>
+
+#include "common/node.hh"
+#include "common/node_root_select_lambda.hh"
 
 
 namespace nf7::luajit {
@@ -163,7 +166,9 @@ static void PushMeta(lua_State* L) noexcept {
           try {
             auto& f = th->env().GetFileOrThrow(static_cast<nf7::File::Id>(id));
             if (iface == "node") {
-              Thread::Lambda::CreateAndPush(L, th, f);
+              th->ExecResume(
+                  L, nf7::NodeRootSelectLambda::Create(
+                      th->ctx(), f.template interfaceOrThrow<nf7::Node>()));
             } else {
               throw nf7::Exception {"unknown interface: "+iface};
             }
@@ -176,6 +181,7 @@ static void PushMeta(lua_State* L) noexcept {
       });
       lua_setfield(L, -2, "query");
 
+      // nf7:sleep(sec)
       lua_pushcfunction(L, [](auto L) {
         auto       th  = Thread::GetPtr(L, 1);
         const auto sec = luaL_checknumber(L, 2);
@@ -188,6 +194,62 @@ static void PushMeta(lua_State* L) noexcept {
         return lua_yield(L, 0);
       });
       lua_setfield(L, -2, "sleep");
+
+      // nf7:send(obj, params...)
+      lua_pushcfunction(L, [](auto L) {
+        auto th = Thread::GetPtr(L, 1);
+        auto la = luajit::CheckNodeRootSelectLambda(L, 2);
+        la->ExecSend(luaL_checkstring(L, 3), luajit::CheckValue(L, 4));
+        return 0;
+      });
+      lua_setfield(L, -2, "send");
+
+      // nf7:recv(obj, params...)
+      lua_pushcfunction(L, [](auto L) {
+        auto th = Thread::GetPtr(L, 1);
+        auto la = luajit::CheckNodeRootSelectLambda(L, 2);
+
+        std::unordered_set<std::string> names;
+        if (lua_istable(L, 3)) {
+          lua_pushnil(L);
+          while (lua_next(L, 3)) {
+            if (lua_isstring(L, -1)) {
+              names.insert(lua_tostring(L, -1));
+            } else {
+              return luaL_error(L, "table contains non-string value");
+            }
+            lua_pop(L, 1);
+          }
+        } else {
+          for (int i = 3; i <= lua_gettop(L); ++i) {
+            names.insert(luaL_checkstring(L, i));
+          }
+        }
+
+        auto fu = la->Select(std::move(names));
+        if (fu.done()) {
+          try {
+            const auto& p = fu.value();
+            lua_pushstring(L, p.first.c_str());
+            luajit::PushValue(L, p.second);
+            return 2;
+          } catch (nf7::Exception& e) {
+            return 0;
+          }
+        } else {
+          fu.Then([L, th](auto fu) {
+            try {
+              const auto& p = fu.value();
+              th->ExecResume(L, p.first, p.second);
+            } catch (nf7::Exception& e) {
+              th->ExecResume(L);
+            }
+          });
+          th->ExpectYield(L);
+          return lua_yield(L, 0);
+        }
+      });
+      lua_setfield(L, -2, "recv");
 
       // nf7:yield(results...)
       lua_pushcfunction(L, [](auto L) {

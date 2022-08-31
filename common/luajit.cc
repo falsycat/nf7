@@ -367,6 +367,22 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
   }
   lua_setmetatable(L, -2);
 }
+void PushNodeRootSelectLambda(
+    lua_State* L, const std::shared_ptr<nf7::NodeRootSelectLambda>& la) noexcept {
+  assert(la);
+
+  using T = std::shared_ptr<nf7::NodeRootSelectLambda>;
+  new (lua_newuserdata(L, sizeof(T))) T {la};
+
+  if (luaL_newmetatable(L, "nf7::NodeRootSelectLambda")) {
+    lua_pushcfunction(L, [](auto L) {
+      CheckRef<T>(L, 1, "nf7::NodeRootSelectLambda").~T();
+      return 0;
+    });
+    lua_setfield(L, -2, "__gc");
+  }
+  lua_setmetatable(L, -2);
+}
 
 
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {

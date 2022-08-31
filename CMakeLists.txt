@@ -80,7 +80,6 @@ target_sources(nf7
     common/luajit_ref.hh
     common/luajit_thread.hh
     common/luajit_thread.cc
-    common/luajit_thread_lambda.hh
     common/memento.hh
     common/memento_recorder.hh
     common/mutable_memento.hh
@@ -88,6 +87,7 @@ target_sources(nf7
     common/node.hh
     common/node_link_store.hh
     common/node_root_lambda.hh
+    common/node_root_select_lambda.hh
     common/ptr_selector.hh
     common/queue.hh
     common/sequencer.hh
