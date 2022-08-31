@@ -1405,7 +1405,7 @@ void TL::UpdateLambdaSelector() noexcept {
       lambda_? nf7::gui::GetParentContextDisplayName(*lambda_): "(unselected)";
   if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
     if (lambda_) {
-      if (ImGui::Selectable("detach from current lambda")) {
+      if (ImGui::Selectable("detach current lambda")) {
         AttachLambda(nullptr);
       }
       ImGui::Separator();
