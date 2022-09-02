@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -38,7 +39,7 @@ class NodeRootSelectLambda : public nf7::Node::Lambda,
      const auto ks = std::string {k};
      if (names_.contains(ks)) {
        names_.clear();
-       auto pro = std::move(*pro_);
+       auto pro = *std::exchange(pro_, std::nullopt);
        lk.unlock();
        pro.Return({ks, v});
      } else {
