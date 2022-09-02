@@ -11,7 +11,7 @@
 
 namespace nf7 {
 
-class NativeFile final : public nf7::Context {
+class NativeFile final {
  public:
   class Exception final : public nf7::Exception {
     using nf7::Exception::Exception;
@@ -24,9 +24,8 @@ class NativeFile final : public nf7::Context {
   using Flags = uint8_t;
 
   NativeFile() = delete;
-  NativeFile(nf7::Env& env, nf7::File::Id id,
-             const std::filesystem::path& path, Flags flags) :
-      Context(env, id), path_(path), flags_(flags) {
+  NativeFile(const std::filesystem::path& path, Flags flags) :
+      path_(path), flags_(flags) {
     Init();
   }
   ~NativeFile() noexcept;
