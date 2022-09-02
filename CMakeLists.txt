@@ -83,6 +83,7 @@ target_sources(nf7
     common/memento.hh
     common/memento_recorder.hh
     common/mutable_memento.hh
+    common/mutex.hh
     common/native_file.hh
     common/node.hh
     common/node_link_store.hh
