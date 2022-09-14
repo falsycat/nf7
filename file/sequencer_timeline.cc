@@ -31,6 +31,7 @@
 #include "common/gui_timeline.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
+#include "common/logger_ref.hh"
 #include "common/memento.hh"
 #include "common/memento_recorder.hh"
 #include "common/node.hh"
@@ -71,10 +72,10 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
-      nf7::FileBase(kType, env, {&popup_socket_, &popup_add_item_}),
+      nf7::FileBase(kType, env, {&log_, &popup_socket_, &popup_add_item_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kMenu_DirItem),
-      life_(*this),
+      life_(*this), log_(*this),
       layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor", win), tl_("timeline"),
       popup_add_item_(*this) {
@@ -124,6 +125,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
  private:
   nf7::Life<TL> life_;
+  nf7::LoggerRef log_;
 
   nf7::SquashedHistory history_;
 
@@ -419,6 +421,14 @@ class TL::Layer final {
     return std::make_unique<TL::Layer>(std::move(items), enabled_, height_);
   }
 
+  // MoveItem don't update Item::layer() neither Item::displayLayer()
+  void MoveItemTo(TL::Item& item, TL::Layer& dst) noexcept {
+    dst.AddItem(RemoveItem(item));
+  }
+  void ReorderItem(TL::Item& item) noexcept {
+    AddItem(RemoveItem(item));
+  }
+
   void Attach(TL& f, TL::Layer* prev, TL::Layer* next) noexcept {
     assert(!owner_);
 
@@ -434,19 +444,6 @@ class TL::Layer final {
     owner_ = nullptr;
     prev_  = nullptr;
     next_  = nullptr;
-  }
-
-  // Even after this, the item refers previous layer.
-  // To replace to new one, call item.MoveTo().
-  void MoveItemTo(TL::Layer& target, TL::Item& item) noexcept {
-    auto itr = std::find_if(items_.begin(), items_.end(),
-                            [&](auto& x) { return x.get() == &item; });
-    if (itr == items_.end()) return;
-
-    auto uptr = std::move(*itr);
-    items_.erase(itr);
-
-    target.items_.push_back(std::move(uptr));
   }
 
   TL::Item* GetAt(uint64_t t) const noexcept {
@@ -542,6 +539,26 @@ class TL::Layer final {
   // GUI temporary parameters
   size_t index_;
   float  offset_y_;
+
+
+  // Add/RemoveItem don't update item.layer() field.
+  // Use ItemSwapCommand or Item::MoveTo() to do it.
+  void AddItem(std::unique_ptr<TL::Item>&& item) noexcept {
+    const auto border = item->timing().end();
+    auto itr = std::find_if(items_.begin(), items_.end(),
+                            [&](auto& x) { return border <= x->timing().begin(); });
+    items_.insert(itr, std::move(item));
+  }
+  std::unique_ptr<TL::Item> RemoveItem(TL::Item& item) noexcept {
+    auto itr = std::find_if(items_.begin(), items_.end(),
+                            [&](auto& x) { return x.get() == &item; });
+    if (itr == items_.end()) {
+      return nullptr;
+    }
+    auto uptr = std::move(*itr);
+    items_.erase(itr);
+    return uptr;
+  }
 };
 void TL::AssignId() {
   next_ = 1;
@@ -765,16 +782,18 @@ class TL::Session final : public Sequencer::Session,
         static_cast<nf7::Value::Scalar>(t.dur());
   }
 };
+
 void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
                         const std::shared_ptr<Node::Lambda>&) noexcept {
   if (name == "_exec") {
     if (!owner_) return;
+
     uint64_t t;
     if (v.isInteger()) {
       const auto ti = std::max(v.integer(), int64_t{0});
       t = static_cast<uint64_t>(ti);
     } else {
-      // TODO: error
+      owner_->log_.Error("_exec takes a frame index");
       return;
     }
     CreateSession(t)->StartNext();
@@ -805,7 +824,6 @@ class TL::Editor final : public nf7::Sequencer::Editor {
  public:
   Editor(TL::Item& item) noexcept : item_(&item) {
   }
-  // TODO
 
  private:
   TL::Item* const item_;
@@ -936,28 +954,15 @@ class TL::Layer::ItemSwapCommand final : public nf7::History::Command {
   TL::Item* const ptr_;
 
   void Swap() {
-    auto& items = layer_->items_;
     if (item_) {
-      const auto& t = item_->timing();
-      auto itr = std::find_if(
-          items.begin(), items.end(),
-          [t = t.begin()](auto& x) { return t <= x->timing().begin(); });
-      if (itr != items.end()) {
-        if (t.end() > (*itr)->timing().begin()) {
-          throw nf7::History::CorruptException {"timing overlap"};
-        }
-      }
       item_->Attach(*layer_->owner_, *layer_);
-      items.insert(itr, std::move(item_));
+      layer_->AddItem(std::move(item_));
     } else {
-      auto itr = std::find_if(items.begin(), items.end(),
-                              [ptr = ptr_](auto& x) { return x.get() == ptr; });
-      if (itr == items.end()) {
+      item_ = layer_->RemoveItem(*ptr_);
+      if (!item_) {
         throw nf7::History::CorruptException {"target item missing"};
       }
-      item_ = std::move(*itr);
       item_->Detach();
-      items.erase(itr);
     }
   }
 };
@@ -983,8 +988,7 @@ class TL::Layer::ItemTimingSwapCommand final : public nf7::History::Command {
   void Exec() noexcept {
     std::swap(item_->timing(), timing_);
     item_->displayTiming() = item_->timing();
-
-    // TODO: reorder item
+    item_->layer().ReorderItem(*item_);
   }
 };
 void TL::ExecApplyTimingOfSelected() noexcept {
@@ -1070,11 +1074,11 @@ class TL::Layer::ItemMoveCommand final : public nf7::History::Command {
       src_(&src), dst_(&dst), item_(&item) {
   }
   void Apply() noexcept override {
-    src_->MoveItemTo(*dst_, *item_);
+    dst_->AddItem(src_->RemoveItem(*item_));
     item_->MoveTo(*dst_);
   }
   void Revert() noexcept override {
-    dst_->MoveItemTo(*src_, *item_);
+    src_->AddItem(dst_->RemoveItem(*item_));
     item_->MoveTo(*src_);
   }
 
@@ -1124,8 +1128,11 @@ void TL::MoveDisplayLayerOfSelected(int64_t diff) noexcept {
     layers.emplace_back(item, &layer);
   }
   for (auto& p : layers) {
-    p.first->displayLayer().MoveItemTo(*p.second, *p.first);
-    p.first->DisplayOn(*p.second);
+    auto& item = *p.first;
+    auto& src  = item.displayLayer();
+    auto& dst  = *p.second;
+    src.MoveItemTo(item, dst);
+    item.DisplayOn(dst);
   }
 }
 
