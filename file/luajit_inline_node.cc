@@ -186,7 +186,7 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
       th->Resume(thL, 3);
     });
 
-  } catch (nf7::LifeExpiredException&) {
+  } catch (nf7::ExpiredException&) {
   } catch (nf7::Exception& e) {
     log_->Error(e.msg());
   }

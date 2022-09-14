@@ -293,7 +293,7 @@ Serializer::ChunkGuard::~ChunkGuard() noexcept {
     *ar_ & static_cast<uint64_t>(end - begin_);
     ar_->st_->Seek(end);
   } catch (nf7::Exception&) {
-    // TODO
+    ar_->env_->Throw(std::current_exception());
   }
 }
 
@@ -316,7 +316,7 @@ Deserializer::ChunkGuard::~ChunkGuard() {
       ar_->st_->Seek(end);
     }
   } catch (nf7::Exception&) {
-    // TODO
+    ar_->env_->Throw(std::current_exception());
   }
 }
 void Deserializer::ChunkGuard::ValidateEnd() {

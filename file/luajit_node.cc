@@ -174,7 +174,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
         log_->Error("failed to call lua function: "+e.msg());
       }
     });
-  } catch (nf7::LifeExpiredException&) {
+  } catch (nf7::ExpiredException&) {
   } catch (nf7::Exception& e) {
     log_->Error(e.msg());
   }

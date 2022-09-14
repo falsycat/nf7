@@ -201,7 +201,7 @@ try {
     ssla_ = nullptr;
     la_   = nullptr;
   }
-} catch (nf7::LifeExpiredException&) {
+} catch (nf7::ExpiredException&) {
   ss->Finish();
 } catch (nf7::FileHolder::EmptyException&) {
   ss->Finish();

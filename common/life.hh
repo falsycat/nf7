@@ -8,11 +8,6 @@
 
 namespace nf7 {
 
-class LifeExpiredException final : public nf7::Exception {
- public:
-  using nf7::Exception::Exception;
-};
-
 template <typename T>
 class Life final {
  public:
@@ -57,7 +52,7 @@ class Life<T>::Ref final {
 
   void EnforceAlive() const {
     if (!data_->ptr) {
-      throw LifeExpiredException {"target expired"};
+      throw nf7::ExpiredException {"target expired"};
     }
   }
 

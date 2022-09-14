@@ -383,14 +383,14 @@ class Serializer final :
     size_t begin_;
   };
 
-  static void Save(const char* path, auto& v) {
+  static void Save(nf7::Env& env, const char* path, auto& v) {
     SerializerStream st {path, "wb"};
-    Serializer ar {st};
+    Serializer ar {env, st};
     ar(v);
   }
 
-  Serializer(nf7::SerializerStream& st) :
-      binary_ostream(st), oarchive_header(st), st_(&st) {
+  Serializer(nf7::Env& env, nf7::SerializerStream& st) :
+      binary_ostream(st), oarchive_header(st), env_(&env), st_(&st) {
   }
 
   template<typename T>
@@ -413,6 +413,7 @@ class Serializer final :
   }
 
  private:
+  nf7::Env* const env_;
   nf7::SerializerStream* const st_;
 };
 class Deserializer final :

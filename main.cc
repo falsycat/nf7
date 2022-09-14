@@ -97,7 +97,7 @@ class Env final : public nf7::Env {
 
     // trigger global watcher
     for (auto w : watchers_map_[0]) w->Handle(e);
-  } catch (ExpiredException&) {
+  } catch (nf7::ExpiredException&) {
   }
 
   void Exit() noexcept override {
@@ -105,7 +105,7 @@ class Env final : public nf7::Env {
   }
   void Save() noexcept override {
     try {
-      nf7::Serializer::Save(kFileName, root_);
+      nf7::Serializer::Save(*this, kFileName, root_);
     } catch (nf7::Exception&) {
       Panic();
     }
