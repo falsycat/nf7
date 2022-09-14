@@ -19,7 +19,7 @@ namespace {
 
 class LuaContext final : public nf7::File, public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<LuaContext> kType = {
+  static inline const nf7::GenericTypeInfo<nf7::LuaContext> kType = {
     "LuaJIT/Context", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Drives LuaJIT thread and task queue.");
@@ -34,21 +34,23 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
   class Queue;
 
   LuaContext(nf7::Env& env) :
-      File(kType, env), DirItem(DirItem::kTooltip) {
+      nf7::File(kType, env),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip) {
     q_ = std::make_shared<Queue>(*this);
   }
 
   LuaContext(nf7::Deserializer& ar) : LuaContext(ar.env()) {
   }
-  void Serialize(Serializer&) const noexcept override {
+  void Serialize(nf7::Serializer&) const noexcept override {
   }
-  std::unique_ptr<File> Clone(Env& env) const noexcept override {
+  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<LuaContext>(env);
   }
 
+  void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
-  File::Interface* interface(const std::type_info& t) noexcept override {
+  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
         nf7::DirItem, nf7::luajit::Queue>(t).Select(this, q_.get());
   }
@@ -101,6 +103,16 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   std::shared_ptr<Thread> th_;
 };
 
+
+void LuaContext::UpdateMenu() noexcept {
+  if (ImGui::MenuItem("perform a full GC cycle")) {
+    q_->Push(
+        std::make_shared<nf7::GenericContext>(*this, "LuaJIT garbage collection"),
+        [](auto L) {
+          lua_gc(L, LUA_GCCOLLECT, 0);
+        }, nf7::Env::Time {});
+  }
+}
 void LuaContext::UpdateTooltip() noexcept {
   ImGui::Text("tasks done: %zu", static_cast<size_t>(q_->tasksDone()));
   if (q_) {
