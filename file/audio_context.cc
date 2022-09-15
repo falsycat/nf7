@@ -76,13 +76,15 @@ class AudioContext::Queue final : public nf7::audio::Queue,
     public std::enable_shared_from_this<AudioContext::Queue> {
  public:
   struct Runner final {
-    Runner(Queue& owner) noexcept : owner_(&owner) {
+    Runner(std::weak_ptr<Queue> owner) noexcept : owner_(owner) {
     }
     void operator()(Task&& t) {
-      t(owner_->ctx_.get());
+      if (auto k = owner_.lock()) {
+        t(k->ctx_.get());
+      }
     }
    private:
-    Queue* const owner_;
+    std::weak_ptr<Queue> owner_;
   };
   using Thread = nf7::Thread<Runner, Task>;
 
@@ -92,9 +94,25 @@ class AudioContext::Queue final : public nf7::audio::Queue,
     kBroken,
   };
 
+  static std::shared_ptr<Queue> Create(AudioContext& f) noexcept {
+    auto ret = std::make_shared<Queue>(f);
+    ret->th_ = std::make_shared<Thread>(f, Runner {ret});
+    ret->Push(
+        std::make_shared<nf7::GenericContext>(f.env(), 0, "creating ma_context"),
+        [ret](auto) {
+          auto ctx = std::make_shared<ma_context>();
+          if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
+            ret->ctx_   = std::move(ctx);
+            ret->state_ = kReady;
+          } else {
+            ret->state_ = kBroken;
+          }
+        });
+    return ret;
+  }
+
   Queue() = delete;
-  Queue(AudioContext& f) noexcept :
-      env_(&f.env()), th_(std::make_shared<Thread>(f, Runner {*this})) {
+  Queue(AudioContext& f) noexcept : env_(&f.env()) {
   }
   ~Queue() noexcept {
     th_->Push(
@@ -106,20 +124,6 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   Queue(Queue&&) = delete;
   Queue& operator=(const Queue&) = delete;
   Queue& operator=(Queue&&) = delete;
-
-  void Init() noexcept {
-    th_->Push(
-        std::make_shared<nf7::GenericContext>(*env_, 0, "creating ma_context"),
-        [this, self = shared_from_this()](auto) {
-          auto ctx = std::make_shared<ma_context>();
-          if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
-            ctx_   = std::move(ctx);
-            state_ = kReady;
-          } else {
-            state_ = kBroken;
-          }
-        });
-  }
 
   void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task) noexcept override {
     th_->Push(ctx, std::move(task));
@@ -138,8 +142,7 @@ class AudioContext::Queue final : public nf7::audio::Queue,
 };
 AudioContext::AudioContext(Env& env) noexcept :
     File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-    q_(std::make_shared<Queue>(*this)) {
-  q_->Init();
+    q_(AudioContext::Queue::Create(*this)) {
 }
 
 

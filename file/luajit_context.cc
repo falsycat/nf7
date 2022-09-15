@@ -33,11 +33,7 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  LuaContext(nf7::Env& env) :
-      nf7::File(kType, env),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip) {
-    q_ = std::make_shared<Queue>(*this);
-  }
+  LuaContext(nf7::Env& env);
 
   LuaContext(nf7::Deserializer& ar) : LuaContext(ar.env()) {
   }
@@ -63,20 +59,26 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     public std::enable_shared_from_this<LuaContext::Queue> {
  public:
   struct Runner final {
-    Runner(Queue& owner) noexcept : owner_(&owner) {
+    Runner(std::weak_ptr<Queue> owner) noexcept : owner_(owner) {
     }
     void operator()(Task&& t) {
-      t(owner_->L);
+      if (auto k = owner_.lock()) {
+        t(k->L);
+      }
     }
    private:
-    Queue* const owner_;
+    std::weak_ptr<Queue> owner_;
   };
   using Thread = nf7::Thread<Runner, Task>;
 
+  static std::shared_ptr<Queue> Create(LuaContext& f) {
+    auto ret = std::make_shared<Queue>(f);
+    ret->th_ = std::make_shared<Thread>(f, Runner {ret});
+    return ret;
+  }
+
   Queue() = delete;
-  Queue(LuaContext& f) :
-      L(luaL_newstate()), env_(&f.env()),
-      th_(std::make_shared<Thread>(f, Runner {*this})) {
+  Queue(LuaContext& f) : L(luaL_newstate()), env_(&f.env()) {
     if (!L) throw nf7::Exception("failed to create new Lua state");
   }
   ~Queue() noexcept {
@@ -102,6 +104,11 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   Env* const env_;
   std::shared_ptr<Thread> th_;
 };
+LuaContext::LuaContext(nf7::Env& env) :
+    nf7::File(kType, env),
+    nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
+    q_(Queue::Create(*this)) {
+}
 
 
 void LuaContext::UpdateMenu() noexcept {

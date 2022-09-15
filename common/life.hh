@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cassert>
 #include <memory>
 
@@ -28,7 +29,7 @@ class Life final {
   T* const ptr_;
 
   struct Data final {
-    T* ptr;
+    std::atomic<T*> ptr;
   };
   std::shared_ptr<Data> data_;
 };
