@@ -4,14 +4,10 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 # ---- configuration ----
 project(nf7 C CXX)
 
-option(NF7_STATIC "link all libs statically" ON)
+option(NF7_STATIC          "link all libs statically" ON)
+option(NF7_SANITIZE_THREAD "use thread sanitizer"     OFF)
 
-set(NF7_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/include/generated")
-file(MAKE_DIRECTORY "${NF7_GENERATED_INCLUDE_DIR}")
-
-set(CMAKE_CXX_STANDARD          20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(NF7_CXX_FLAGS
+set(NF7_OPTIONS_WARNING
   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
     -Wall -Werror -pedantic-errors -Wextra -Wconversion -Wsign-conversion>
   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
@@ -19,6 +15,23 @@ set(NF7_CXX_FLAGS
   $<$<CXX_COMPILER_ID:MSVC>:
     /W4 /WX /Zc:__cplusplus /external:anglebrackets /external:W0>
 )
+if (NF7_SANITIZE_THREAD)
+  set(NF7_OPTIONS_SANITIZE
+    $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
+      -fsanitize=thread -fno-omit-frame-pointer>>
+  )
+else()
+  set(NF7_OPTIONS_SANITIZE
+    $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
+      -fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-omit-frame-pointer>>
+  )
+endif()
+
+set(NF7_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/include/generated")
+file(MAKE_DIRECTORY "${NF7_GENERATED_INCLUDE_DIR}")
+
+set(CMAKE_CXX_STANDARD          20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
@@ -27,9 +40,14 @@ add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
 
 # ---- application ----
 add_executable(nf7)
-target_compile_options(nf7 PRIVATE ${NF7_CXX_FLAGS})
 target_include_directories(nf7 PRIVATE . "${PROJECT_BINARY_DIR}/include")
-
+target_compile_options(nf7 PRIVATE
+  ${NF7_OPTIONS_WARNING}
+  ${NF7_OPTIONS_SANITIZE}
+)
+target_link_options(nf7 PRIVATE
+  ${NF7_OPTIONS_SANITIZE}
+)
 target_compile_definitions(nf7
   PRIVATE
     IMGUI_DEFINE_MATH_OPERATORS
