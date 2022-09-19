@@ -116,6 +116,7 @@ target_sources(nf7
     common/util_string.hh
     common/value.hh
     common/yas_audio.hh
+    common/yas_enum.hh
     common/yas_imgui.hh
     common/yas_imnodes.hh
     common/yas_nf7.hh
