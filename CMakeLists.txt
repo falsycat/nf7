@@ -146,6 +146,7 @@ target_sources(nf7
     file/system_logger.cc
     file/system_native_file.cc
     file/value_curve.cc
+    file/value_plot.cc
 )
 target_link_libraries(nf7
   PRIVATE

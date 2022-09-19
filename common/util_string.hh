@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -9,6 +11,18 @@
 
 
 namespace nf7::util {
+
+inline std::string_view Trim(
+    std::string_view str,
+    const std::function<bool(char)>& func = [](auto c) { return std::isspace(c); }) noexcept {
+  while (!str.empty() && func(str.front())) {
+    str.remove_prefix(1);
+  }
+  while (!str.empty() && func(str.back())) {
+    str.remove_suffix(1);
+  }
+  return str;
+}
 
 inline std::optional<std::string_view> IterateTerms(std::string_view str, char c, size_t& i) noexcept {
   std::string_view ret;
