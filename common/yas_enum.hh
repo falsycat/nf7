@@ -2,26 +2,31 @@
 
 #include <string_view>
 
+#include <magic_enum.hpp>
+
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
 
+#include "nf7.hh"
+
+
 namespace nf7 {
 
-template <
-  typename T,
-  const char* (*Stringify)(T),
-  T (*Parse)(std::string_view)>
+template <typename T>
 struct EnumSerializer {
  public:
   static auto& save(auto& ar, auto t) {
-    const std::string v = Stringify(t);
-    ar(v);
+    ar(magic_enum::enum_name(t));
     return ar;
   }
   static auto& load(auto& ar, auto& t) {
     std::string v;
     ar(v);
-    t = Parse(v);
+    if (auto ot = magic_enum::enum_cast<T>(v)) {
+      t = *ot;
+    } else {
+      throw nf7::DeserializeException {"unknown enum: "+v};
+    }
     return ar;
   }
 };

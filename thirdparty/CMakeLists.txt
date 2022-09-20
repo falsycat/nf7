@@ -177,6 +177,14 @@ endfunction()
 include_luajit()
 
 
+# ---- magic_enum ----
+FetchContent_Declare(
+  magic_enum
+  URL "https://github.com/Neargye/magic_enum/archive/refs/tags/v0.8.1.zip"
+)
+FetchContent_MakeAvailable(magic_enum)
+
+
 # ---- miniaudio ----
 # repository: https://github.com/mackron/miniaudio
 # license   : Unlicense

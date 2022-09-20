@@ -155,6 +155,7 @@ target_link_libraries(nf7
     implot
     linalg.h
     luajit
+    magic_enum
     miniaudio
     source_location
     yas
