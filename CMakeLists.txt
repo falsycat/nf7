@@ -159,4 +159,5 @@ target_link_libraries(nf7
     miniaudio
     source_location
     yas
+    yaml-cpp
 )

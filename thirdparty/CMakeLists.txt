@@ -211,6 +211,17 @@ target_include_directories(source_location SYSTEM INTERFACE .)
 target_sources(source_location INTERFACE source_location.hh)
 
 
+# ---- yaml-cpp ----
+# repository: https://github.com/jbeder/yaml-cpp
+# license   : MIT
+
+FetchContent_Declare(
+  yaml-cpp
+  URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.zip"
+)
+FetchContent_MakeAvailable(yaml-cpp)
+
+
 # ---- yas  ----
 # repository: https://github.com/niXman/yas
 # license   : Boost
