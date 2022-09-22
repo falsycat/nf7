@@ -32,6 +32,7 @@
 #include "common/node.hh"
 #include "common/node_root_lambda.hh"
 #include "common/ptr_selector.hh"
+#include "common/util_algorithm.hh"
 #include "common/util_string.hh"
 
 

@@ -35,15 +35,6 @@ inline void JoinAndAppend(std::string& dst, std::span<const std::string> src, ch
     dst += c;
   }
 }
-inline void Uniq(std::vector<std::string>& v) noexcept {
-  for (auto itr = v.begin(); itr < v.end();) {
-    if (v.end() != std::find(itr+1, v.end(), *itr)) {
-      itr = v.erase(itr);
-    } else {
-      ++itr;
-    }
-  }
-}
 
 inline std::optional<std::string_view> SplitAndValidate(
     std::string_view v,

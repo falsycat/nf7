@@ -113,6 +113,7 @@ target_sources(nf7
     common/squashed_history.hh
     common/thread.hh
     common/timed_queue.hh
+    common/util_algorithm.hh
     common/util_string.hh
     common/value.hh
     common/yas_audio.hh

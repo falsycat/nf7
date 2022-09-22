@@ -4,6 +4,8 @@
 
 #include "nf7.hh"
 
+#include "common/util_algorithm.hh"
+
 
 namespace nf7::gui {
 
