@@ -117,7 +117,7 @@ target_sources(imnodes
 
 FetchContent_Declare(
   implot
-  URL "https://github.com/epezent/implot/archive/refs/heads/master.zip"
+  URL "https://github.com/epezent/implot/archive/refs/tags/v0.14.zip"
 )
 FetchContent_Populate(implot)
 
