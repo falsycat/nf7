@@ -17,11 +17,7 @@
 
 namespace nf7::luajit {
 
-// pushes original libraries
-static void PushLuaLib(lua_State* L) noexcept;
-static void PushMathLib(lua_State* L) noexcept;
-static void PushTableLib(lua_State* L) noexcept;
-static void PushTimeLib(lua_State* L) noexcept;
+static void PushStd(lua_State* L) noexcept;
 
 // buffer <-> lua value conversion
 template <typename T>
@@ -35,62 +31,8 @@ static size_t ToBytes(lua_State* L, uint8_t* ptr, uint8_t* end);
 
 void PushGlobalTable(lua_State* L) noexcept {
   if (luaL_newmetatable(L, "nf7::luajit::PushGlobalTable")) {
-    PushLuaLib(L);
-    lua_setfield(L, -2, "lua");
-
-    PushMathLib(L);
-    lua_setfield(L, -2, "math");
-
-    PushTableLib(L);
-    lua_setfield(L, -2, "table");
-
-    PushTimeLib(L);
-    lua_setfield(L, -2, "time");
-
-    lua_pushcfunction(L, [](auto L) {
-      if (lua_isstring(L, 2)) {
-        const char* type = lua_tostring(L, 2);
-        if (std::string_view {"integer"} == type) {
-          PushValue(L, static_cast<nf7::Value::Integer>(luaL_checkinteger(L, 1)));
-        } else {
-          return luaL_error(L, "unknown type specifier: %s", type);
-        }
-      } else {
-        PushValue(L, CheckValue(L, 1));
-      }
-      return 1;
-    });
-    lua_setfield(L, -2, "nf7_Value");
-
-    lua_pushcfunction(L, [](auto L) {
-      if (auto imm = ToVector(L, 1)) {
-        return 1;
-      }
-      if (auto mut = ToMutableVector(L, 1)) {
-        PushVector(L, std::make_shared<std::vector<uint8_t>>(std::move(*mut)));
-        return 1;
-      }
-      return luaL_error(L, "expected nf7::Value::MutableVector or nf7::Value::ConstVector");
-    });
-    lua_setfield(L, -2, "nf7_Vector");
-
-    lua_pushcfunction(L, [](auto L) {
-      if (auto imm = ToVector(L, 1)) {
-        if (imm->use_count() == 1) {
-          PushMutableVector(L, std::move(const_cast<std::vector<uint8_t>&>(**imm)));
-        } else {
-          PushMutableVector(L, std::vector<uint8_t> {**imm});
-        }
-        return 1;
-      }
-      if (auto mut = ToMutableVector(L, 1)) {
-        PushMutableVector(L, std::vector<uint8_t> {*mut});
-        return 1;
-      }
-      PushMutableVector(L, {});
-      return 1;
-    });
-    lua_setfield(L, -2, "nf7_MutableVector");
+    PushStd(L);
+    lua_setfield(L, -2, "std");
   }
 }
 void PushImmEnv(lua_State* L) noexcept {
@@ -439,12 +381,14 @@ std::optional<std::vector<uint8_t>> ToMutableVector(lua_State* L, int idx) noexc
 }
 
 
-static void PushLuaLib(lua_State* L) noexcept {
+static void PushStd(lua_State* L) noexcept {
   lua_newuserdata(L, 0);
-
   lua_createtable(L, 0, 0);
   lua_createtable(L, 0, 0);
   {
+    // ---- lua lib ----
+
+    // assert(expr[, msg])
     lua_pushcfunction(L, [](auto L) {
       if (lua_toboolean(L, 1)) {
         return 0;
@@ -457,11 +401,13 @@ static void PushLuaLib(lua_State* L) noexcept {
     });
     lua_setfield(L, -2, "assert");
 
+    // error(msg)
     lua_pushcfunction(L, [](auto L) {
       return luaL_error(L, luaL_checkstring(L, 1));
     });
     lua_setfield(L, -2, "error");
 
+    // load(str)
     lua_pushcfunction(L, [](auto L) {
       if (0 != luaL_loadstring(L, luaL_checkstring(L, 1))) {
         return luaL_error(L, "lua.load error: %s", lua_tostring(L, -1));
@@ -470,6 +416,7 @@ static void PushLuaLib(lua_State* L) noexcept {
     });
     lua_setfield(L, -2, "load");
 
+    // pcall(func, args...) -> success, result
     lua_pushcfunction(L, [](auto L) {
       if (0 == lua_pcall(L, lua_gettop(L)-1, LUA_MULTRET, 0)) {
         lua_pushboolean(L, true);
@@ -482,44 +429,35 @@ static void PushLuaLib(lua_State* L) noexcept {
       }
     });
     lua_setfield(L, -2, "pcall");
-  }
-  lua_setfield(L, -2, "__index");
-  lua_setmetatable(L, -2);
-}
-static void PushMathLib(lua_State* L) noexcept {
-  lua_newuserdata(L, 0);
 
-  lua_createtable(L, 0, 0);
-  lua_createtable(L, 0, 0);
-  {
+
+    // ---- math lib ----
+
+    // sin(theta)
     lua_pushcfunction(L, [](auto L) {
       lua_pushnumber(L, std::sin(luaL_checknumber(L, 1)));
       return 1;
     });
     lua_setfield(L, -2, "sin");
 
+    // cos(theta)
     lua_pushcfunction(L, [](auto L) {
       lua_pushnumber(L, std::cos(luaL_checknumber(L, 1)));
       return 1;
     });
     lua_setfield(L, -2, "cos");
 
+    // tan(slope)
     lua_pushcfunction(L, [](auto L) {
       lua_pushnumber(L, std::tan(luaL_checknumber(L, 1)));
       return 1;
     });
     lua_setfield(L, -2, "tan");
-  }
-  lua_setfield(L, -2, "__index");
-  lua_setmetatable(L, -2);
-}
-static void PushTableLib(lua_State* L) noexcept {
-  lua_newuserdata(L, 0);
 
-  lua_createtable(L, 0, 0);
-  lua_createtable(L, 0, 0);
-  {
-    // table.setmetatable(table, meta_table)
+
+    // ---- table lib ----
+
+    // meta(table, meta_table)
     lua_pushcfunction(L, [](auto L) {
       luaL_checktype(L, 1, LUA_TTABLE);
       luaL_checktype(L, 2, LUA_TTABLE);
@@ -527,18 +465,12 @@ static void PushTableLib(lua_State* L) noexcept {
       lua_setmetatable(L, 1);
       return 1;
     });
-    lua_setfield(L, -2, "setmetatable");
-  }
-  lua_setfield(L, -2, "__index");
-  lua_setmetatable(L, -2);
-}
-static void PushTimeLib(lua_State* L) noexcept {
-  lua_newuserdata(L, 0);
+    lua_setfield(L, -2, "meta");
 
-  lua_createtable(L, 0, 0);
-  lua_createtable(L, 0, 0);
-  {
-    // time.now()
+
+    // ---- time lib ----
+
+    // now()
     lua_pushcfunction(L, [](auto L) {
       const auto now = nf7::Env::Clock::now().time_since_epoch();
       const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(now);
@@ -546,6 +478,44 @@ static void PushTimeLib(lua_State* L) noexcept {
       return 1;
     });
     lua_setfield(L, -2, "now");
+
+
+    // ---- value lib ----
+
+    // value(entity) -> value
+    lua_pushcfunction(L, [](auto L) {
+      if (lua_isstring(L, 2)) {
+        const auto type = std::string_view {lua_tostring(L, 2)};
+        if (type == "integer" || type == "int") {
+          PushValue(L, static_cast<nf7::Value::Integer>(luaL_checkinteger(L, 1)));
+        } else {
+          return luaL_error(L, "unknown type specifier: %s", type);
+        }
+      } else {
+        PushValue(L, CheckValue(L, 1));
+      }
+      return 1;
+    });
+    lua_setfield(L, -2, "value");
+
+    // mvector(vector or mutable vector) -> mutable vector
+    lua_pushcfunction(L, [](auto L) {
+      if (auto imm = ToVector(L, 1)) {
+        if (imm->use_count() == 1) {
+          PushMutableVector(L, std::move(const_cast<std::vector<uint8_t>&>(**imm)));
+        } else {
+          PushMutableVector(L, std::vector<uint8_t> {**imm});
+        }
+        return 1;
+      } else if (auto mut = ToMutableVector(L, 1)) {
+        PushMutableVector(L, std::vector<uint8_t> {*mut});
+        return 1;
+      } else {
+        PushMutableVector(L, {});
+        return 1;
+      }
+    });
+    lua_setfield(L, -2, "mvector");
   }
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);
