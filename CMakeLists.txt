@@ -103,6 +103,7 @@ target_sources(nf7
     common/mutable_memento.hh
     common/mutex.hh
     common/native_file.hh
+    common/nfile_watcher.hh
     common/node.hh
     common/node_link_store.hh
     common/node_root_lambda.hh
@@ -111,6 +112,7 @@ target_sources(nf7
     common/queue.hh
     common/sequencer.hh
     common/squashed_history.hh
+    common/task.hh
     common/thread.hh
     common/timed_queue.hh
     common/util_algorithm.hh

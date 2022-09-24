@@ -18,6 +18,12 @@
 
 namespace nf7 {
 
+class CoroutineAbortException final : public nf7::Exception {
+ public:
+  using nf7::Exception::Exception;
+};
+
+
 // How To Use (factory side)
 // 1. Create Future<T>::Promise. (T is a type of returned value)
 // 2. Get Future<T> from Future<T>::Promise and Pass it to ones who want to get T.
@@ -25,6 +31,7 @@ namespace nf7 {
 //
 // Users who receive Future can wait for finishing
 // by Future::Then(), Future::ThenSub(), or co_await.
+
 
 
 // T must not be void, use std::monostate instead
@@ -110,7 +117,7 @@ class Future final {
     auto Wrap(const std::function<T()>& f) noexcept
     try {
       Return(f());
-    } catch (Exception&) {
+    } catch (...) {
       Throw(std::current_exception());
     }
 
@@ -186,7 +193,7 @@ class Future final {
     }
     void Abort() noexcept {
       h_.promise().Throw(
-          std::make_exception_ptr<nf7::Exception>({"coroutine aborted"}));
+          std::make_exception_ptr<CoroutineAbortException>({"coroutine aborted"}));
       data_->aborted = true;
     }
 
@@ -283,7 +290,6 @@ class Future final {
 
     std::unique_lock<std::mutex> k(data.mtx);
     auto callee_ctx = data.ctx.lock();
-    assert(callee_ctx);
 
     auto caller_data = caller.promise().data__();
     auto caller_ctx  = caller_data->ctx.lock();
@@ -306,7 +312,7 @@ class Future final {
       caller.resume();
     }
   }
-  auto await_resume() { return value(); }
+  auto& await_resume() { return value(); }
 
  private:
   std::optional<Imm> imm_;
