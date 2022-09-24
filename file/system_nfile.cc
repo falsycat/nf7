@@ -23,7 +23,7 @@
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/mutex.hh"
-#include "common/native_file.hh"
+#include "common/nfile.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/thread.hh"
@@ -33,11 +33,11 @@
 namespace nf7 {
 namespace {
 
-class NativeFile final : public nf7::FileBase,
+class NFile final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
  public:
-  static inline const nf7::GenericTypeInfo<NativeFile> kType = {
-    "System/NativeFile", {"nf7::DirItem", "nf7::Node"}};
+  static inline const nf7::GenericTypeInfo<NFile> kType = {
+    "System/NFile", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Read/Write a file placed on native filesystem.");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
@@ -46,11 +46,11 @@ class NativeFile final : public nf7::FileBase,
   class Lambda;
 
   struct SharedData final {
-    SharedData(NativeFile& f) noexcept : log(f) {
+    SharedData(NFile& f) noexcept : log(f) {
     }
 
     nf7::LoggerRef log;
-    std::optional<nf7::NativeFile> nfile;
+    std::optional<nf7::NFile> nfile;
   };
   struct Runner final {
     struct Task {
@@ -85,7 +85,7 @@ class NativeFile final : public nf7::FileBase,
     std::string mode;
   };
 
-  NativeFile(nf7::Env& env, Data&& data = {}) noexcept :
+  NFile(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env, {&config_popup_}),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
@@ -102,14 +102,14 @@ class NativeFile final : public nf7::FileBase,
     mtx_.onUnlock = [this]() { shared_->nfile.reset(); };
   }
 
-  NativeFile(nf7::Deserializer& ar) : NativeFile(ar.env()) {
+  NFile(nf7::Deserializer& ar) : NFile(ar.env()) {
     ar(data().npath, data().mode);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(data().npath, data().mode);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<NativeFile>(env, Data {data()});
+    return std::make_unique<NFile>(env, Data {data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -134,7 +134,7 @@ class NativeFile final : public nf7::FileBase,
   }
 
  private:
-  nf7::Life<NativeFile> life_;
+  nf7::Life<NFile> life_;
 
   std::shared_ptr<SharedData> shared_;
   std::shared_ptr<Thread>     th_;
@@ -152,7 +152,7 @@ class NativeFile final : public nf7::FileBase,
   struct ConfigPopup final :
       public nf7::FileBase::Feature, private nf7::gui::Popup {
    public:
-    ConfigPopup(NativeFile& f) noexcept :
+    ConfigPopup(NFile& f) noexcept :
         nf7::gui::Popup("ConfigPopup"), f_(&f) {
     }
 
@@ -167,7 +167,7 @@ class NativeFile final : public nf7::FileBase,
     void Update() noexcept override;
 
    private:
-    NativeFile* const f_;
+    NFile* const f_;
 
     std::string npath_;
     bool read_, write_;
@@ -176,9 +176,9 @@ class NativeFile final : public nf7::FileBase,
 
   void SetUp() {
     const auto& mode = data().mode;
-    nf7::NativeFile::Flags flags = 0;
-    if (std::string::npos != mode.find('r')) flags |= nf7::NativeFile::kRead;
-    if (std::string::npos != mode.find('w')) flags |= nf7::NativeFile::kWrite;
+    nf7::NFile::Flags flags = 0;
+    if (std::string::npos != mode.find('r')) flags |= nf7::NFile::kRead;
+    if (std::string::npos != mode.find('w')) flags |= nf7::NFile::kWrite;
 
     auto ctx = std::make_shared<nf7::GenericContext>(*this);
     th_->Push(ctx, Runner::Task {
@@ -192,10 +192,10 @@ class NativeFile final : public nf7::FileBase,
   }
 };
 
-class NativeFile::Lambda final : public nf7::Node::Lambda,
-    public std::enable_shared_from_this<NativeFile::Lambda> {
+class NFile::Lambda final : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<NFile::Lambda> {
  public:
-  Lambda(NativeFile& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+  Lambda(NFile& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
       nf7::Node::Lambda(f, parent), f_(f.life_), shared_(f.shared_) {
   }
   ~Lambda() noexcept {
@@ -244,7 +244,7 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
   }
 
  private:
-  nf7::Life<NativeFile>::Ref f_;
+  nf7::Life<NFile>::Ref f_;
 
   std::shared_ptr<SharedData> shared_;
 
@@ -258,7 +258,7 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     auto self = shared_from_this();
     lock_->Then([self, this, caller, f = std::move(f)](auto fu) mutable {
       const auto k = fu.value();
-      f_->th_->Push(self, NativeFile::Runner::Task {
+      f_->th_->Push(self, NFile::Runner::Task {
         .callee = self,
         .caller = std::move(caller),
         .func   = std::move(f),
@@ -266,13 +266,13 @@ class NativeFile::Lambda final : public nf7::Node::Lambda,
     });
   }
 };
-std::shared_ptr<nf7::Node::Lambda> NativeFile::CreateLambda(
+std::shared_ptr<nf7::Node::Lambda> NFile::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
-  return std::make_shared<NativeFile::Lambda>(*this, parent);
+  return std::make_shared<NFile::Lambda>(*this, parent);
 }
 
 
-void NativeFile::Update() noexcept {
+void NFile::Update() noexcept {
   nf7::FileBase::Update();
 
   // file update check
@@ -285,24 +285,24 @@ void NativeFile::Update() noexcept {
   } catch (std::filesystem::filesystem_error&) {
   }
 }
-void NativeFile::UpdateMenu() noexcept {
+void NFile::UpdateMenu() noexcept {
   if (ImGui::MenuItem("config")) {
     config_popup_.Open();
   }
 }
-void NativeFile::UpdateTooltip() noexcept {
+void NFile::UpdateTooltip() noexcept {
   ImGui::Text("npath: %s", data().npath.generic_string().c_str());
   ImGui::Text("mode : %s", data().mode.c_str());
 }
-void NativeFile::UpdateWidget() noexcept {
-  ImGui::TextUnformatted("System/NativeFile");
+void NFile::UpdateWidget() noexcept {
+  ImGui::TextUnformatted("System/NFile");
 
   if (ImGui::Button("config")) {
     config_popup_.Open();
   }
   config_popup_.Update();
 }
-void NativeFile::ConfigPopup::Update() noexcept {
+void NFile::ConfigPopup::Update() noexcept {
   if (nf7::gui::Popup::Begin()) {
     ImGui::InputText("path", &npath_);
     ImGui::Checkbox("read", &read_);

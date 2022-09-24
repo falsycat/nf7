@@ -102,7 +102,7 @@ target_sources(nf7
     common/memento_recorder.hh
     common/mutable_memento.hh
     common/mutex.hh
-    common/native_file.hh
+    common/nfile.hh
     common/nfile_watcher.hh
     common/node.hh
     common/node_link_store.hh
@@ -127,8 +127,8 @@ target_sources(nf7
     common/yas_std_filesystem.hh
     common/yas_std_variant.hh
 
-    $<$<PLATFORM_ID:Linux>:common/native_file_unix.cc>
-    $<$<PLATFORM_ID:Windows>:common/native_file_win.cc>
+    $<$<PLATFORM_ID:Linux>:common/nfile_unix.cc>
+    $<$<PLATFORM_ID:Windows>:common/nfile_win.cc>
 
     file/audio_context.cc
     file/audio_device.cc
@@ -146,7 +146,7 @@ target_sources(nf7
     file/system_event.cc
     file/system_imgui.cc
     file/system_logger.cc
-    file/system_native_file.cc
+    file/system_nfile.cc
     file/value_curve.cc
     file/value_plot.cc
 )

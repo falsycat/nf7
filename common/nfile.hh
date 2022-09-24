@@ -11,7 +11,7 @@
 
 namespace nf7 {
 
-class NativeFile final {
+class NFile final {
  public:
   class Exception final : public nf7::Exception {
     using nf7::Exception::Exception;
@@ -23,16 +23,16 @@ class NativeFile final {
   };
   using Flags = uint8_t;
 
-  NativeFile() = delete;
-  NativeFile(const std::filesystem::path& path, Flags flags) :
+  NFile() = delete;
+  NFile(const std::filesystem::path& path, Flags flags) :
       path_(path), flags_(flags) {
     Init();
   }
-  ~NativeFile() noexcept;
-  NativeFile(const NativeFile&) = delete;
-  NativeFile(NativeFile&&) = delete;
-  NativeFile& operator=(const NativeFile&) = delete;
-  NativeFile& operator=(NativeFile&&) = delete;
+  ~NFile() noexcept;
+  NFile(const NFile&) = delete;
+  NFile(NFile&&) = delete;
+  NFile& operator=(const NFile&) = delete;
+  NFile& operator=(NFile&&) = delete;
 
   size_t Read(size_t offset, uint8_t* buf, size_t size);
   size_t Write(size_t offset, const uint8_t* buf, size_t size);
