@@ -29,6 +29,13 @@ class GenericMemento : public nf7::MutableMemento {
     assert(map_.empty());
   }
 
+  T* operator->() noexcept {
+    return &data_;
+  }
+  const T* operator->() const noexcept {
+    return &data_;
+  }
+
   std::shared_ptr<Tag> Save() noexcept override {
     if (tag_) return tag_;
     auto [itr, emplaced] = map_.emplace(next_++, data_);
