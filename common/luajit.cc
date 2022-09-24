@@ -516,6 +516,13 @@ static void PushStd(lua_State* L) noexcept {
       }
     });
     lua_setfield(L, -2, "mvector");
+
+
+    // ---- bit manip ----
+    luaL_openlibs(L);
+    luaL_loadstring(L, "return require(\"bit\")");
+    lua_call(L, 0, 1);
+    lua_setfield(L, -2, "bit");
   }
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);
