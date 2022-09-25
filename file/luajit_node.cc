@@ -1,118 +1,111 @@
-#include <algorithm>
 #include <exception>
-#include <memory>
+#include <filesystem>
+#include <mutex>
 #include <optional>
-#include <typeinfo>
-#include <variant>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
+
+#include <lua.hpp>
+
 #include <yas/serialize.hpp>
-#include <yas/types/std/string.hpp>
-#include <yas/types/std/vector.hpp>
 
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
-#include "common/file_holder.hh"
 #include "common/future.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
-#include "common/gui_file.hh"
-#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
+#include "common/luajit.hh"
 #include "common/luajit_queue.hh"
 #include "common/luajit_ref.hh"
 #include "common/luajit_thread.hh"
 #include "common/memento.hh"
+#include "common/nfile_watcher.hh"
 #include "common/node.hh"
-#include "common/node_root_lambda.hh"
 #include "common/ptr_selector.hh"
-#include "common/util_algorithm.hh"
-#include "common/util_string.hh"
+#include "common/yas_std_filesystem.hh"
 
 
 using namespace std::literals;
 
-
 namespace nf7 {
 namespace {
 
-class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
+class LuaNode final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<Node> kType =
+  static inline const nf7::GenericTypeInfo<LuaNode> kType =
       {"LuaJIT/Node", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Defines new Node using Lua object factory.");
-    ImGui::Bullet();
-    ImGui::TextUnformatted("refers nf7::luajit::Queue through linked LuaJIT/Obj");
+    ImGui::TextUnformatted("defines new pure Node");
   }
 
+  class Builder;
   class Lambda;
 
+  struct Meta {
+   public:
+    std::vector<std::string> inputs, outputs;
+    std::optional<nf7::luajit::Ref> lambda;
+  };
   struct Data {
-    nf7::FileHolder::Tag     obj;
-    std::string              desc;
-    std::vector<std::string> inputs;
-    std::vector<std::string> outputs;
+    std::filesystem::path npath;
   };
 
-  Node(Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&obj_, &obj_editor_, &socket_popup_}),
+  LuaNode(Env& env, Data&& data = {}) noexcept :
+      nf7::FileBase(kType, env, {&nfile_watcher_}),
       nf7::DirItem(nf7::DirItem::kTooltip | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kNone),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      obj_(*this, "obj_factory", mem_),
-      obj_editor_(obj_, [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
 
-    mem_.data().obj.SetTarget(obj_);
-    mem_.CommitAmend();
-
-    socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
-      this->env().ExecMain(
-          std::make_shared<nf7::GenericContext>(*this),
-          [this, i = std::move(i), o = std::move(o)]() {
-            mem_.data().inputs  = std::move(i);
-            mem_.data().outputs = std::move(o);
-            mem_.Commit();
-          });
-    };
-
-    obj_.onEmplace = obj_.onChildUpdate = [this]() {
-      if (fu_) {
-        log_->Info("factory update detected, dropping cache");
-      }
-      fu_ = std::nullopt;
+    nfile_watcher_.onMod = [this]() {
+      cache_ = std::nullopt;
     };
   }
 
-  Node(nf7::Deserializer& ar) : Node(ar.env()) {
-    ar(obj_, data().desc, data().inputs, data().outputs);
-
-    nf7::util::Uniq(data().inputs);
-    nf7::util::Uniq(data().outputs);
+  LuaNode(nf7::Deserializer& ar) : LuaNode(ar.env()) {
+    ar(mem_->npath);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(obj_, data().desc, data().inputs, data().outputs);
+    ar(mem_->npath);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Node>(env, Data {data()});
+    return std::make_unique<LuaNode>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::span<const std::string> GetInputs() const noexcept override {
-    return data().inputs;
+    if (cache_ && cache_->done()) return cache_->value()->inputs;
+    return {};
   }
   std::span<const std::string> GetOutputs() const noexcept override {
-    return data().outputs;
+    if (cache_ && cache_->done()) return cache_->value()->outputs;
+    return {};
+  }
+
+  nf7::Future<std::shared_ptr<Meta>> Build() noexcept;
+
+  void Handle(const nf7::File::Event& ev) noexcept override {
+    nf7::FileBase::Handle(ev);
+    switch (ev.type) {
+    case nf7::File::Event::kAdd:
+      Build();
+      break;
+    default:
+      break;
+    }
   }
 
   void UpdateTooltip() noexcept override;
@@ -124,182 +117,192 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   }
 
  private:
-  nf7::Life<Node> life_;
+  nf7::Life<LuaNode> life_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  nf7::FileHolder            obj_;
-  nf7::gui::FileHolderEditor obj_editor_;
-
-  nf7::gui::IOSocketListPopup socket_popup_;
+  NFileWatcher nfile_watcher_;
 
   nf7::GenericMemento<Data> mem_;
-  const Data& data() const noexcept { return mem_.data(); }
-  Data& data() noexcept { return mem_.data(); }
 
-  // factory context
-  std::shared_ptr<nf7::NodeRootLambda> factory_;
-  std::optional<nf7::Future<nf7::Value>> fu_;
+  std::optional<nf7::Future<std::shared_ptr<Meta>>> cache_;
 };
 
-class Node::Lambda final : public nf7::Node::Lambda,
-    public std::enable_shared_from_this<Node::Lambda> {
+class LuaNode::Lambda final : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<LuaNode::Lambda> {
  public:
-  Lambda(Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
+  Lambda(LuaNode& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+      nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
   void Handle(std::string_view k, const nf7::Value& v,
               const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
   try {
-    f_.EnforceAlive();
-    auto self = shared_from_this();
-
-    if (!f_->fu_) {
-      auto& n = f_->obj_.GetFileOrThrow().interfaceOrThrow<nf7::Node>();
-      auto  b = nf7::NodeRootLambda::Builder {*f_, n};
-      f_->fu_ = b.Receive("product");
-
-      f_->factory_ = b.Build();
-      b.Send("create", nf7::Value::Pulse {});
-
-      f_->fu_->Then(self, [this](auto) { if (f_) f_->factory_ = nullptr; });
-    }
-
-    assert(f_->fu_);
-    f_->fu_->Then(self, [this, k = std::string {k}, v = v, caller](auto fu) mutable {
-      try {
-        auto ref = fu.value().template data<nf7::luajit::Ref>();
-        CallFunc(ref, std::move(k), std::move(v), caller);
-      } catch (nf7::Exception& e) {
-        log_->Error("failed to call lua function: "+e.msg());
-      }
-    });
-  } catch (nf7::ExpiredException&) {
-  } catch (nf7::Exception& e) {
-    log_->Error(e.msg());
-  }
-  void Abort() noexcept override {
-    for (auto& wth : th_) {
-      if (auto th = wth.lock()) {
-        th->Abort();
-      }
-    }
-  }
-
- private:
-  nf7::Life<Node>::Ref f_;
-
-  std::shared_ptr<nf7::LoggerRef> log_;
-
-  std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
-
-  std::optional<nf7::luajit::Ref> ctxtable_;
-
-
-  void CallFunc(const std::shared_ptr<nf7::luajit::Ref>& func,
-                std::string&& k, nf7::Value&& v,
-                const std::shared_ptr<nf7::Node::Lambda>& caller) {
-    auto self = shared_from_this();
     th_.erase(
         std::remove_if(th_.begin(), th_.end(), [](auto& x) { return x.expired(); }),
         th_.end());
 
-    auto ljq = func->ljq();
-    auto th  = std::make_shared<nf7::luajit::Thread>(
-        self, ljq,
-        nf7::luajit::Thread::CreateNodeLambdaHandler(caller, shared_from_this()));
-    th->Install(log_);
+    auto self = shared_from_this();
+
+    f_.EnforceAlive();
+    f_->Build().
+        ThenIf(self, [this, k = std::string {k}, v, caller](auto& meta) mutable {
+          if (f_) StartThread(std::move(k), v, caller, meta);
+        }).
+        Catch<nf7::Exception>([log = f_->log_](auto& e) {
+          log->Error(e);
+        });
+  } catch (nf7::ExpiredException&) {
+  }
+
+  void Abort() noexcept override {
+    for (auto wth : th_) {
+      auto th = wth.lock();
+      th->Abort();
+    }
+  }
+
+ private:
+  nf7::Life<LuaNode>::Ref f_;
+
+  std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
+
+  std::mutex mtx_;
+  std::optional<nf7::luajit::Ref> ctx_;
+
+
+  void StartThread(std::string&& k, const nf7::Value& v,
+                   const std::shared_ptr<nf7::Node::Lambda>& caller,
+                   const std::shared_ptr<Meta>&              meta) {
+    auto self = shared_from_this();
+    auto log  = f_->log_;
+    auto ljq  = meta->lambda->ljq();
+
+    auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(caller, self);
+    auto th   = std::make_shared<nf7::luajit::Thread>(self, ljq, std::move(hndl));
+    th->Install(log);
     th_.emplace_back(th);
 
-    auto ctx = std::make_shared<nf7::GenericContext>(env(), initiator());
-    ljq->Push(self, [this, ctx, ljq, k = std::move(k), v = std::move(v), caller, func, th](auto L) mutable {
-      auto thL = th->Init(L);
-      func->PushSelf(thL);
-
-      // push args
-      lua_pushstring(thL, k.c_str());
-      nf7::luajit::PushValue(thL, v);
-
-      // push context table
-      if (ctxtable_ && ctxtable_->ljq() != ljq) {
-        ctxtable_ = std::nullopt;
-      }
-      if (!ctxtable_) {
-        lua_createtable(thL, 0, 0);
-        lua_pushvalue(thL, -1);
-        ctxtable_.emplace(ctx, ljq, thL);
-      } else {
-        ctxtable_->PushSelf(thL);
+    ljq->Push(self, [this, ljq, th, meta, k = std::move(k), v](auto L) {
+      // create context table
+      {
+        std::unique_lock<std::mutex> _(mtx_);
+        if (!ctx_ || ctx_->ljq() != ljq) {
+          lua_createtable(L, 0, 0);
+          ctx_.emplace(shared_from_this(), ljq, L);
+        }
       }
 
-      // execute
-      th->Resume(thL, 3);
+      // start thread
+      L = th->Init(L);
+      meta->lambda->PushSelf(L);
+      nf7::luajit::PushAll(L, k, v);
+      ctx_->PushSelf(L);
+      th->Resume(L, 3);
     });
   }
 };
-
-
-std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
+std::shared_ptr<nf7::Node::Lambda> LuaNode::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
 }
 
-void Node::UpdateTooltip() noexcept {
-  ImGui::Text("factory:");
-  ImGui::Indent();
-  obj_editor_.Tooltip();
-  ImGui::Unindent();
-  ImGui::Spacing();
 
-  ImGui::Text("input:");
-  ImGui::Indent();
-  for (const auto& name : data().inputs) {
-    ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
-  }
-  if (data().inputs.empty()) {
-    ImGui::TextDisabled("(nothing)");
-  }
-  ImGui::Unindent();
+nf7::Future<std::shared_ptr<LuaNode::Meta>> LuaNode::Build() noexcept {
+  if (cache_) return *cache_;
 
-  ImGui::Text("output:");
-  ImGui::Indent();
-  for (const auto& name : data().outputs) {
-    ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
-  }
-  if (data().outputs.empty()) {
-    ImGui::TextDisabled("(nothing)");
-  }
-  ImGui::Unindent();
+  auto ctx = std::make_shared<nf7::GenericContext>(*this, "LuaJIT Node builder");
+  nf7::Future<std::shared_ptr<Meta>>::Promise pro {ctx};
+  try {
+    auto ljq =
+        ResolveUpwardOrThrow("_luajit").
+        interfaceOrThrow<nf7::luajit::Queue>().self();
 
-  ImGui::Text("description:");
-  ImGui::Indent();
-  if (data().desc.empty()) {
-    ImGui::TextDisabled("(empty)");
-  } else {
-    ImGui::TextUnformatted(data().desc.c_str());
+    auto handler = nf7::luajit::Thread::CreatePromiseHandler<std::shared_ptr<Meta>>(pro, [ctx, ljq](auto L) {
+      if (1 != lua_gettop(L) || !lua_istable(L, 1)) {
+        throw nf7::Exception {"builder script should return a table"};
+      }
+
+      auto ret = std::make_shared<Meta>();
+
+      lua_getfield(L, 1, "inputs");
+      nf7::luajit::ToStringList(L, ret->inputs, -1);
+      lua_pop(L, 1);
+
+      lua_getfield(L, 1, "outputs");
+      nf7::luajit::ToStringList(L, ret->outputs, -1);
+      lua_pop(L, 1);
+
+      lua_getfield(L, 1, "lambda");
+      ret->lambda.emplace(ctx, ljq, L);
+
+      return ret;
+    });
+
+    auto th = std::make_shared<nf7::luajit::Thread>(ctx, ljq, std::move(handler));
+    th->Install(log_);
+    ljq->Push(ctx, [ljq, pro, th, npath = mem_->npath](auto L) mutable {
+      auto thL = th->Init(L);
+
+      const auto npathstr = npath.string();
+      const auto ret      = luaL_loadfile(thL, npathstr.c_str());
+      switch (ret) {
+      case 0:
+        th->Resume(thL, 0);
+        break;
+      default:
+        pro.Throw<nf7::Exception>(lua_tostring(thL, -1));
+        break;
+      }
+    });
+  } catch (nf7::Exception&) {
+    pro.Throw(std::current_exception());
   }
-  ImGui::Unindent();
+
+  cache_ = pro.future().
+    Catch<nf7::Exception>(ctx, [log = log_](auto& e) {
+      log->Error(e);
+    });
+  return *cache_;
 }
-void Node::UpdateWidget() noexcept {
-  const auto em = ImGui::GetFontSize();
 
-  ImGui::TextUnformatted("LuaJIT/Node: config");
-  obj_editor_.ButtonWithLabel("obj factory");
 
-  ImGui::InputTextMultiline("description", &data().desc, {0, 4*em});
-  if (ImGui::IsItemDeactivatedAfterEdit()) {
-    mem_.Commit();
+void LuaNode::UpdateTooltip() noexcept {
+  ImGui::Text("cache : %s", cache_? "ready": "none");
+
+  if (cache_ && cache_->done()) {
+    auto cache = cache_->value();
+    ImGui::TextUnformatted("inputs:");
+    for (const auto& name : cache->inputs) {
+      ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
+    }
+    ImGui::TextUnformatted("outputs:");
+    for (const auto& name : cache->outputs) {
+      ImGui::Bullet(); ImGui::TextUnformatted(name.c_str());
+    }
+  }
+}
+void LuaNode::UpdateWidget() noexcept {
+  if (ImGui::Button("change nfile path")) {
+    ImGui::OpenPopup("NPathPopup");
   }
 
-  if (ImGui::Button("I/O list")) {
-    socket_popup_.Open(data().inputs, data().outputs);
+  if (ImGui::BeginPopup("NPathPopup")) {
+    static std::string npath;
+    if (ImGui::IsWindowAppearing()) {
+      npath = mem_->npath.string();
+    }
+    const bool submit =
+        ImGui::InputText("npath", &npath, ImGuiInputTextFlags_EnterReturnsTrue);
+    if (ImGui::Button("ok") || submit) {
+      ImGui::CloseCurrentPopup();
+      mem_->npath = npath;
+      mem_.Commit();
+      nfile_watcher_.Watch(env().npath() / npath);
+      Build();
+    }
+    ImGui::EndPopup();
   }
-
-  ImGui::Spacing();
-  obj_editor_.ItemWidget("obj factory");
-
-  socket_popup_.Update();
 }
 
 }

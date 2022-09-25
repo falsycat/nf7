@@ -124,4 +124,17 @@ inline nf7::Value CheckValue(lua_State* L, int idx) {
   return std::move(*v);
 }
 
+inline void ToStringList(lua_State* L, std::vector<std::string>& v, int idx) {
+  const size_t n = lua_objlen(L, idx);
+  v.clear();
+  v.reserve(n);
+  for (int i = 1; i <= static_cast<int>(n); ++i) {
+    lua_rawgeti(L, idx, i);
+    if (auto str = lua_tostring(L, -1)) {
+      v.push_back(str);
+    }
+    lua_pop(L, 1);
+  }
+}
+
 }  // namespace nf7
