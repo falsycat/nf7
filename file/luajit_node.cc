@@ -163,11 +163,11 @@ class Node::Lambda final : public nf7::Node::Lambda,
       f_->factory_ = b.Build();
       b.Send("create", nf7::Value::Pulse {});
 
-      f_->fu_->ThenSub(self, [this](auto) { if (f_) f_->factory_ = nullptr; });
+      f_->fu_->Then(self, [this](auto) { if (f_) f_->factory_ = nullptr; });
     }
 
     assert(f_->fu_);
-    f_->fu_->ThenSub(self, [this, k = std::string {k}, v = v, caller](auto fu) mutable {
+    f_->fu_->Then(self, [this, k = std::string {k}, v = v, caller](auto fu) mutable {
       try {
         auto ref = fu.value().template data<nf7::luajit::Ref>();
         CallFunc(ref, std::move(k), std::move(v), caller);

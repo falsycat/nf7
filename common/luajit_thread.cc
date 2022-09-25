@@ -237,13 +237,10 @@ static void PushMeta(lua_State* L) noexcept {
             return 0;
           }
         } else {
-          fu.Then([L, th](auto fu) {
-            try {
-              const auto& p = fu.value();
-              th->ExecResume(L, p.first, p.second);
-            } catch (nf7::Exception& e) {
-              th->ExecResume(L);
-            }
+          fu.ThenIf([L, th](auto& p) {
+            th->ExecResume(L, p.first, p.second);
+          }).template Catch<nf7::Exception>(nullptr, [L, th](nf7::Exception&) {
+            th->ExecResume(L);
           });
           th->ExpectYield(L);
           return lua_yield(L, 0);

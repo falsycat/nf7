@@ -256,8 +256,7 @@ class NFile::Lambda final : public nf7::Node::Lambda,
       lock_ = f_->mtx_.AcquireLock(ex);
     }
     auto self = shared_from_this();
-    lock_->Then([self, this, caller, f = std::move(f)](auto fu) mutable {
-      const auto k = fu.value();
+    lock_->ThenIf([self, this, caller, f = std::move(f)](auto&) mutable {
       f_->th_->Push(self, NFile::Runner::Task {
         .callee = self,
         .caller = std::move(caller),
