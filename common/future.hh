@@ -96,10 +96,13 @@ class Future final {
     auto Return(T&& v) noexcept {
       std::unique_lock<std::mutex> k(data_->mtx);
       if (data_->state == kYet) {
-        data_->state = kDone;
         data_->value = std::move(v);
+        data_->state = kDone;
         CallReceivers();
       }
+    }
+    auto Return(const T& v) noexcept {
+      Return(T {v});
     }
     // thread-safe
     void Throw(std::exception_ptr e) noexcept {
@@ -109,6 +112,10 @@ class Future final {
         data_->state     = kError;
         CallReceivers();
       }
+    }
+    template <typename E, typename... Args>
+    void Throw(Args&&... args) noexcept {
+      return Throw(std::make_exception_ptr<E>(E {std::forward<Args>(args)...}));
     }
 
     // thread-safe
@@ -247,7 +254,7 @@ class Future final {
     typename nf7::Future<R>::Promise pro;
     Then(ctx, [pro, f = std::move(f)](auto& fu) mutable {
       try {
-        fun(fu, pro);
+        f(fu, pro);
       } catch (...) {
         pro.Throw(std::current_exception());
       }
@@ -277,8 +284,9 @@ class Future final {
     });
     return *this;
   }
+  template <typename E>
   ThisFuture& Catch(auto&& f) noexcept {
-    return Catch(nullptr, std::move(f));
+    return Catch<E>(nullptr, std::move(f));
   }
 
   auto& value() {

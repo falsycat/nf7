@@ -138,16 +138,16 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 template <typename T>
 Thread::Handler Thread::CreatePromiseHandler(
     nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&& f) noexcept {
-  return [&pro, f = std::move(f)](auto& self, auto L) {
+  return [pro = pro, f = std::move(f)](auto& self, auto L) mutable {
     switch (self.state()) {
     case kPaused:
-      pro.Throw(std::make_exception_ptr<nf7::Exception>({"unexpected yield"}));
+      pro.template Throw<nf7::Exception>("unexpected yield");
       break;
     case kFinished:
       pro.Wrap([&]() { return f(L); });
       break;
     case kAborted:
-      pro.Throw(std::make_exception_ptr<nf7::Exception>({lua_tostring(L, -1)}));
+      pro.template Throw<nf7::Exception>(lua_tostring(L, -1));
       break;
     default:
       assert(false);
