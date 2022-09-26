@@ -229,19 +229,19 @@ class Future final {
   // Schedules to execute f() immediately on any thread
   // when the promise is finished or aborted.
   // If ctx is not nullptr, the function will be run synchronized with main thread.
-  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, std::function<void(ThisFuture&)>&& f) noexcept {
+  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, std::function<void(const ThisFuture&)>&& f) noexcept {
     auto fun = std::move(f);
     if (ctx) {
       fun = [ctx, fun = std::move(fun)](auto& fu) {
         ctx->env().ExecSub(
-            ctx, [fu = fu, fun = std::move(fun)]() mutable { fun(fu); });
+            ctx, [fu, fun = std::move(fun)]() mutable { fun(fu); });
       };
     }
     if (data_) {
       std::unique_lock<std::mutex> k(data_->mtx);
       if (yet()) {
         data_->recv.push_back(
-            [fun = std::move(fun), fu = ThisFuture {data_}]() mutable { fun(fu); });
+            [fun = std::move(fun), d = data_]() mutable { fun(ThisFuture {d}); });
         return *this;
       }
     }
@@ -250,7 +250,7 @@ class Future final {
   }
   template <typename R>
   nf7::Future<R> Then(const std::shared_ptr<nf7::Context>& ctx,
-                      std::function<void(ThisFuture&, typename nf7::Future<R>::Promise&)>&& f) noexcept {
+                      std::function<void(const ThisFuture&, typename nf7::Future<R>::Promise&)>&& f) noexcept {
     typename nf7::Future<R>::Promise pro;
     Then(ctx, [pro, f = std::move(f)](auto& fu) mutable {
       try {
@@ -266,7 +266,7 @@ class Future final {
   }
 
   // same as Then() but called when it's done without error
-  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx, std::function<void(T&)>&& f) noexcept {
+  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx, std::function<void(const T&)>&& f) noexcept {
     Then(ctx, [f = std::move(f)](auto& fu) {
       if (fu.done()) f(fu.value());
     });
@@ -280,7 +280,7 @@ class Future final {
   template <typename E>
   ThisFuture& Catch(const std::shared_ptr<nf7::Context>& ctx, std::function<void(E&)>&& f) noexcept {
     Then(ctx, [f = std::move(f)](auto& fu) {
-      try { fu.value(); } catch (E& e) { f(e); }
+      try { fu.value(); } catch (E& e) { f(e); } catch (...) { }
     });
     return *this;
   }
@@ -289,7 +289,7 @@ class Future final {
     return Catch<E>(nullptr, std::move(f));
   }
 
-  auto& value() {
+  const auto& value() const {
     if (imm_) {
       if (std::holds_alternative<T>(*imm_)) return std::get<T>(*imm_);
       std::rethrow_exception(std::get<std::exception_ptr>(*imm_));
