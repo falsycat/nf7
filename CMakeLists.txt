@@ -77,6 +77,7 @@ target_sources(nf7
     common/generic_type_info.hh
     common/generic_watcher.hh
     common/gui_dnd.hh
+    common/gui_config.hh
     common/gui_context.hh
     common/gui_file.hh
     common/gui_file.cc

@@ -45,31 +45,4 @@ void IOSocketListPopup::Update() noexcept {
   }
 }
 
-
-void ConfigPopup::Update() noexcept {
-  if (nf7::gui::Popup::Begin()) {
-    ImGui::TextUnformatted(name());
-    ImGui::InputTextMultiline("##text", &text_);
-
-    if (ImGui::Button("apply")) {
-      try {
-        onApply(text_);
-        msg_ = "OK";
-      } catch (nf7::Exception& e) {
-        msg_ = e.msg();
-      }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("reset")) {
-      text_ = onOpen();
-    }
-
-    if (msg_.size()) {
-      ImGui::Bullet();
-      ImGui::TextUnformatted(msg_.c_str());
-    }
-    ImGui::EndPopup();
-  }
-}
-
 }  // namespace nf7::gui

@@ -64,26 +64,4 @@ class IOSocketListPopup final :
   std::string is_, os_;
 };
 
-
-class ConfigPopup final :
-    public nf7::FileBase::Feature, private Popup {
- public:
-  ConfigPopup(const char* name = "ConfigPopup") noexcept : Popup(name) {
-  }
-
-  void Open() noexcept {
-    msg_  = "";
-    text_ = onOpen();
-    nf7::gui::Popup::Open();
-  }
-  void Update() noexcept override;
-
-  std::function<std::string()> onOpen;
-  std::function<void(const std::string&)> onApply;
-
- private:
-  std::string msg_;
-  std::string text_;
-};
-
 }  // namespace nf7::gui

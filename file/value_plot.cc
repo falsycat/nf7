@@ -23,8 +23,8 @@
 #include "common/file_base.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_config.hh"
 #include "common/gui_node.hh"
-#include "common/gui_popup.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
@@ -49,6 +49,8 @@ class Plot final : public nf7::FileBase,
     ImGui::TextUnformatted("plotter");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
   }
+
+  class Lambda;
 
   enum SeriesType {
     kLine,
@@ -102,40 +104,30 @@ class Plot final : public nf7::FileBase,
     void Update() const noexcept;
   };
   struct Data {
-    std::vector<Series> series;
-
     std::string Stringify() const noexcept;
-    static Data Parse(const std::string&);
+    void Parse(const std::string&);
+
+    std::vector<Series> series;
   };
 
-  class Lambda;
-
   Plot(nf7::Env& env, const nf7::gui::Window* win = nullptr, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&log_, &config_popup_}),
+      nf7::FileBase(kType, env, {&log_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kNone),
-      life_(*this), log_(*this), win_(*this, "Plot", win), mem_(std::move(data)),
-      config_popup_("Value/Plot: config") {
+      life_(*this), log_(*this), win_(*this, "Plot", win), mem_(std::move(data)) {
     mem_.onRestore = mem_.onCommit = [this]() { BuildInputList(); };
-
-    config_popup_.onOpen  = [this]() { return this->data().Stringify(); };
-    config_popup_.onApply = [this](auto& str) {
-      this->data() = Data::Parse(str);
-      mem_.Commit();
-    };
-
     Sanitize();
   }
 
   Plot(nf7::Deserializer& ar) : Plot(ar.env()) {
-    ar(win_, data().series);
+    ar(win_, mem_->series);
     Sanitize();
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(win_, data().series);
+    ar(win_, mem_->series);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Plot>(env, &win_, Data {data()});
+    return std::make_unique<Plot>(env, &win_, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -166,22 +158,18 @@ class Plot final : public nf7::FileBase,
   nf7::gui::Window win_;
 
   nf7::GenericMemento<Data> mem_;
-  Data& data() noexcept { return mem_.data(); }
-  const Data& data() const noexcept { return mem_.data(); }
 
   std::vector<std::string> inputs_;
 
-  nf7::gui::ConfigPopup config_popup_;
-
 
   void Sanitize() {
-    nf7::util::Uniq(data().series);
+    nf7::util::Uniq(mem_->series);
     mem_.CommitAmend();
   }
   void BuildInputList() {
     inputs_.clear();
-    inputs_.reserve(data().series.size());
-    for (const auto& s : data().series) {
+    inputs_.reserve(mem_->series.size());
+    for (const auto& s : mem_->series) {
       inputs_.push_back(s.name);
     }
   }
@@ -199,7 +187,7 @@ class Plot::Lambda final : public nf7::Node::Lambda {
   try {
     f_.EnforceAlive();
 
-    const auto& series = f_->data().series;
+    const auto& series = f_->mem_->series;
     auto itr = std::find(series.begin(), series.end(), k);
     if (itr == series.end()) {
       throw nf7::Exception {"unknown series name"};
@@ -262,17 +250,14 @@ void Plot::UpdateWidget() noexcept {
   if (ImGui::Button("plot window")) {
     win_.SetFocus();
   }
-  if (ImGui::Button("config")) {
-    config_popup_.Open();
-  }
-
-  config_popup_.Update();
+  nf7::gui::Config(mem_);
 }
 void Plot::UpdateMenu() noexcept {
   ImGui::MenuItem("plot window", nullptr, &win_.shown());
 
-  if (ImGui::MenuItem("config")) {
-    config_popup_.Open();
+  if (ImGui::BeginMenu("config")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndMenu();
   }
 }
 
@@ -280,7 +265,7 @@ void Plot::UpdatePlot() noexcept {
   if (ImPlot::BeginPlot("##plot", ImGui::GetContentRegionAvail())) {
     ImPlot::SetupAxis(ImAxis_X1, "X", ImPlotAxisFlags_AutoFit);
     ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_AutoFit);
-    for (const auto& s : data().series) {
+    for (const auto& s : mem_->series) {
       s.Update();
     }
     ImPlot::EndPlot();
@@ -398,35 +383,35 @@ void Plot::Series::Update() const noexcept {
 
 
 std::string Plot::Data::Stringify() const noexcept {
-  YAML::Emitter Y;
-  Y << YAML::BeginMap;
-  Y << YAML::Key   << "series";
-  Y << YAML::Value << YAML::BeginMap;
+  YAML::Emitter st;
+  st << YAML::BeginMap;
+  st << YAML::Key   << "series";
+  st << YAML::Value << YAML::BeginMap;
   for (auto& s : series) {
-    Y << YAML::Key   << s.name;
-    Y << YAML::Value << YAML::BeginMap;
-    Y << YAML::Key   << "type";
-    Y << YAML::Value << std::string {magic_enum::enum_name(s.type)};
-    Y << YAML::Key   << "fmt" ;
-    Y << YAML::Value << std::string {magic_enum::enum_name(s.fmt)};
-    Y << YAML::EndMap;
+    st << YAML::Key   << s.name;
+    st << YAML::Value << YAML::BeginMap;
+    st << YAML::Key   << "type";
+    st << YAML::Value << std::string {magic_enum::enum_name(s.type)};
+    st << YAML::Key   << "fmt" ;
+    st << YAML::Value << std::string {magic_enum::enum_name(s.fmt)};
+    st << YAML::EndMap;
   }
-  Y << YAML::EndMap;
-  Y << YAML::EndMap;
-  return std::string {Y.c_str(), Y.size()};
+  st << YAML::EndMap;
+  st << YAML::EndMap;
+  return std::string {st.c_str(), st.size()};
 }
-Plot::Data Plot::Data::Parse(const std::string& str)
+void Plot::Data::Parse(const std::string& str)
 try {
-  const auto& root = YAML::Load(str);
+  const auto& yaml = YAML::Load(str);
 
-  Data d;
-  for (auto& s : root["series"]) {
-    d.series.emplace_back(
+  std::vector<Series> new_series;
+  for (auto& s : yaml["series"]) {
+    new_series.emplace_back(
         s.first.as<std::string>(),
         magic_enum::enum_cast<SeriesType>(s.second["type"].as<std::string>()).value(),
         magic_enum::enum_cast<SeriesFormat>(s.second["fmt"].as<std::string>()).value());
   }
-  return d;
+  series = std::move(new_series);
 } catch (std::bad_optional_access&) {
   throw nf7::Exception {"unknown enum"};
 } catch (YAML::Exception& e) {

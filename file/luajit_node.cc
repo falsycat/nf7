@@ -12,6 +12,8 @@
 
 #include <lua.hpp>
 
+#include <yaml-cpp/yaml.h>
+
 #include <yas/serialize.hpp>
 
 #include "nf7.hh"
@@ -22,6 +24,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
+#include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
@@ -52,11 +55,13 @@ class LuaNode final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   class Lambda;
 
   struct Meta {
-   public:
     std::vector<std::string> inputs, outputs;
     std::optional<nf7::luajit::Ref> lambda;
   };
   struct Data {
+    std::string Stringify() const noexcept;
+    void Parse(const std::string&);
+
     std::filesystem::path npath;
   };
 
@@ -283,26 +288,24 @@ void LuaNode::UpdateTooltip() noexcept {
   }
 }
 void LuaNode::UpdateWidget() noexcept {
-  if (ImGui::Button("change nfile path")) {
-    ImGui::OpenPopup("NPathPopup");
-  }
+  nf7::gui::Config(mem_);
+}
 
-  if (ImGui::BeginPopup("NPathPopup")) {
-    static std::string npath;
-    if (ImGui::IsWindowAppearing()) {
-      npath = mem_->npath.string();
-    }
-    const bool submit =
-        ImGui::InputText("npath", &npath, ImGuiInputTextFlags_EnterReturnsTrue);
-    if (ImGui::Button("ok") || submit) {
-      ImGui::CloseCurrentPopup();
-      mem_->npath = npath;
-      mem_.Commit();
-      nfile_watcher_.Watch(env().npath() / npath);
-      Build();
-    }
-    ImGui::EndPopup();
-  }
+
+std::string LuaNode::Data::Stringify() const noexcept {
+  YAML::Emitter st;
+  st << YAML::BeginMap;
+  st << YAML::Key   << "npath";
+  st << YAML::Value << npath.string();
+  st << YAML::EndMap;
+  return std::string {st.c_str(), st.size()};
+}
+void LuaNode::Data::Parse(const std::string& str)
+try {
+  const auto yaml = YAML::Load(str);
+  npath = yaml["npath"].as<std::string>();
+} catch (YAML::Exception& e) {
+  throw nf7::Exception {e.what()};
 }
 
 }

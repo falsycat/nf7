@@ -8,6 +8,8 @@
 
 #include <ImNodes.h>
 
+#include <yaml-cpp/yaml.h>
+
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
 
@@ -17,9 +19,9 @@
 #include "common/file_base.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
+#include "common/gui_config.hh"
 #include "common/gui_file.hh"
 #include "common/gui_node.hh"
-#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_queue.hh"
@@ -28,6 +30,7 @@
 #include "common/memento.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
+#include "common/util_algorithm.hh"
 
 
 using namespace std::literals;
@@ -41,15 +44,15 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   static inline const nf7::GenericTypeInfo<InlineNode> kType =
       {"LuaJIT/InlineNode", {"nf7::DirItem", "nf7::Node"}};
   static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Defines new Node using Lua object factory.");
-    ImGui::Bullet();
-    ImGui::TextUnformatted("refers nf7::luajit::Queue through linked LuaJIT/Obj");
+    ImGui::TextUnformatted("Defines new pure Node without creating nfile.");
   }
 
   class Lambda;
 
   struct Data {
     Data() noexcept { }
+    std::string Stringify() const noexcept;
+    void Parse(const std::string&);
 
     std::string script;
     std::vector<std::string> inputs  = {"in"};
@@ -57,39 +60,35 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   };
 
   InlineNode(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&socket_popup_}),
-      nf7::DirItem(nf7::DirItem::kWidget),
+      nf7::FileBase(kType, env, {}),
+      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
-
-    socket_popup_.onSubmit = [this](auto&& i, auto&& o) {
-      this->data().inputs  = std::move(i);
-      this->data().outputs = std::move(o);
-      mem_.Commit();
-    };
   }
 
   InlineNode(nf7::Deserializer& ar) : InlineNode(ar.env()) {
-    ar(data().script, data().inputs, data().outputs);
+    ar(mem_->script, mem_->inputs, mem_->outputs);
+    nf7::util::Uniq(mem_->inputs);
+    nf7::util::Uniq(mem_->outputs);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(data().script, data().inputs, data().outputs);
+    ar(mem_->script, mem_->inputs, mem_->outputs);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<InlineNode>(env, Data {data()});
+    return std::make_unique<InlineNode>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
   std::span<const std::string> GetInputs() const noexcept override {
-    return data().inputs;
+    return mem_->inputs;
   }
   std::span<const std::string> GetOutputs() const noexcept override {
-    return data().outputs;
+    return mem_->outputs;
   }
 
   void UpdateMenu() noexcept override;
@@ -107,11 +106,8 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   std::shared_ptr<nf7::LoggerRef> log_;
 
   nf7::GenericMemento<Data> mem_;
-  const Data& data() const noexcept { return mem_.data(); }
-  Data& data() noexcept { return mem_.data(); }
-
-  nf7::gui::IOSocketListPopup socket_popup_;
 };
+
 
 class InlineNode::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<InlineNode::Lambda> {
@@ -212,16 +208,16 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
   std::optional<nf7::luajit::Ref> func_;
   std::optional<nf7::luajit::Ref> ctxtable_;
 };
-
-
 std::shared_ptr<nf7::Node::Lambda> InlineNode::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
 }
 
+
 void InlineNode::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("I/O list")) {
-    socket_popup_.Open(data().inputs, data().outputs);
+  if (ImGui::BeginMenu("config")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndMenu();
   }
 }
 void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
@@ -229,32 +225,51 @@ void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
 
   ImGui::TextUnformatted("LuaJIT/InlineNode");
   ImGui::SameLine();
-  if (ImGui::SmallButton("I/O list")) {
-    socket_popup_.Open(data().inputs, data().outputs);
+  if (ImGui::SmallButton("config")) {
+    ImGui::OpenPopup("ConfigPopup");
+  }
+  if (ImGui::BeginPopup("ConfigPopup")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndPopup();
   }
 
-  nf7::gui::NodeInputSockets(data().inputs);
+  nf7::gui::NodeInputSockets(mem_->inputs);
   ImGui::SameLine();
-  ImGui::InputTextMultiline("##script", &data().script, {24*em, 8*em});
+  ImGui::InputTextMultiline("##script", &mem_->script, {24*em, 8*em});
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
   ImGui::SameLine();
-  nf7::gui::NodeOutputSockets(data().outputs);
-
-  socket_popup_.Update();
+  nf7::gui::NodeOutputSockets(mem_->outputs);
 }
 void InlineNode::UpdateWidget() noexcept {
-  ImGui::TextUnformatted("LuaJIT/InlineNode");
-  if (ImGui::Button("I/O list")) {
-    socket_popup_.Open(data().inputs, data().outputs);
-  }
-  ImGui::InputTextMultiline("script", &data().script);
-  if (ImGui::IsItemDeactivatedAfterEdit()) {
-    mem_.Commit();
-  }
+  nf7::gui::Config(mem_);
+}
 
-  socket_popup_.Update();
+
+std::string InlineNode::Data::Stringify() const noexcept {
+  YAML::Emitter st;
+  st << YAML::BeginMap;
+  st << YAML::Key   << "inputs";
+  st << YAML::Value << inputs;
+  st << YAML::Key   << "outputs";
+  st << YAML::Value << outputs;
+  st << YAML::Key   << "script";
+  st << YAML::Value << YAML::Literal << script;
+  st << YAML::EndMap;
+  return std::string {st.c_str(), st.size()};
+}
+void InlineNode::Data::Parse(const std::string& str)
+try {
+  const auto yaml = YAML::Load(str);
+  auto new_inputs  = yaml["inputs"] .as<std::vector<std::string>>();
+  auto new_outputs = yaml["outputs"].as<std::vector<std::string>>();
+  auto new_script  = yaml["script"].as<std::string>();
+  inputs  = std::move(new_inputs);
+  outputs = std::move(new_outputs);
+  script  = std::move(new_script);
+} catch (YAML::Exception& e) {
+  throw nf7::Exception {e.what()};
 }
 
 }
