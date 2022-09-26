@@ -1,34 +1,42 @@
-#include <algorithm>
-#include <cassert>
 #include <cinttypes>
-#include <cmath>
-#include <cstdlib>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <span>
 #include <string>
+#include <typeinfo>
 #include <utility>
-#include <variant>
+#include <vector>
 
 #include <imgui.h>
+
+#include <magic_enum.hpp>
+
 #include <miniaudio.h>
+
+#include <yaml-cpp/yaml.h>
+
 #include <yas/serialize.hpp>
 #include <yas/types/std/string.hpp>
-#include <yas/types/std/variant.hpp>
 
 #include "nf7.hh"
 
 #include "common/audio_queue.hh"
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
+#include "common/future.hh"
 #include "common/generic_context.hh"
+#include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
-#include "common/yas_audio.hh"
+#include "common/ring_buffer.hh"
+#include "common/value.hh"
+#include "common/yas_enum.hh"
+#include "common/yas_nf7.hh"
 
 
 using namespace std::literals;
@@ -38,669 +46,480 @@ namespace {
 
 class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const GenericTypeInfo<Device> kType = {
+  static inline const nf7::GenericTypeInfo<Device> kType = {
     "Audio/Device", {"nf7::DirItem",}};
   static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Manages ring buffer and sends PCM samples to actual device.");
-    ImGui::Bullet();
-    ImGui::TextUnformatted("requires nf7::audio::Queue with name '_audio' on upper dirs");
+    ImGui::TextUnformatted("Provides a ring buffer to send/receive PCM samples.");
   }
 
-  class Ring;
-  class PlaybackLambda;
-  class CaptureLambda;
+  class Instance;
+  class Lambda;
 
-  using Selector = std::variant<size_t, std::string>;
-  struct SelectorVisitor;
-
-  static ma_device_config defaultConfig() noexcept {
-    ma_device_config cfg;
-    cfg = ma_device_config_init(ma_device_type_playback);
-    cfg.sampleRate        = 48000;
-    cfg.playback.format   = ma_format_f32;
-    cfg.playback.channels = 2;
-    cfg.capture.format    = ma_format_f32;
-    cfg.capture.channels  = 2;
-    return cfg;
+  enum Mode {
+    kPlayback, kCapture,
+  };
+  static ma_device_type FromMode(Mode m) {
+    return
+        m == kPlayback? ma_device_type_playback:
+        m == kCapture ? ma_device_type_capture:
+        throw 0;
   }
-  Device(nf7::Env& env, Selector&& sel  = size_t{0}, const ma_device_config& cfg = defaultConfig()) noexcept :
-      nf7::FileBase(kType, env),
+
+  // the least 4 bits represent size of the type
+  enum Format {
+    kU8 = 0x11, kS16 = 0x22, kS32 = 0x24, kF32 = 0x34,
+  };
+  static ma_format FromFormat(Format f) {
+    return
+        f == kU8 ? ma_format_u8 :
+        f == kS16? ma_format_s16:
+        f == kS32? ma_format_s32:
+        f == kF32? ma_format_f32:
+        throw 0;
+  }
+
+  struct Data {
+    Data() noexcept { }
+    std::string Stringify() const noexcept;
+    void Parse(const std::string&);
+
+    void serialize(auto& ar) {
+      ar(ctxpath, mode, devname, fmt, srate, ch);
+    }
+
+    nf7::File::Path ctxpath = {"$", "_audio"};
+
+    Mode mode = kPlayback;
+    std::string devname = "";
+
+    Format   fmt   = kF32;
+    uint32_t srate = 48000;
+    uint32_t ch    = 1;
+
+    uint64_t ring_size = 48000*3;
+  };
+
+  Device(nf7::Env& env, Data&& data = {}) noexcept :
+      nf7::FileBase(kType, env, {&log_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
-      data_(std::make_shared<AsyncData>(*this)),
-      selector_(std::move(sel)), cfg_(cfg),
-      config_popup_(std::make_shared<ConfigPopup>()) {
-    nf7::FileBase::Install(data_->log);
+      life_(*this), log_(*this), mem_(std::move(data), *this) {
+    mem_.onCommit = mem_.onRestore = [this]() { cache_ = std::nullopt; };
   }
 
   Device(nf7::Deserializer& ar) : Device(ar.env()) {
-    ar(selector_, cfg_);
+    ar(mem_.data());
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(selector_, cfg_);
+    ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Device>(env, Selector {selector_}, cfg_);
+    return std::make_unique<Device>(env, Data {mem_.data()});
   }
 
-  std::shared_ptr<Lambda> CreateLambda(const std::shared_ptr<Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override;
-  std::span<const std::string> GetOutputs() const noexcept override;
+  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
+      const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
+  std::span<const std::string> GetInputs() const noexcept override {
+    static const std::vector<std::string> kInputs = {"info", "mix", "peek"};
+    return kInputs;
+  }
+  std::span<const std::string> GetOutputs() const noexcept override {
+    static const std::vector<std::string> kOutputs = {"result"};
+    return kOutputs;
+  }
 
-  void Handle(const Event&) noexcept override;
-  void Update() noexcept override;
+  nf7::Future<std::shared_ptr<Instance>> Build() noexcept;
+
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
-  static bool UpdateModeSelector(ma_device_type*) noexcept;
-  static const ma_device_info* UpdateSelector(Selector*, ma_device_info*, size_t) noexcept;
-  static void UpdatePresetSelector(ma_device_config*, const ma_device_info*) noexcept;
-
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:
-  struct AsyncData {
-   public:
-    AsyncData(nf7::File& f) noexcept :
-        log(f), ring(std::make_unique<Ring>()) {
-    }
+  nf7::Life<Device> life_;
 
-    nf7::LoggerRef log;
-    std::unique_ptr<Ring> ring;
+  nf7::LoggerRef log_;
 
-    std::shared_ptr<nf7::audio::Queue> aq;
+  nf7::GenericMemento<Data> mem_;
 
-    std::optional<ma_device> dev;
-    std::atomic<size_t> busy = 0;
-  };
-  std::shared_ptr<AsyncData> data_;
-
-  // persistent params
-  Selector         selector_;
-  ma_device_config cfg_;
-
-  // ConfigPopup param (must be shared_ptr because saves fetched device list async)
-  struct ConfigPopup final : std::enable_shared_from_this<ConfigPopup> {
-    bool open = false;
-
-    // params
-    ma_device_config cfg;
-    Selector         selector;
-
-    // fetched devices
-    std::atomic<bool> fetching = false;
-    ma_device_info*   devs   = nullptr;
-    ma_uint32         devs_n = 0;
-
-    void FetchDevs(File& f, const std::shared_ptr<nf7::audio::Queue>& aq) noexcept {
-      const auto mode = cfg.deviceType;
-
-      fetching = true;
-      aq->Push(
-          std::make_shared<nf7::GenericContext>(f, "fetching device list"),
-          [this, self = shared_from_this(), mode](auto ma) {
-            try {
-              auto [ptr, n] = Device::FetchDevs(ma, mode);
-              devs   = ptr;
-              devs_n = static_cast<ma_uint32>(n);
-            } catch (nf7::Exception&) {
-              devs   = nullptr;
-              devs_n = 0;
-            }
-            fetching = false;
-          });
-    }
-  };
-  std::shared_ptr<ConfigPopup> config_popup_;
+  std::optional<nf7::Future<std::shared_ptr<Instance>>> cache_;
 
 
-  void InitDev() noexcept;
-  void DeinitDev() noexcept;
-
-  static std::pair<ma_device_info*, size_t> FetchDevs(ma_context* ctx, ma_device_type mode) {
-    ma_device_info* devs = nullptr;
-    ma_uint32       num  = 0;
-    const auto ret =
-        mode == ma_device_type_playback?
-          ma_context_get_devices(ctx, &devs, &num, nullptr, nullptr):
-        mode == ma_device_type_capture?
-          ma_context_get_devices(ctx, nullptr, nullptr, &devs, &num):
-        throw nf7::Exception("unknown mode");
-    if (MA_SUCCESS != ret) {
-      throw nf7::Exception("failed to get device list");
-    }
-    return {devs, num};
-  }
-  static auto& GetChannels(auto& cfg) noexcept {
-    switch (cfg.deviceType) {
-    case ma_device_type_playback:
-      return cfg.playback.channels;
-    case ma_device_type_capture:
-      return cfg.capture.channels;
-    default:
-      std::abort();
-    }
-  }
-  static std::string StringifyPreset(const auto& p) noexcept {
-    std::stringstream st;
-    st << "f32, " << p.sampleRate << "Hz, " << p.channels << " ch";
-    return st.str();
-  }
-  static std::vector<float> GenerateSineWave(uint32_t srate, uint32_t ch) noexcept {
-    std::vector<float> ret;
-    ret.resize(srate*ch);
-    for (size_t i = 0; i < srate; ++i) {
-      const double t = static_cast<double>(i)/static_cast<double>(srate);
-      const float  v = static_cast<float>(sin(t*200*2*3.14));
-      for (size_t j = 0; j < ch; ++j) {
-        ret[i*ch + j] = v;
+  static const ma_device_id* ChooseDevice(
+      ma_device_info* ptr, ma_uint32 n, std::string_view name, std::string& result) {
+    for (ma_uint32 i = 0; i < n; ++i) {
+      const auto& d = ptr[i];
+      bool choose = false;
+      if (name.empty()) {
+        if (d.isDefault) {
+          choose = true;
+        }
+      } else {
+        if (std::string_view::npos != std::string_view {d.name}.find(name)) {
+          choose = true;
+        }
+      }
+      if (choose) {
+        result = d.name;
+        return &d.id;
       }
     }
-    return ret;
-  }
-
-
-  nf7::Value infoTuple() const noexcept {
-    return nf7::Value {std::vector<nf7::Value::TuplePair> {
-      {"sampleRate", {static_cast<nf7::Value::Integer>(cfg_.sampleRate)}},
-      {"channels",   {static_cast<nf7::Value::Integer>(GetChannels(cfg_))}},
-    }};
+    throw nf7::Exception {"no device found"};
   }
 };
 
-class Device::Ring final {
+
+class Device::Instance final {
  public:
-  static constexpr auto kDur = 3000;  /* msecs */
+  // must be called on audio thread
+  Instance(const std::shared_ptr<nf7::Context>&      ctx,
+           const std::shared_ptr<nf7::audio::Queue>& aq,
+           ma_context* ma, const Data& d) :
+      ctx_(ctx), aq_(aq), data_(d),
+      sdata_(std::make_shared<SharedData>(d.fmt & 0xF, d.ring_size)) {
+    // get device list
+    ma_device_info* pbs;
+    ma_uint32       pbn;
+    ma_device_info* cps;
+    ma_uint32       cpn;
+    if (MA_SUCCESS != ma_context_get_devices(ma, &pbs, &pbn, &cps, &cpn)) {
+      throw nf7::Exception {"failed to get device list"};
+    }
+    
+    // construct device config
+    ma_device_config cfg = ma_device_config_init(FromMode(d.mode));
+    switch (d.mode) {
+    case kPlayback:
+      cfg.dataCallback       = PlaybackCallback;
+      cfg.playback.pDeviceID = ChooseDevice(pbs, pbn, d.devname, devname_);
+      cfg.playback.format    = FromFormat(d.fmt);
+      cfg.playback.channels  = d.ch;
+      break;
+    case kCapture:
+      cfg.dataCallback      = CaptureCallback;
+      cfg.capture.pDeviceID = ChooseDevice(cps, cpn, d.devname, devname_);
+      cfg.capture.format    = FromFormat(d.fmt);
+      cfg.capture.channels  = d.ch;
+      break;
+    }
+    cfg.sampleRate = d.srate;
+    cfg.pUserData  = sdata_.get();
 
-  Ring() noexcept {
-    Reset(1, 1);
+    if (MA_SUCCESS != ma_device_init(ma, &cfg, &sdata_->dev)) {
+      throw nf7::Exception {"device init failure"};
+    }
+    if (MA_SUCCESS != ma_device_start(&sdata_->dev)) {
+      ma_device_uninit(&sdata_->dev);
+      throw nf7::Exception {"device start failure"};
+    }
   }
-  Ring(const Ring&) = delete;
-  Ring(Ring&&) = delete;
-  Ring& operator=(const Ring&) = delete;
-  Ring& operator=(Ring&&) = delete;
-
-  void Reset(uint32_t srate, uint32_t ch) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    time_begin_ = time_;
-    cursor_     = 0;
-    buf_.clear();
-    buf_.resize(kDur*srate*ch/1000);
+  ~Instance() noexcept {
+    aq_->Push(ctx_, [sdata = sdata_](auto) {
+      ma_device_stop(&sdata->dev);
+      ma_device_uninit(&sdata->dev);
+    });
   }
+  Instance(const Instance&) = delete;
+  Instance(Instance&&) = delete;
+  Instance& operator=(const Instance&) = delete;
+  Instance& operator=(Instance&&) = delete;
 
-  // for playback mode: mix samples into this ring
-  std::pair<uint64_t, uint64_t> Mix(const float* ptr, size_t n, uint64_t time) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    if (time < time_) {
-      time = time_;
-    }
-    if (time-time_ > buf_.size()) {
-      return {time_+buf_.size(), 0};
-    }
+  std::mutex& mtx() const noexcept { return sdata_->mtx; }
 
-    n = std::min(n, buf_.size());
-    if (time+n-time_ > buf_.size()) {
-      n = buf_.size() - (time-time_);
-    }
+  nf7::RingBuffer& ring() noexcept { return sdata_->ring; }
+  const nf7::RingBuffer& ring() const noexcept { return sdata_->ring; }
 
-    const size_t offset = (time-time_begin_)%buf_.size();
-    for (size_t srci = 0, dsti = offset; srci < n; ++srci, ++dsti) {
-      if (dsti >= buf_.size()) dsti = 0;
-      buf_[dsti] += ptr[srci];
-    }
-    return {time+n, n};
-  }
-  // for playback mode: consume samples in this ring
-  void Consume(float* dst, size_t n) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    for (size_t i = 0; i < n; ++i, ++cursor_) {
-      if (cursor_ >= buf_.size())  cursor_ = 0;
-      dst[i] = std::exchange(buf_[cursor_], 0.f);
-    }
-    time_ += n;
-  }
-
-  // for capture mode: append samples to this ring
-  void Append(const float* src, size_t n) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    const size_t vn = std::min(n, buf_.size());
-    for (size_t i = 0; i < vn; ++i, ++cursor_) {
-      if (cursor_ >= buf_.size()) cursor_ = 0;
-      buf_[cursor_] = src[i];
-    }
-    time_ += n;
-  }
-  // for capture mode: read samples
-  // actual samples are stored as float32 in dst
-  uint64_t Peek(std::vector<uint8_t>& dst, uint64_t ptime) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    const size_t vn = std::min(time_-ptime, buf_.size());
-    dst.resize(vn*sizeof(float));
-
-    float* dstp = reinterpret_cast<float*>(dst.data());
-    for (size_t i = 0, dsti = vn, srci = cursor_; i < vn; ++i) {
-      if (srci == 0) srci = buf_.size();
-      --dsti, --srci;
-      dstp[dsti] = buf_[srci];
-    }
-    return time_;
-  }
-
-  uint64_t time() const noexcept { return time_; }
+  const std::string& devname() const noexcept { return devname_; }
+  Data data() const noexcept { return data_; }
 
  private:
-  std::mutex mtx_;
-  uint32_t ch_;
+  std::shared_ptr<nf7::Context>      ctx_;
+  std::shared_ptr<nf7::audio::Queue> aq_;
 
-  size_t cursor_ = 0;
-  std::vector<float> buf_;
+  std::string devname_;
+  Data data_;
 
-  uint64_t time_begin_ = 0;
-  std::atomic<uint64_t> time_ = 0;
+  struct SharedData {
+    SharedData(uint64_t a, uint64_t b) noexcept : ring(a, b) {
+    }
+    mutable std::mutex mtx;
+    nf7::RingBuffer ring;
+    ma_device dev;
+  };
+  std::shared_ptr<SharedData> sdata_;
+
+  static void PlaybackCallback(
+      ma_device* dev, void* out, const void*, ma_uint32 n) noexcept {
+    auto& sdata = *reinterpret_cast<SharedData*>(dev->pUserData);
+
+    std::unique_lock<std::mutex> _(sdata.mtx);
+    sdata.ring.Take(reinterpret_cast<uint8_t*>(out), n);
+  }
+  static void CaptureCallback(
+      ma_device* dev, void*, const void* in, ma_uint32 n) noexcept {
+    auto& sdata = *reinterpret_cast<SharedData*>(dev->pUserData);
+
+    std::unique_lock<std::mutex> _(sdata.mtx);
+    sdata.ring.Write(reinterpret_cast<const uint8_t*>(in), n);
+  }
 };
 
-class Device::PlaybackLambda final : public nf7::Node::Lambda,
-    public std::enable_shared_from_this<Device::PlaybackLambda> {
- public:
-  static inline const std::vector<std::string> kInputs  = {"get_info", "mix"};
-  static inline const std::vector<std::string> kOutputs = {"info", "mixed_size"};
 
-  PlaybackLambda() = delete;
-  PlaybackLambda(Device& f, const std::shared_ptr<Lambda>& parent) noexcept :
-      Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
+class Device::Lambda final : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<Device::Lambda> {
+ public:
+  Lambda(Device& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
+      nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<Lambda>& caller) noexcept override {
-    if (name == "get_info") {
-      caller->Handle("info", nf7::Value {info_}, shared_from_this());
-      return;
-    }
-    if (name == "mix") {
-      const auto& vec = v.vector();
-      const auto  ptr = reinterpret_cast<const float*>(vec->data());
-      const auto  n   = vec->size()/sizeof(float);
-
-      const auto [time, mixed] = data_->ring->Mix(ptr, n, time_);
-      time_ = time;
-
-      const auto ret = static_cast<nf7::Value::Integer>(mixed);
-      caller->Handle("mixed_size", ret, shared_from_this());
-      return;
-    }
-    data_->log.Warn("got unknown input");
+  void Handle(std::string_view k, const nf7::Value& v,
+              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
+    if (!f_) return;
+    f_->Build().
+        ThenIf(shared_from_this(), [this, k = std::string {k}, v, caller](auto& inst) {
+          if (!f_) return;
+          try {
+            Exec(k, v, caller, inst);
+          } catch (nf7::Exception& e) {
+            f_->log_.Error(e);
+          }
+        }).
+        Catch<nf7::Exception>(shared_from_this(), [this](auto&) {
+          if (f_) {
+            f_->log_.Warn("skip execution because of device init failure");
+          }
+        });
   }
 
  private:
-  std::shared_ptr<AsyncData> data_;
-  nf7::Value info_;
+  nf7::Life<Device>::Ref f_;
+  std::weak_ptr<Instance> last_inst_;
 
   uint64_t time_ = 0;
-};
-class Device::CaptureLambda final : public nf7::Node::Lambda,
-    std::enable_shared_from_this<Device::CaptureLambda> {
- public:
-  static inline const std::vector<std::string> kInputs  = {"get_info", "peek"};
-  static inline const std::vector<std::string> kOutputs = {"info", "samples"};
 
-  CaptureLambda() = delete;
-  CaptureLambda(Device& f, const std::shared_ptr<Lambda>& parent) noexcept :
-      Lambda(f, parent), data_(f.data_), info_(f.infoTuple()) {
-  }
+  void Exec(const std::string& k, const nf7::Value& v,
+            const std::shared_ptr<nf7::Node::Lambda>& caller,
+            const std::shared_ptr<Instance>& inst) {
+    const bool reset = last_inst_.expired();
+    last_inst_ = inst;
 
-  void Handle(std::string_view name, const nf7::Value&,
-              const std::shared_ptr<Lambda>& caller) noexcept override {
-    if (name == "get_info") {
-      caller->Handle("info", nf7::Value {info_}, shared_from_this());
-      return;
-    }
-    if (name == "peek") {
-      std::vector<uint8_t> samples;
-      if (time_) {
-        time_ = data_->ring->Peek(samples, *time_);
-      } else {
-        time_ = data_->ring->time();
+    const auto& data = inst->data();
+    auto&       ring = inst->ring();
+
+    if (k == "info") {
+      std::vector<nf7::Value::TuplePair> tup {
+        {"format", magic_enum::enum_name(data.fmt)},
+        {"srate",  static_cast<nf7::Value::Integer>(data.srate)},
+        {"ch",     static_cast<nf7::Value::Integer>(data.ch)},
+      };
+      caller->Handle("result", std::move(tup), shared_from_this());
+
+    } else if (k == "mix") {
+      if (data.mode != kPlayback) {
+        throw nf7::Exception {"device mode is not playback"};
       }
-      caller->Handle("samples", {std::move(samples)}, shared_from_this());
-      return;
-    }
-    data_->log.Warn("got unknown input");
-  }
+      const auto& vec = *v.vector();
 
- private:
-  std::shared_ptr<AsyncData> data_;
-  nf7::Value info_;
+      std::unique_lock<std::mutex> lock(inst->mtx());
+      if (reset) time_ = ring.cur();
+      const auto ptime = time_;
 
-  std::optional<uint64_t> time_;
-};
-std::shared_ptr<Node::Lambda> Device::CreateLambda(const std::shared_ptr<Lambda>& parent) noexcept {
-  switch (cfg_.deviceType) {
-  case ma_device_type_playback:
-    return std::make_shared<Device::PlaybackLambda>(*this, parent);
-  case ma_device_type_capture:
-    return std::make_shared<Device::CaptureLambda>(*this, parent);
-  default:
-    std::abort();
-  }
-}
-
-
-struct Device::SelectorVisitor final {
- public:
-  SelectorVisitor() = delete;
-  SelectorVisitor(ma_device_info* info, size_t n) noexcept : info_(info), n_(n) {
-  }
-  SelectorVisitor(const SelectorVisitor&) = delete;
-  SelectorVisitor(SelectorVisitor&&) = delete;
-  SelectorVisitor& operator=(const SelectorVisitor&) = delete;
-  SelectorVisitor& operator=(SelectorVisitor&&) = delete;
-
-  ma_device_info* operator()(const size_t& idx) noexcept {
-    return idx < n_? &info_[idx]: nullptr;
-  }
-  ma_device_info* operator()(const std::string& name) noexcept {
-    for (size_t i = 0; i < n_; ++i) {
-      auto& d = info_[i];
-      if (name == d.name) return &d;
-    }
-    return nullptr;
-  }
-
- private:
-  ma_device_info* info_;
-  size_t n_;
-};
-
-
-std::span<const std::string> Device::GetInputs() const noexcept {
-  switch (cfg_.deviceType) {
-  case ma_device_type_playback:
-    return PlaybackLambda::kInputs;
-  case ma_device_type_capture:
-    return CaptureLambda::kInputs;
-  default:
-    assert(false);
-  }
-  return {};
-}
-std::span<const std::string> Device::GetOutputs() const noexcept {
-  switch (cfg_.deviceType) {
-  case ma_device_type_playback:
-    return PlaybackLambda::kOutputs;
-  case ma_device_type_capture:
-    return CaptureLambda::kOutputs;
-  default:
-    assert(false);
-  }
-  return {};
-}
-
-void Device::InitDev() noexcept {
-  if (!data_->aq) {
-    data_->log.Error("audio queue is missing");
-    return;
-  }
-
-  static const auto kPlaybackCallback = [](ma_device* dev, void* out, const void*, ma_uint32 n) {
-    auto& ring = *static_cast<Ring*>(dev->pUserData);
-    ring.Consume(static_cast<float*>(out), n*dev->playback.channels);
-  };
-  static const auto kCaptureCallback = [](ma_device* dev, void*, const void* in, ma_uint32 n) {
-    auto& ring = *static_cast<Ring*>(dev->pUserData);
-    ring.Append(static_cast<const float*>(in), n*dev->capture.channels);
-  };
-
-  ++data_->busy;
-  auto ctx = std::make_shared<nf7::GenericContext>(*this, "initializing audio device");
-  data_->aq->Push(ctx, [d = data_, sel = selector_, cfg = cfg_](auto ma) mutable {
-    try {
-      if (!ma) {
-        throw nf7::Exception("audio task queue is broken");
+      const auto Mix = [&]<typename T>() {
+        time_ = ring.Mix(
+            time_, reinterpret_cast<const T*>(vec.data()), vec.size()/sizeof(T));
+      };
+      switch (data.fmt) {
+      case kU8 : Mix.operator()<uint8_t>(); break;
+      case kS16: Mix.operator()<int16_t>(); break;
+      case kS32: Mix.operator()<int32_t>(); break;
+      case kF32: Mix.operator()<float>(); break;
       }
-      if (d->dev) {
-        ma_device_uninit(&*d->dev);
-        d->dev = std::nullopt;
+      lock.unlock();
+
+      const auto wrote = (time_-ptime) / data.ch;
+      caller->Handle(
+          "result", static_cast<nf7::Value::Integer>(wrote), shared_from_this());
+
+    } else if (k == "peek") {
+      if (data.mode != kPlayback) {
+        throw nf7::Exception {"device mode is not capture"};
       }
 
-      auto [devs, devs_n] = FetchDevs(ma, cfg.deviceType);
-      auto dinfo = std::visit(SelectorVisitor {devs, devs_n}, sel);
-      if (!dinfo) {
-        throw nf7::Exception("missing device");
-      }
-      cfg.playback.pDeviceID = cfg.capture.pDeviceID = &dinfo->id;
+      const auto expect_read = std::min(ring.bufn(), v.integer<uint64_t>()*data.ch);
+      std::vector<uint8_t> buf(expect_read*ring.unit());
 
-      cfg.pUserData    = d->ring.get();
-      cfg.dataCallback =
-          cfg.deviceType == ma_device_type_playback? kPlaybackCallback:
-          cfg.deviceType == ma_device_type_capture ? kCaptureCallback:
-          throw nf7::Exception("unknown mode");
+      std::unique_lock<std::mutex> lock(inst->mtx());
+      if (reset) time_ = ring.cur();
+      const auto ptime = time_;
+      time_ = ring.Peek(time_, buf.data(), expect_read);
+      lock.unlock();
 
-      d->dev.emplace();
-      if (MA_SUCCESS != ma_device_init(ma, &cfg, &*d->dev)) {
-        d->dev = std::nullopt;
-        throw nf7::Exception("failed to init audio device");
-      }
-      if (MA_SUCCESS != ma_device_start(&*d->dev)) {
-        ma_device_uninit(&*d->dev);
-        d->dev = std::nullopt;
-        throw nf7::Exception("failed to start device");
-      }
-      d->ring->Reset(cfg.sampleRate, GetChannels(cfg));
-    } catch (nf7::Exception& e) {
-      d->log.Error(e.msg());
-    }
-    --d->busy;
-  });
-}
-void Device::DeinitDev() noexcept {
-  if (!data_->aq) {
-    data_->log.Error("audio queue is missing");
-    return;
-  }
+      const auto read = time_ - ptime;
+      caller->Handle(
+          "result", static_cast<nf7::Value::Integer>(read), shared_from_this());
 
-  ++data_->busy;
-  auto ctx = std::make_shared<nf7::GenericContext>(*this, "deleting audio device");
-  data_->aq->Push(ctx, [d = data_](auto) {
-    if (d->dev) {
-      ma_device_uninit(&*d->dev);
-      d->dev = std::nullopt;
-    }
-    --d->busy;
-  });
-}
-
-
-void Device::Handle(const Event& ev) noexcept {
-  nf7::FileBase::Handle(ev);
-
-  switch (ev.type) {
-  case Event::kAdd:
-    try {
-      data_->aq =
-          ResolveUpwardOrThrow("_audio").
-          interfaceOrThrow<nf7::audio::Queue>().self();
-      InitDev();
-    } catch (nf7::Exception&) {
-      data_->log.Info("audio context is not found");
-    }
-    return;
-
-  case Event::kRemove:
-    if (data_->aq) {
-      DeinitDev();
-    }
-    data_->aq = nullptr;
-    return;
-
-  default:
-    return;
-  }
-}
-
-void Device::Update() noexcept {
-  nf7::FileBase::Update();
-
-  if (std::exchange(config_popup_->open, false)) {
-    ImGui::OpenPopup("ConfigPopup");
-  }
-  if (ImGui::BeginPopup("ConfigPopup")) {
-    auto& p = config_popup_;
-
-    ImGui::TextUnformatted("Audio/Output");
-    if (ImGui::IsWindowAppearing()) {
-      p->cfg      = cfg_;
-      p->selector = selector_;
-
-      if (data_->aq) {
-        p->FetchDevs(*this, data_->aq);
-      }
-    }
-
-    if (UpdateModeSelector(&p->cfg.deviceType)) {
-      if (data_->aq) {
-        p->FetchDevs(*this, data_->aq);
-      }
-    }
-    const ma_device_info* dev = nullptr;
-    if (!p->fetching) {
-      dev = UpdateSelector(&p->selector, p->devs, p->devs_n);
     } else {
-      ImGui::LabelText("device", "fetching list...");
+      throw nf7::Exception {"unknown command type: "+k};
     }
-
-    UpdatePresetSelector(&p->cfg, dev);
-
-    static const uint32_t kU32_1  = 1;
-    static const uint32_t kU32_16 = 16;
-    ImGui::DragScalar("sample rate", ImGuiDataType_U32, &p->cfg.sampleRate, 1, &kU32_1);
-    ImGui::DragScalar("channels", ImGuiDataType_U32, &GetChannels(p->cfg), 1, &kU32_1, &kU32_16);
-
-    if (ImGui::Button("ok")) {
-      ImGui::CloseCurrentPopup();
-
-      cfg_      = p->cfg;
-      selector_ = p->selector;
-      InitDev();
-      Touch();
-    }
-    ImGui::EndPopup();
   }
+};
+std::shared_ptr<nf7::Node::Lambda> Device::CreateLambda(
+    const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
+  return std::make_shared<Device::Lambda>(*this, parent);
 }
+
+
+nf7::Future<std::shared_ptr<Device::Instance>> Device::Build() noexcept
+try {
+  if (cache_) return *cache_;
+
+  auto ctx = std::make_shared<
+      nf7::GenericContext>(*this, "audio device instance builder");
+
+  auto aq =
+      ResolveOrThrow(mem_->ctxpath).
+      interfaceOrThrow<nf7::audio::Queue>().self();
+
+  nf7::Future<std::shared_ptr<Device::Instance>>::Promise pro;
+  aq->Push(ctx, [ctx, aq, pro, d = mem_.data()](auto ma) mutable {
+    pro.Wrap([&]() { return std::make_shared<Instance>(ctx, aq, ma, d); });
+  });
+
+  cache_ = pro.future().
+      Catch<nf7::Exception>([f = nf7::Life<Device>::Ref {life_}](auto& e) {
+        if (f) f->log_.Error(e);
+      });
+  return *cache_;
+} catch (nf7::Exception& e) {
+  log_.Error(e);
+  return {std::current_exception()};
+}
+
+
 void Device::UpdateMenu() noexcept {
-  if (cfg_.deviceType == ma_device_type_playback) {
-    if (ImGui::MenuItem("simulate sinwave output for 1 sec")) {
-      const auto wave = GenerateSineWave(cfg_.sampleRate, cfg_.playback.channels);
-      data_->ring->Mix(wave.data(), wave.size(), 0);
-    }
-    ImGui::Separator();
+  if (ImGui::BeginMenu("config")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndMenu();
   }
-  if (ImGui::MenuItem("config")) {
-    config_popup_->open = true;
+  if (ImGui::MenuItem("build")) {
+    Build();
   }
 }
 void Device::UpdateTooltip() noexcept {
-  const char* mode =
-      cfg_.deviceType == ma_device_type_playback? "playback":
-      cfg_.deviceType == ma_device_type_capture ? "capture":
-      "unknown";
-  ImGui::Text("mode       : %s", mode);
-  ImGui::Text("context    : %s", data_->aq  ? "ready": "broken");
-  ImGui::Text("device     : %s", data_->busy? "initializing": data_->dev? "ready": "broken");
-  ImGui::Text("channels   : %" PRIu32, cfg_.playback.channels);
-  ImGui::Text("sample rate: %" PRIu32, cfg_.sampleRate);
+  ImGui::Text("format : %s / %" PRIu32 " ch / %" PRIu32 " Hz",
+              magic_enum::enum_name(mem_->fmt).data(), mem_->ch, mem_->srate);
+  if (!cache_) {
+    ImGui::TextUnformatted("status : unused");
+  } else if (cache_->yet()) {
+    ImGui::TextUnformatted("status : initializing");
+  } else if (cache_->done()) {
+    auto& inst = *cache_->value();
+    ImGui::TextUnformatted("status : running");
+    ImGui::Text("devname: %s", inst.devname().c_str());
+  } else if (cache_->error()) {
+    ImGui::TextUnformatted("status : invalid");
+    try {
+      cache_->value();
+    } catch (nf7::Exception& e) {
+      ImGui::Text("msg    : %s", e.msg().c_str());
+    }
+  }
 }
-bool Device::UpdateModeSelector(ma_device_type* m) noexcept {
-  const char* mode =
-      *m == ma_device_type_playback? "playback":
-      *m == ma_device_type_capture?  "capture":
-      "unknown";
-  bool ret = false;
-  if (ImGui::BeginCombo("mode", mode)) {
-    if (ImGui::Selectable("playback", *m == ma_device_type_playback)) {
-      *m  = ma_device_type_playback;
-      ret = true;
-    }
-    if (ImGui::Selectable("capture", *m == ma_device_type_capture)) {
-      *m  = ma_device_type_capture;
-      ret = true;
-    }
-    ImGui::EndCombo();
-  }
-  return ret;
+
+
+std::string Device::Data::Stringify() const noexcept {
+  YAML::Emitter st;
+  st << YAML::BeginMap;
+  st << YAML::Key   << "ctxpath";
+  st << YAML::Value << ctxpath.Stringify();
+  st << YAML::Key   << "mode";
+  st << YAML::Value << std::string {magic_enum::enum_name(mode)};
+  st << YAML::Key   << "devname";
+  st << YAML::Value << devname << YAML::Comment("leave empty to choose default one");
+  st << YAML::Key   << "format";
+  st << YAML::Value << std::string {magic_enum::enum_name(fmt)};
+  st << YAML::Key   << "srate";
+  st << YAML::Value << srate;
+  st << YAML::Key   << "ch";
+  st << YAML::Value << ch;
+  st << YAML::Key   << "ring_size";
+  st << YAML::Value << ring_size;
+  st << YAML::EndMap;
+  return {st.c_str(), st.size()};
 }
-const ma_device_info* Device::UpdateSelector(
-    Selector* sel, ma_device_info* devs, size_t n) noexcept {
-  const auto dev = std::visit(SelectorVisitor {devs, n}, *sel);
+void Device::Data::Parse(const std::string& str)
+try {
+  const auto yaml = YAML::Load(str);
+  Data d;
+  d.ctxpath   = nf7::File::Path::Parse(yaml["ctxpath"].as<std::string>());
+  d.mode      = magic_enum::enum_cast<Mode>(yaml["mode"].as<std::string>()).value();
+  d.devname   = yaml["devname"].as<std::string>();
+  d.fmt       = magic_enum::enum_cast<Format>(yaml["format"].as<std::string>()).value();
+  d.srate     = yaml["srate"].as<uint32_t>();
+  d.ch        = yaml["ch"].as<uint32_t>();
+  d.ring_size = yaml["ring_size"].as<uint64_t>();
 
-  if (ImGui::BeginCombo("device", dev? dev->name: "(missing)")) {
-    for (size_t i = 0; i < n; ++i) {
-      const auto& d = devs[i];
-      const auto str = std::to_string(i)+": "+d.name;
-      if (ImGui::Selectable(str.c_str(), &d == dev)) {
-        if (std::holds_alternative<std::string>(*sel)) {
-          *sel = std::string {d.name};
-        } else if (std::holds_alternative<size_t>(*sel)) {
-          *sel = i;
-        } else {
-          assert(false);
-        }
-      }
-    }
-    ImGui::EndCombo();
+  if (d.srate > d.ring_size) {
+    throw nf7::Exception {"ring size is too small (must be srate or more)"};
+  }
+  if (d.srate*10 < d.ring_size) {
+    throw nf7::Exception {"ring size is too large (must be srate*10 or less)"};
   }
 
-  bool b = std::holds_alternative<size_t>(*sel);
-  if (ImGui::Checkbox("remember device index", &b)) {
-    if (b) {
-      *sel = dev? static_cast<size_t>(dev - devs): size_t{0};
-    } else {
-      *sel = std::string {dev? dev->name: ""};
-    }
-  }
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("true : the device is remembered by its index\n"
-                      "false: the device is remembered by its name");
-  }
-  return dev;
-}
-void Device::UpdatePresetSelector(ma_device_config* cfg, const ma_device_info* dev) noexcept {
-  auto& srate = cfg->sampleRate;
-  auto& ch    = GetChannels(*cfg);
-
-  std::optional<size_t> match_idx = std::nullopt;
-  if (dev) {
-    for (size_t i = 0; i < dev->nativeDataFormatCount; ++i) {
-      const auto& fmt = dev->nativeDataFormats[i];
-      if (fmt.format != ma_format_f32) continue;
-
-      if (fmt.sampleRate == srate && fmt.channels == ch) {
-        match_idx = i;
-        break;
-      }
-    }
-  }
-
-  const auto preset_name = match_idx?
-      StringifyPreset(dev->nativeDataFormats[*match_idx]):
-      std::string {"(custom)"};
-  if (ImGui::BeginCombo("preset", preset_name.c_str())) {
-    if (dev) {
-      for (size_t i = 0; i < dev->nativeDataFormatCount; ++i) {
-        const auto& fmt = dev->nativeDataFormats[i];
-        if (fmt.format != ma_format_f32) continue;
-
-        const auto name = StringifyPreset(fmt);
-        if (ImGui::Selectable(name.c_str(), match_idx == i)) {
-          srate = fmt.sampleRate;
-          ch    = fmt.channels;
-        }
-      }
-    }
-    ImGui::EndCombo();
-  }
+  *this = std::move(d);
+} catch (std::bad_optional_access&) {
+  throw nf7::Exception {"invalid enum"};
+} catch (YAML::Exception& e) {
+  throw nf7::Exception {e.what()};
 }
 
 }
 }  // namespace nf7
+
+
+namespace magic_enum::customize {
+
+template <>
+constexpr customize_t magic_enum::customize::enum_name<nf7::Device::Mode>(nf7::Device::Mode v) noexcept {
+  switch (v) {
+    case nf7::Device::Mode::kPlayback: return "playback";
+    case nf7::Device::Mode::kCapture : return "capture";
+  }
+  return invalid_tag;
+}
+template <>
+constexpr customize_t magic_enum::customize::enum_name<nf7::Device::Format>(nf7::Device::Format v) noexcept {
+  switch (v) {
+    case nf7::Device::Format::kU8 : return "u8";
+    case nf7::Device::Format::kS16: return "s16";
+    case nf7::Device::Format::kS32: return "s32";
+    case nf7::Device::Format::kF32: return "f32";
+  }
+  return invalid_tag;
+}
+
+}  // namespace magic_enum::customize
+
+
+namespace yas::detail {
+
+template <size_t F>
+struct serializer<
+    yas::detail::type_prop::is_enum,
+    yas::detail::ser_case::use_internal_serializer,
+    F, nf7::Device::Mode> :
+        nf7::EnumSerializer<nf7::Device::Mode> {
+};
+
+template <size_t F>
+struct serializer<
+    yas::detail::type_prop::is_enum,
+    yas::detail::ser_case::use_internal_serializer,
+    F, nf7::Device::Format> :
+        nf7::EnumSerializer<nf7::Device::Format> {
+};
+
+}  // namespace yas::detail

@@ -111,6 +111,7 @@ target_sources(nf7
     common/node_root_select_lambda.hh
     common/ptr_selector.hh
     common/queue.hh
+    common/ring_buffer.hh
     common/sequencer.hh
     common/squashed_history.hh
     common/task.hh
@@ -119,7 +120,6 @@ target_sources(nf7
     common/util_algorithm.hh
     common/util_string.hh
     common/value.hh
-    common/yas_audio.hh
     common/yas_enum.hh
     common/yas_imgui.hh
     common/yas_imnodes.hh
