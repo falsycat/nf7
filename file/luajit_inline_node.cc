@@ -67,6 +67,10 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
+
+    mem_.onCommit = mem_.onRestore = [this]() {
+      cache_ = std::nullopt;
+    };
   }
 
   InlineNode(nf7::Deserializer& ar) : InlineNode(ar.env()) {
@@ -91,6 +95,8 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
     return mem_->outputs;
   }
 
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept;
+
   void UpdateMenu() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
   void UpdateWidget() noexcept override;
@@ -106,6 +112,8 @@ class InlineNode final : public nf7::FileBase, public nf7::DirItem, public nf7::
   std::shared_ptr<nf7::LoggerRef> log_;
 
   nf7::GenericMemento<Data> mem_;
+
+  std::optional<nf7::Future<std::shared_ptr<nf7::luajit::Ref>>> cache_;
 };
 
 
@@ -113,104 +121,91 @@ class InlineNode::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<InlineNode::Lambda> {
  public:
   Lambda(InlineNode& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), file_(f.life_), log_(f.log_) {
+      nf7::Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
   }
 
   void Handle(std::string_view k, const nf7::Value& v,
               const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
   try {
-    file_.EnforceAlive();
-
-    auto ljq = file_->
-        ResolveUpwardOrThrow("_luajit").
-        interfaceOrThrow<nf7::luajit::Queue>().self();
-
-    std::optional<std::string> scr;
-
-    auto& mem = file_->mem_;
-    if (last_ != std::exchange(last_, mem.Save()->id())) {
-      scr = mem.last().script;
-    }
+    f_.EnforceAlive();
 
     auto self = shared_from_this();
-    auto th   = std::make_shared<nf7::luajit::Thread>(
-        self, ljq,
-        nf7::luajit::Thread::CreateNodeLambdaHandler(caller, shared_from_this()));
-    th->Install(log_);
-    th_.emplace_back(th);
-
-    auto ctx = std::make_shared<nf7::GenericContext>(*file_);
-
-    auto p = std::make_pair(std::string {k}, std::move(v));
-    ljq->Push(self, [this, ctx, ljq, caller, th, scr = std::move(scr), p = std::move(p)](auto L) {
-      auto thL = th->Init(L);
-
-      // push function
-      if (scr) {
-        if (0 != luaL_loadstring(thL, scr->c_str())) {
-          log_->Error("luajit parse error: "s+lua_tostring(thL, -1));
-          return;
-        }
-        lua_pushvalue(thL, -1);
-        func_.emplace(ctx, ljq, thL);
-      } else {
-        if (!func_) {
-          log_->Error("last cache is broken");
-          return;
-        }
-        func_->PushSelf(thL);
-      }
-
-      // push args
-      lua_pushstring(thL, p.first.c_str());  // key
-      nf7::luajit::PushValue(thL, p.second);  // value
-
-      // push ctx table
-      if (ctxtable_ && ctxtable_->ljq() != ljq) {
-        ctxtable_ = std::nullopt;
-        log_->Warn("LuaJIT queue changed, ctxtable is cleared");
-      }
-      if (ctxtable_) {
-        ctxtable_->PushSelf(thL);
-      } else {
-        lua_createtable(thL, 0, 0);
-        lua_pushvalue(thL, -1);
-        ctxtable_.emplace(ctx, ljq, thL);
-      }
-
-      // start function
-      th->Resume(thL, 3);
-    });
-
+    f_->Build().
+        ThenIf(self, [this, k = std::string {k}, v, caller](auto& func) mutable {
+          if (f_) StartThread(std::move(k), v, func, caller);
+        }).
+        Catch<nf7::Exception>([log = log_](auto&) {
+          log->Warn("skips execution because of build failure");
+        });
   } catch (nf7::ExpiredException&) {
-  } catch (nf7::Exception& e) {
-    log_->Error(e.msg());
-  }
-  void Abort() noexcept override {
-    for (auto& wth : th_) {
-      if (auto th = wth.lock()) {
-        th->Abort();
-      }
-    }
   }
 
  private:
-  // synchronized with filesystem
-  nf7::Life<InlineNode>::Ref file_;
+  nf7::Life<InlineNode>::Ref f_;
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::optional<nf7::Memento::Tag::Id> last_;
+  std::mutex mtx_;
+  std::optional<nf7::luajit::Ref> ctx_;
 
-  std::vector<std::weak_ptr<nf7::luajit::Thread>> th_;
 
-  // used on luajit thread
-  std::optional<nf7::luajit::Ref> func_;
-  std::optional<nf7::luajit::Ref> ctxtable_;
+  void StartThread(std::string&& k, const nf7::Value& v,
+                   const std::shared_ptr<nf7::luajit::Ref>& func,
+                   const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept {
+    auto ljq  = func->ljq();
+    auto self = shared_from_this();
+
+    auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(caller, self);
+    auto th   = std::make_shared<nf7::luajit::Thread>(self, ljq, std::move(hndl));
+    th->Install(log_);
+
+    ljq->Push(self, [this, ljq, th, func, k = std::move(k), v, caller](auto L) mutable {
+      {
+        std::unique_lock<std::mutex> k {mtx_};
+        if (!ctx_ || ctx_->ljq() != ljq) {
+          lua_createtable(L, 0, 0);
+          ctx_.emplace(shared_from_this(), ljq, L);
+        }
+      }
+      L = th->Init(L);
+      func->PushSelf(L);
+      nf7::luajit::PushAll(L, k, v);
+      ctx_->PushSelf(L);
+      th->Resume(L, 3);
+    });
+  }
 };
 std::shared_ptr<nf7::Node::Lambda> InlineNode::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
   return std::make_shared<Lambda>(*this, parent);
+}
+
+
+nf7::Future<std::shared_ptr<nf7::luajit::Ref>> InlineNode::Build() noexcept
+try {
+  if (cache_) return *cache_;
+
+  auto ctx = std::make_shared<nf7::GenericContext>(*this, "inline function builder");
+  auto ljq =
+      ResolveUpwardOrThrow("_luajit").
+      interfaceOrThrow<nf7::luajit::Queue>().self();
+
+  nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Promise pro;
+  ljq->Push(ctx, [ctx, ljq, pro, script = mem_->script](auto L) mutable {
+    if (0 == luaL_loadstring(L, script.c_str())) {
+      pro.Return(std::make_shared<nf7::luajit::Ref>(ctx, ljq, L));
+    } else {
+      pro.Throw<nf7::Exception>(lua_tostring(L, -1));
+    }
+  });
+
+  cache_ = pro.future().
+      Catch<nf7::Exception>([log = log_](auto& e) {
+        log->Error(e);
+      });
+  return *cache_;
+} catch (nf7::Exception&) {
+  return {std::current_exception()};
 }
 
 
@@ -231,6 +226,13 @@ void InlineNode::UpdateNode(nf7::Node::Editor&) noexcept {
   if (ImGui::BeginPopup("ConfigPopup")) {
     nf7::gui::Config(mem_);
     ImGui::EndPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("build")) {
+    Build();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("try to compile the script (for syntax check)");
   }
 
   nf7::gui::NodeInputSockets(mem_->inputs);
