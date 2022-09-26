@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <atomic>
+#include <cinttypes>
 #include <memory>
 
 #include <imgui.h>
@@ -42,9 +44,10 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
     return std::make_unique<AudioContext>(env);
   }
 
-  void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
+
+  static void UpdateDeviceListMenu(ma_device_info*, ma_uint32) noexcept;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
@@ -55,21 +58,6 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
   std::shared_ptr<Queue> q_;
 
   const char* popup_ = nullptr;
-
-
-  // for device list popup
-  struct DeviceList {
-    std::atomic<bool> working;
-    bool success;
-    ma_device_info* play;
-    ma_uint32       play_n;
-    ma_device_info* cap;
-    ma_uint32       cap_n;
-  };
-  std::shared_ptr<DeviceList> devlist_;
-
-
-  void UpdateDeviceList(const ma_device_info*, size_t n) noexcept;
 };
 
 class AudioContext::Queue final : public nf7::audio::Queue,
@@ -133,6 +121,11 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   State state() const noexcept { return state_; }
   size_t tasksDone() const noexcept { return th_->tasksDone(); }
 
+  // thread-safe
+  ma_context* ctx() const noexcept {
+    return state_ == kReady? ctx_.get(): nullptr;
+  }
+
  private:
   Env* const env_;
   std::shared_ptr<Thread> th_;
@@ -146,60 +139,67 @@ AudioContext::AudioContext(Env& env) noexcept :
 }
 
 
-void AudioContext::Update() noexcept {
-  if (auto popup = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(popup);
-  }
-
-  if (ImGui::BeginPopup("DeviceList")) {
-    auto& p = devlist_;
-
-    ImGui::TextUnformatted("Audio/Context: device list");
-    if (ImGui::IsWindowAppearing()) {
-      if (!p) {
-        p = std::make_shared<DeviceList>();
-      }
-      p->working = true;
-      q_->Push(
-          std::make_shared<nf7::GenericContext>(*this, "fetching audio device list"),
-          [p](auto ctx) {
-            p->success = false;
-            if (ctx) {
-              const auto ret = ma_context_get_devices(
-                  ctx, &p->play, &p->play_n, &p->cap, &p->cap_n);
-              p->success = ret == MA_SUCCESS;
-            }
-            p->working = false;
-          });
-    }
-
-    ImGui::Indent();
-    if (p->working) {
-      ImGui::TextUnformatted("fetching audio devices... :)");
+void AudioContext::UpdateMenu() noexcept {
+  ma_device_info* pbs;
+  ma_uint32       pbn;
+  ma_device_info* cps;
+  ma_uint32       cpn;
+  if (ImGui::BeginMenu("playback devices")) {
+    auto ma = q_->ctx();
+    if (MA_SUCCESS == ma_context_get_devices(ma, &pbs, &pbn, &cps, &cpn)) {
+      UpdateDeviceListMenu(pbs, pbn);
     } else {
-      if (p->success) {
-        ImGui::TextUnformatted("playback:");
-        ImGui::Indent();
-        UpdateDeviceList(p->play, p->play_n);
-        ImGui::Unindent();
-
-        ImGui::TextUnformatted("capture:");
-        ImGui::Indent();
-        UpdateDeviceList(p->cap, p->cap_n);
-        ImGui::Unindent();
-      } else {
-        ImGui::TextUnformatted("failed to fetch devices X(");
-      }
+      ImGui::MenuItem("fetch failure... ;(", nullptr, false, false);
     }
-    ImGui::Unindent();
-
-    ImGui::EndPopup();
+    ImGui::EndMenu();
+  }
+  if (ImGui::BeginMenu("capture devices")) {
+    auto ma = q_->ctx();
+    if (MA_SUCCESS == ma_context_get_devices(ma, &pbs, &pbn, &cps, &cpn)) {
+      UpdateDeviceListMenu(cps, cpn);
+    } else {
+      ImGui::MenuItem("fetch failure... ;(", nullptr, false, false);
+    }
+    ImGui::EndMenu();
   }
 }
+void AudioContext::UpdateDeviceListMenu(ma_device_info* ptr, ma_uint32 n) noexcept {
+  for (ma_uint32 i = 0; i < n; ++i) {
+    const auto name = std::to_string(i) + ": " + ptr[i].name;
+    if (ImGui::MenuItem(name.c_str())) {
+      ImGui::SetClipboardText(ptr[i].name);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
 
-void AudioContext::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("display available devices")) {
-    popup_ = "DeviceList";
+      ImGui::Text("index  : %" PRIu32, i);
+      ImGui::Text("name   : %s", ptr[i].name);
+      ImGui::TextDisabled("         click to copy the name");
+
+      ImGui::Text("default: %s", ptr[i].isDefault? "yes": "no");
+
+      ImGui::TextUnformatted("native formats:");
+      const auto n = std::min(ptr[i].nativeDataFormatCount, ma_uint32 {5});
+      for (ma_uint32 j = 0; j < n; ++j) {
+        const auto& d = ptr[i].nativeDataFormats[j];
+        const char* fmt =
+            d.format == ma_format_u8? "u8":
+            d.format == ma_format_s16? "s16":
+            d.format == ma_format_s24? "s24":
+            d.format == ma_format_s32? "s32":
+            d.format == ma_format_f32? "f32":
+            "unknown";
+        ImGui::Bullet();
+        ImGui::Text("%s / %" PRIu32 " ch / %" PRIu32 " Hz", fmt, d.channels, d.sampleRate);
+      }
+      if (ptr[i].nativeDataFormatCount > n) {
+        ImGui::Bullet(); ImGui::TextDisabled("etc...");
+      }
+      if (n == 0) {
+        ImGui::Bullet(); ImGui::TextDisabled("(nothing)");
+      }
+      ImGui::EndTooltip();
+    }
   }
 }
 
@@ -210,21 +210,6 @@ void AudioContext::UpdateTooltip() noexcept {
       state == Queue::kReady       ? "ready":
       state == Queue::kBroken      ? "broken": "unknown";
   ImGui::Text("state: %s", state_str);
-}
-
-void AudioContext::UpdateDeviceList(const ma_device_info* p, size_t n) noexcept {
-  for (size_t i = 0; i < n; ++i) {
-    const auto& info = p[i];
-    const auto  name = std::to_string(i) + ": " + info.name;
-    ImGui::Selectable(name.c_str(), false, ImGuiSelectableFlags_DontClosePopups);
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      ImGui::Text("index   : %zu", i);
-      ImGui::Text("name    : %s", info.name);
-      ImGui::Text("default : %s", info.isDefault? "true": "false");
-      ImGui::EndTooltip();
-    }
-  }
 }
 
 }
