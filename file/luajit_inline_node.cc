@@ -267,6 +267,14 @@ try {
   auto new_inputs  = yaml["inputs"] .as<std::vector<std::string>>();
   auto new_outputs = yaml["outputs"].as<std::vector<std::string>>();
   auto new_script  = yaml["script"].as<std::string>();
+
+  if (nf7::util::Uniq(new_inputs) > 0) {
+    throw nf7::Exception {"duplicated inputs"};
+  }
+  if (nf7::util::Uniq(new_outputs) > 0) {
+    throw nf7::Exception {"duplicated outputs"};
+  }
+
   inputs  = std::move(new_inputs);
   outputs = std::move(new_outputs);
   script  = std::move(new_script);

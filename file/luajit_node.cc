@@ -35,6 +35,7 @@
 #include "common/nfile_watcher.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
+#include "common/util_algorithm.hh"
 #include "common/yas_std_filesystem.hh"
 
 
@@ -232,10 +233,16 @@ nf7::Future<std::shared_ptr<LuaNode::Meta>> LuaNode::Build() noexcept {
 
       lua_getfield(L, 1, "inputs");
       nf7::luajit::ToStringList(L, ret->inputs, -1);
+      if (nf7::util::Uniq(ret->inputs) > 0) {
+        throw nf7::Exception {"duplicated inputs"};
+      }
       lua_pop(L, 1);
 
       lua_getfield(L, 1, "outputs");
       nf7::luajit::ToStringList(L, ret->outputs, -1);
+      if (nf7::util::Uniq(ret->outputs)) {
+        throw nf7::Exception {"duplicated outputs"};
+      }
       lua_pop(L, 1);
 
       lua_getfield(L, 1, "lambda");
