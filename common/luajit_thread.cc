@@ -23,8 +23,6 @@ lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
 
   th_ = lua_newthread(L);
-  PushImmEnv(L);
-  lua_setfenv(L, -2);
   th_ref_.emplace(ctx_, ljq_, L);
 
   state_ = kPaused;
@@ -36,24 +34,24 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   if (state_ == kAborted) return;
   assert(L      == th_);
   assert(state_ == kPaused);
-  (void) L;
 
   static const auto kHook = [](auto L, auto) {
     luaL_error(L, "reached instruction limit (<=1e7)");
   };
-  lua_sethook(th_, kHook, LUA_MASKCOUNT, kInstructionLimit);
+  lua_sethook(L, kHook, LUA_MASKCOUNT, kInstructionLimit);
 
-  PushGlobalTable(th_);
-  PushWeakPtr(th_, weak_from_this());
-  PushMeta(th_);
-  lua_setmetatable(th_, -2);
-  lua_setfield(th_, -2, "nf7");
-  lua_pop(th_, 1);
+  // set global table
+  PushGlobalTable(L);
+  PushWeakPtr(L, weak_from_this());
+  PushMeta(L);
+  lua_setmetatable(L, -2);
+  lua_setfield(L, -2, "nf7");
+  lua_pop(L, 1);
 
   state_ = kRunning;
   k.unlock();
   active_ = true;
-  const auto ret = lua_resume(th_, narg);
+  const auto ret = lua_resume(L, narg);
   active_ = false;
   k.lock();
   if (state_ == kAborted) return;
@@ -68,7 +66,7 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
     state_ = kAborted;
   }
   if (!std::exchange(skip_handle_, false)) {
-    handler_(*this, th_);
+    handler_(*this, L);
   }
 }
 void Thread::Abort() noexcept {

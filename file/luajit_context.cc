@@ -8,6 +8,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/luajit.hh"
 #include "common/luajit_queue.hh"
 #include "common/ptr_selector.hh"
 #include "common/queue.hh"
@@ -79,7 +80,13 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
 
   Queue() = delete;
   Queue(LuaContext& f) : L(luaL_newstate()), env_(&f.env()) {
-    if (!L) throw nf7::Exception("failed to create new Lua state");
+    if (!L) {
+      throw nf7::Exception("failed to create new Lua state");
+    }
+    lua_pushthread(L);
+    nf7::luajit::PushImmEnv(L);
+    lua_setfenv(L, -2);
+    lua_pop(L, 1);
   }
   ~Queue() noexcept {
     th_->Push(
