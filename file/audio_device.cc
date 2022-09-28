@@ -218,7 +218,6 @@ class Device::Instance final {
   }
   ~Instance() noexcept {
     aq_->Push(ctx_, [sdata = sdata_](auto) {
-      ma_device_stop(&sdata->dev);
       ma_device_uninit(&sdata->dev);
     });
   }

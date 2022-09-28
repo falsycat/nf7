@@ -34,7 +34,11 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  AudioContext(nf7::Env&) noexcept;
+  AudioContext(Env& env) noexcept :
+      nf7::File(kType, env),
+      nf7::DirItem(DirItem::kMenu | DirItem::kTooltip),
+      q_(std::make_shared<AudioContext::Queue>(*this)) {
+  }
 
   AudioContext(nf7::Deserializer& ar) noexcept : AudioContext(ar.env()) {
   }
@@ -63,50 +67,50 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 class AudioContext::Queue final : public nf7::audio::Queue,
     public std::enable_shared_from_this<AudioContext::Queue> {
  public:
-  struct Runner final {
-    Runner(std::weak_ptr<Queue> owner) noexcept : owner_(owner) {
-    }
-    void operator()(Task&& t) {
-      if (auto k = owner_.lock()) {
-        t(k->ctx_.get());
-      }
-    }
-   private:
-    std::weak_ptr<Queue> owner_;
-  };
-  using Thread = nf7::Thread<Runner, Task>;
-
   enum State {
-    kInitializing,
+    kInitial,
     kReady,
     kBroken,
   };
 
-  static std::shared_ptr<Queue> Create(AudioContext& f) noexcept {
-    auto ret = std::make_shared<Queue>(f);
-    ret->th_ = std::make_shared<Thread>(f, Runner {ret});
-    ret->Push(
-        std::make_shared<nf7::GenericContext>(f.env(), 0, "creating ma_context"),
-        [ret](auto) {
-          auto ctx = std::make_shared<ma_context>();
-          if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, ctx.get())) {
-            ret->ctx_   = std::move(ctx);
-            ret->state_ = kReady;
-          } else {
-            ret->state_ = kBroken;
-          }
-        });
-    return ret;
-  }
+  struct ThreadData {
+   public:
+    std::atomic<State> state = kInitial;
+    ma_context ctx;
+  };
+  struct Runner {
+   public:
+    Runner(const std::shared_ptr<ThreadData>& tdata) noexcept : tdata_(tdata) {
+    }
+    void operator()(Task&& t) {
+      if (tdata_->state != kBroken) {
+        t(&tdata_->ctx);
+      }
+    }
+   private:
+    std::shared_ptr<ThreadData> tdata_;
+  };
+  using Thread = nf7::Thread<Runner, Task>;
 
   Queue() = delete;
-  Queue(AudioContext& f) noexcept : env_(&f.env()) {
+  Queue(AudioContext& f) noexcept :
+      env_(&f.env()),
+      tdata_(std::make_shared<ThreadData>()),
+      th_(std::make_shared<Thread>(f, Runner {tdata_})) {
+    auto ctx = std::make_shared<nf7::GenericContext>(f.env(), 0, "creating ma_context");
+    th_->Push(ctx, [tdata = tdata_](auto) {
+      if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, &tdata->ctx)) {
+        tdata->state = kReady;
+      } else {
+        tdata->state = kBroken;
+      }
+    });
   }
   ~Queue() noexcept {
     th_->Push(
-        std::make_shared<nf7::GenericContext>(*env_, 0, "deleting ma_context"),
-        [ctx = std::move(ctx_)](auto) { if (ctx) ma_context_uninit(ctx.get()); }
-      );
+      std::make_shared<nf7::GenericContext>(*env_, 0, "deleting ma_context"),
+      [](auto ma) { ma_context_uninit(ma); }
+    );
   }
   Queue(const Queue&) = delete;
   Queue(Queue&&) = delete;
@@ -118,25 +122,20 @@ class AudioContext::Queue final : public nf7::audio::Queue,
   }
   std::shared_ptr<audio::Queue> self() noexcept override { return shared_from_this(); }
 
-  State state() const noexcept { return state_; }
+  State state() const noexcept { return tdata_->state; }
   size_t tasksDone() const noexcept { return th_->tasksDone(); }
 
   // thread-safe
   ma_context* ctx() const noexcept {
-    return state_ == kReady? ctx_.get(): nullptr;
+    return state() == kReady? &tdata_->ctx: nullptr;
   }
 
  private:
   Env* const env_;
-  std::shared_ptr<Thread> th_;
 
-  std::atomic<State> state_ = kInitializing;
-  std::shared_ptr<ma_context> ctx_;
+  std::shared_ptr<ThreadData> tdata_;
+  std::shared_ptr<Thread> th_;
 };
-AudioContext::AudioContext(Env& env) noexcept :
-    File(kType, env), DirItem(DirItem::kMenu | DirItem::kTooltip),
-    q_(AudioContext::Queue::Create(*this)) {
-}
 
 
 void AudioContext::UpdateMenu() noexcept {
@@ -206,9 +205,9 @@ void AudioContext::UpdateDeviceListMenu(ma_device_info* ptr, ma_uint32 n) noexce
 void AudioContext::UpdateTooltip() noexcept {
   const auto  state     = q_->state();
   const char* state_str =
-      state == Queue::kInitializing? "initializing":
-      state == Queue::kReady       ? "ready":
-      state == Queue::kBroken      ? "broken": "unknown";
+      state == Queue::kInitial? "initializing":
+      state == Queue::kReady  ? "ready":
+      state == Queue::kBroken ? "broken": "unknown";
   ImGui::Text("state: %s", state_str);
 }
 
