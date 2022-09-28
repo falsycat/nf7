@@ -25,7 +25,6 @@ class Thread final : public nf7::Context,
   Thread(nf7::Env& env, nf7::File::Id id, Runner&& runner) noexcept :
       nf7::Context(env, id), env_(&env), runner_(std::move(runner)) {
   }
-  virtual ~Thread() noexcept = default;
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
   Thread& operator=(const Thread&) = delete;

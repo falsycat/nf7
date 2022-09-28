@@ -89,12 +89,12 @@ class TimedWaitQueue final : private TimedQueue<T> {
   void Notify() noexcept {
     cv_.notify_all();
   }
-  void Wait() noexcept {
+  void Wait(const auto& dur) noexcept {
     std::unique_lock<std::mutex> k(mtx_);
     if (auto t = next_()) {
       cv_.wait_until(k, *t);
     } else {
-      cv_.wait(k);
+      cv_.wait_for(k, dur);
     }
   }
 

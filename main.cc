@@ -28,22 +28,84 @@
 #include "theme.hh"
 
 
-using namespace nf7;
 using namespace std::literals;
+
+namespace {
+
+constexpr size_t kSubTaskUnit = 64;
+
+
+std::atomic<bool> alive_ = true;
+
+enum CycleState {
+  kSyncUpdate,  // -> kUpdate
+  kUpdate,      // -> kDraw or kSleep
+  kDraw,        // -> kSleep
+  kSleep,       // -> kSyncUpdate
+};
+std::atomic<CycleState> cycle_ = kUpdate;
+
+using Task = std::pair<std::shared_ptr<nf7::Context>, nf7::Env::Task>;
+nf7::Queue<Task>               mainq_;
+nf7::Queue<Task>               subq_;
+nf7::TimedWaitQueue<Task>      asyncq_;
+nf7::Queue<std::exception_ptr> panicq_;
+
+
+void WorkerThread() noexcept {
+  while (alive_) {
+    // wait for the end of GUI update
+    while (cycle_ == kUpdate) cycle_.wait(kUpdate);
+
+    // exec main tasks
+    while (auto task = mainq_.Pop())
+    try {
+      task->second();
+    } catch (nf7::Exception&) {
+      panicq_.Push(std::current_exception());
+    }
+
+    // exec sub tasks
+    for (;;) {
+      for (size_t i = 0; i < kSubTaskUnit; ++i) {
+        const auto task = subq_.Pop();
+        if (!task) break;
+        try {
+          task->second();
+        } catch (nf7::Exception&) {
+          panicq_.Push(std::current_exception());
+        }
+      }
+
+      const CycleState cycle = cycle_;
+      if (cycle == kSyncUpdate) break;
+      cycle_.wait(cycle);
+    }
+
+    // tell the main thread to start GUI update
+    cycle_ = kUpdate;
+    cycle_.notify_all();
+  }
+}
+
+void AsyncThread() noexcept {
+  while (alive_) {
+    asyncq_.Wait(100ms);
+    while (auto task = asyncq_.Pop(nf7::Env::Clock::now()))
+    try {
+      task->second();
+    } catch (nf7::Exception& e) {
+      panicq_.Push(std::current_exception());
+    }
+  }
+}
+
 
 class Env final : public nf7::Env {
  public:
-  static constexpr auto   kFileName    = "root.nf7";
-  static constexpr size_t kSubTaskUnit = 64;
+  static constexpr auto kFileName = "root.nf7";
 
   Env() noexcept : nf7::Env(std::filesystem::current_path()) {
-    // start threads
-    main_thread_ = std::thread([this]() { MainThread(); });
-    async_threads_.resize(std::max<size_t>(std::thread::hardware_concurrency(), 2));
-    for (auto& th : async_threads_) {
-      th = std::thread([this]() { AsyncThread(); });
-    }
-
     // deserialize
     if (!std::filesystem::exists(kFileName)) {
       root_ = CreateRoot(*this);
@@ -53,38 +115,34 @@ class Env final : public nf7::Env {
         nf7::Deserializer::Load(*this, kFileName, root_);
         root_->MakeAsRoot();
       } catch (nf7::Exception&) {
-        Panic();
+        panicq_.Push(std::current_exception());
       }
     }
   }
-  ~Env() noexcept {
-    if (root_) root_->Isolate();
-    root_ = nullptr;
 
-    while (main_.size() || sub_.size() || async_.size()) {
-      std::this_thread::sleep_for(100ms);
+  void TearDownRoot() noexcept {
+    if (root_) {
+      Save();
+      root_->Isolate();
+      root_ = nullptr;
     }
-
-    alive_ = false;
-
-    cv_.notify_one();
-    main_thread_.join();
-
-    async_.Notify();
-    for (auto& th : async_threads_) th.join();
   }
 
-  void ExecMain(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
-    main_.Push({ctx, std::move(task)});
+  void ExecMain(const std::shared_ptr<nf7::Context>& ctx,
+                Task&& task) noexcept override {
+    mainq_.Push({ctx, std::move(task)});
   }
-  void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task) noexcept override {
-    sub_.Push({ctx, std::move(task)});
+  void ExecSub(const std::shared_ptr<nf7::Context>& ctx,
+               Task&& task) noexcept override {
+    subq_.Push({ctx, std::move(task)});
+    cycle_.notify_all();
   }
-  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task, Time time) noexcept override {
-    async_.Push(time, {ctx, std::move(task)});
+  void ExecAsync(const std::shared_ptr<nf7::Context>& ctx,
+                 Task&& task, Time time) noexcept override {
+    asyncq_.Push(time, {ctx, std::move(task)});
   }
 
-  void Handle(const File::Event& e) noexcept override
+  void Handle(const nf7::File::Event& e) noexcept override
   try {
     // trigger File::Handle()
     GetFileOrThrow(e.id).Handle(e);
@@ -103,21 +161,17 @@ class Env final : public nf7::Env {
   void Exit() noexcept override {
     exit_requested_ = true;
   }
-  void Save() noexcept override {
-    try {
-      nf7::Serializer::Save(*this, kFileName, root_);
-    } catch (nf7::Exception&) {
-      Panic();
-    }
+  void Save() noexcept override
+  try {
+    nf7::Serializer::Save(*this, kFileName, root_);
+  } catch (nf7::Exception&) {
+    panicq_.Push(std::current_exception());
   }
-  void Throw(std::exception_ptr&& eptr) noexcept override {
-    Panic(std::move(eptr));
+  void Throw(std::exception_ptr&& ptr) noexcept override {
+    panicq_.Push(std::move(ptr));
   }
 
   void Update() noexcept {
-    interrupt_ = true;
-    std::unique_lock<std::mutex> _(mtx_);
-
     ImGui::PushID(this);
     {
       if (root_) {
@@ -125,35 +179,31 @@ class Env final : public nf7::Env {
         root_->Update();
         ImGui::PopID();
       }
-      UpdatePanic();
     }
     ImGui::PopID();
-
-    interrupt_ = false;
-    cv_.notify_one();
   }
 
   bool exitRequested() const noexcept { return exit_requested_; }
 
  protected:
-  File* GetFile(File::Id id) const noexcept override {
+  nf7::File* GetFile(nf7::File::Id id) const noexcept override {
     auto itr = files_.find(id);
     return itr != files_.end()? itr->second: nullptr;
   }
-  File::Id AddFile(File& f) noexcept override {
+  nf7::File::Id AddFile(nf7::File& f) noexcept override {
     auto [itr, ok] = files_.emplace(file_next_++, &f);
     assert(ok);
     return itr->first;
   }
-  void RemoveFile(File::Id id) noexcept override {
+  void RemoveFile(nf7::File::Id id) noexcept override {
     files_.erase(id);
   }
 
-  void AddWatcher(File::Id id, Watcher& w) noexcept override {
+  void AddWatcher(nf7::File::Id id, nf7::Env::Watcher& w) noexcept override {
     watchers_map_[id].push_back(&w);
     watchers_rmap_[&w].push_back(id);
   }
-  void RemoveWatcher(Watcher& w) noexcept override {
+  void RemoveWatcher(nf7::Env::Watcher& w) noexcept override {
     for (const auto id : watchers_rmap_[&w]) {
       auto& v = watchers_map_[id];
       v.erase(std::remove(v.begin(), v.end(), &w), v.end());
@@ -162,148 +212,101 @@ class Env final : public nf7::Env {
   }
 
  private:
-  std::unique_ptr<File> root_;
-
   std::atomic<bool> exit_requested_ = false;
-  std::atomic<bool> alive_ = true;
-  std::exception_ptr panic_;
 
-  File::Id file_next_ = 1;
-  std::unordered_map<File::Id, File*> files_;
+  std::unique_ptr<nf7::File> root_;
 
-  std::unordered_map<File::Id, std::vector<Watcher*>> watchers_map_;
-  std::unordered_map<Watcher*, std::vector<File::Id>> watchers_rmap_;
+  nf7::File::Id file_next_ = 1;
+  std::unordered_map<nf7::File::Id, nf7::File*> files_;
 
-  using TaskItem = std::pair<std::shared_ptr<nf7::Context>, Task>;
-  nf7::Queue<TaskItem>          main_;
-  nf7::Queue<TaskItem>          sub_;
-  nf7::TimedWaitQueue<TaskItem> async_;
-
-  std::mutex               mtx_;
-  std::condition_variable  cv_;
-  std::atomic<bool>        interrupt_ = false;
-  std::thread              main_thread_;
-  std::vector<std::thread> async_threads_;
-
-
-  void Panic(std::exception_ptr ptr = std::current_exception()) noexcept {
-    panic_ = ptr;
-  }
-  void UpdatePanic() noexcept {
-    const auto em = ImGui::GetFontSize();
-
-    ImGui::SetNextWindowSize({32*em, 24*em}, ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal("panic")) {
-      ImGui::TextUnformatted("something went wrong X(");
-
-      auto size = ImGui::GetContentRegionAvail();
-      size.y -= ImGui::GetFrameHeightWithSpacing();
-
-      const auto kFlags = ImGuiWindowFlags_HorizontalScrollbar;
-      if (ImGui::BeginChild("panic_detail", size, true, kFlags)) {
-        auto ptr = panic_;
-        while (ptr)
-        try {
-          std::rethrow_exception(ptr);
-        } catch (Exception& e) {
-          e.UpdatePanic();
-          ImGui::Separator();
-          ptr = e.reason();
-        } catch (std::exception& e) {
-          ImGui::Text("std::exception (%s)", e.what());
-          ImGui::Separator();
-          ptr = nullptr;
-        }
-        ImGui::TextUnformatted("====END OF STACK====");
-      }
-      ImGui::EndChild();
-
-      if (ImGui::Button("abort")) {
-        std::abort();
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("ignore")) {
-        panic_ = {};
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::EndPopup();
-    } else {
-      if (panic_) ImGui::OpenPopup("panic");
-    }
-  }
-
-
-  void MainThread() noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    while (alive_) {
-      // exec main tasks
-      while (auto task = main_.Pop())
-      try {
-        task->second();
-      } catch (Exception&) {
-        Panic();
-      }
-
-      // exec sub tasks until interrupted
-      while (!interrupt_) {
-        for (size_t i = 0; i < kSubTaskUnit; ++i) {
-          const auto task = sub_.Pop();
-          if (!task) break;
-          try {
-            task->second();
-          } catch (Exception&) {
-            Panic();
-          }
-        }
-        if (!alive_) return;
-      }
-      cv_.wait(k);
-    }
-  }
-  void AsyncThread() noexcept {
-    while (alive_) {
-      const auto now = Clock::now();
-      while (auto task = async_.Pop(now))
-      try {
-        task->second();
-      } catch (Exception& e) {
-        std::cout << "async thread exception: " << e.msg() << std::endl;
-      }
-      if (!alive_) break;
-      async_.Wait();
-    }
-  }
+  std::unordered_map<nf7::File::Id, std::vector<nf7::Env::Watcher*>> watchers_map_;
+  std::unordered_map<nf7::Env::Watcher*, std::vector<nf7::File::Id>> watchers_rmap_;
 };
 
+
+void UpdatePanic() noexcept {
+  static std::exception_ptr ptr_;
+  if (!ptr_) {
+    if (auto ptr = panicq_.Pop()) {
+      ptr_ = *ptr;
+    }
+  }
+
+  const auto em = ImGui::GetFontSize();
+  ImGui::SetNextWindowSize({32*em, 24*em}, ImGuiCond_Appearing);
+  if (ImGui::BeginPopupModal("panic")) {
+    ImGui::TextUnformatted("something went wrong X(");
+
+    auto size = ImGui::GetContentRegionAvail();
+    size.y -= ImGui::GetFrameHeightWithSpacing();
+
+    const auto kFlags = ImGuiWindowFlags_HorizontalScrollbar;
+    if (ImGui::BeginChild("panic_detail", size, true, kFlags)) {
+      auto ptr = ptr_;
+      while (ptr)
+      try {
+        std::rethrow_exception(ptr);
+      } catch (nf7::Exception& e) {
+        e.UpdatePanic();
+        ImGui::Separator();
+        ptr = e.reason();
+      } catch (std::exception& e) {
+        ImGui::Text("std::exception (%s)", e.what());
+        ImGui::Separator();
+        ptr = nullptr;
+      }
+      ImGui::TextUnformatted("====END OF STACK====");
+    }
+    ImGui::EndChild();
+
+    if (ImGui::Button("abort")) {
+      std::abort();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("ignore")) {
+      ptr_ = {};
+      ImGui::CloseCurrentPopup();
+    }
+    if (const auto rem = panicq_.size()) {
+      ImGui::SameLine();
+      ImGui::Text("other %zu exceptions are also causing panic", rem);
+    }
+    ImGui::EndPopup();
+  } else {
+    if (ptr_) ImGui::OpenPopup("panic");
+  }
+}
+
+}  // namespace
+
+
 int main(int, char**) {
-  // init display
+  // init GLFW
   glfwSetErrorCallback(
       [](int, const char* msg) {
         std::cout << "GLFW error: " << msg << std::endl;
       });
   if (!glfwInit()) return 1;
 
+  // create window
   GLFWwindow* window;
-  const char* glsl_version;
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-# if defined(__APPLE__)
-    glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-# else
-    glsl_version = "#version 130";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-# endif
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   window = glfwCreateWindow(1280, 720, "Nf7", NULL, NULL);
   if (window == NULL) return 1;
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);
   if (glewInit() != GLEW_OK) return 1;
+
+  // start threads
+  auto th_worker = std::thread {WorkerThread};
+
+  const auto cores = std::thread::hardware_concurrency();
+  std::vector<std::thread> th_async(cores > 3? cores-2: 1);
+  for (auto& th : th_async) th = std::thread {AsyncThread};
 
   // init ImGUI
   IMGUI_CHECKVERSION();
@@ -316,40 +319,76 @@ int main(int, char**) {
 
   SetUpImGuiStyle();
   ImGui_ImplGlfw_InitForOpenGL(window, true);
-  ImGui_ImplOpenGL3_Init(glsl_version);
+  ImGui_ImplOpenGL3_Init("#version 130");
 
-  // main logic
-  {
-    ::Env env;
-    glfwShowWindow(window);
-    while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
-      // new frame
-      glfwPollEvents();
-      ImGui_ImplOpenGL3_NewFrame();
-      ImGui_ImplGlfw_NewFrame();
-      ImGui::NewFrame();
+  // main loop
+  ::Env env;
+  glfwShowWindow(window);
+  while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
+    // handle events
+    glfwPollEvents();
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
 
-      env.Update();
+    // sync with worker thread
+    cycle_ = kSyncUpdate;
+    cycle_.notify_all();
+    while (cycle_ == kSyncUpdate) cycle_.wait(kSyncUpdate);
 
-      // render windows
-      ImGui::Render();
-      int w, h;
-      glfwGetFramebufferSize(window, &w, &h);
-      glViewport(0, 0, w, h);
-      glClear(GL_COLOR_BUFFER_BIT);
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-      glfwSwapBuffers(window);
-    }
-    env.Save();
+    // GUI update (OpenGL call is forbidden)
+    assert(cycle_ == kUpdate);
+    env.Update();
+    UpdatePanic();
+    ImGui::Render();
+
+    // GUI draw (OpenGL calls occur)
+    cycle_ = kDraw;
+    cycle_.notify_all();
+    glfwMakeContextCurrent(window);
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    glViewport(0, 0, w, h);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glfwSwapBuffers(window);
+    glfwMakeContextCurrent(nullptr);
+
+    cycle_ = kSleep;
+    cycle_.notify_all();
+    // TODO sleep
   }
 
-  // teardown ImGUI
+  // sync with worker thread and tear down filesystem
+  cycle_ = kSyncUpdate;
+  cycle_.notify_all();
+  while (cycle_ == kSyncUpdate) cycle_.wait(kSyncUpdate);
+  env.TearDownRoot();
+
+  // notify other threads that the destruction is done
+  cycle_ = kSleep;
+  cycle_.notify_all();
+
+  // wait for all tasks
+  while (mainq_.size() || subq_.size() || asyncq_.size()) {
+    std::this_thread::sleep_for(30ms);
+  }
+
+  // exit all threads
+  alive_ = false;
+  cycle_ = kSyncUpdate;
+  cycle_.notify_all();
+  asyncq_.Notify();
+  for (auto& th : th_async) th.join();
+  th_worker.join();
+
+  // tear down ImGUI
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImPlot::DestroyContext();
   ImGui::DestroyContext();
 
-  // teardown display
+  // tear down display
   glfwDestroyWindow(window);
   glfwTerminate();
   return 0;
