@@ -253,6 +253,9 @@ class Env {
   using Clock = std::chrono::system_clock;
   using Time  = Clock::time_point;
 
+  using Task = std::function<void()>;
+  enum Executor { kMain, kSub, kAsync, kGL, };
+
   class Watcher;
 
   Env() = delete;
@@ -264,22 +267,31 @@ class Env {
   Env& operator=(const Env&) = delete;
   Env& operator=(Env&&) = delete;
 
-  virtual File* GetFile(File::Id) const noexcept = 0;
-  File& GetFileOrThrow(File::Id) const;
-
-  // all Exec*() methods are thread-safe
-  using Task = std::function<void()>;
-  virtual void ExecMain(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
-  virtual void ExecSub(const std::shared_ptr<Context>&, Task&&) noexcept = 0;
-  virtual void ExecAsync(const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
-
-  virtual void Handle(const File::Event&) noexcept = 0;
+  // thread-safe
+  virtual void Exec(Executor, const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
+  void ExecMain(const std::shared_ptr<Context>& ctx, Task&& task) noexcept {
+    Exec(kMain, ctx, std::move(task));
+  }
+  void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task) noexcept {
+    Exec(kSub, ctx, std::move(task));
+  }
+  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task, Time t = {}) noexcept {
+    Exec(kAsync, ctx, std::move(task), t);
+  }
+  void ExecGL(const std::shared_ptr<Context>& ctx, Task&& task, Time t = {}) noexcept {
+    Exec(kGL, ctx, std::move(task), t);
+  }
 
   // thread-safe
   virtual void Exit() noexcept = 0;
 
   virtual void Save() noexcept = 0;
   virtual void Throw(std::exception_ptr&&) noexcept = 0;
+
+  virtual void Handle(const File::Event&) noexcept = 0;
+
+  virtual File* GetFile(File::Id) const noexcept = 0;
+  File& GetFileOrThrow(File::Id) const;
 
   const std::filesystem::path& npath() const noexcept { return npath_; }
 

@@ -39,7 +39,8 @@ std::atomic<bool> alive_ = true;
 
 enum CycleState {
   kSyncUpdate,  // -> kUpdate
-  kUpdate,      // -> kDraw or kSleep
+  kUpdate,      // -> kSyncDraw or kSleep
+  kSyncDraw,    // -> kDraw
   kDraw,        // -> kSleep
   kSleep,       // -> kSyncUpdate
 };
@@ -49,6 +50,7 @@ using Task = std::pair<std::shared_ptr<nf7::Context>, nf7::Env::Task>;
 nf7::Queue<Task>               mainq_;
 nf7::Queue<Task>               subq_;
 nf7::TimedWaitQueue<Task>      asyncq_;
+nf7::TimedWaitQueue<Task>      glq_;
 nf7::Queue<std::exception_ptr> panicq_;
 
 
@@ -94,8 +96,36 @@ void AsyncThread() noexcept {
     while (auto task = asyncq_.Pop(nf7::Env::Clock::now()))
     try {
       task->second();
-    } catch (nf7::Exception& e) {
+    } catch (nf7::Exception&) {
       panicq_.Push(std::current_exception());
+    }
+  }
+}
+
+void GLThread(GLFWwindow* window) noexcept {
+  while (alive_) {
+    glq_.Wait(100ms);
+    while (cycle_ == kDraw) cycle_.wait(kDraw);
+
+    glfwMakeContextCurrent(window);
+    for (size_t i = 0; i < kSubTaskUnit; ++i) {
+      auto task = glq_.Pop(nf7::Env::Clock::now());
+      if (!task) break;
+      try {
+        task->second();
+      } catch (nf7::Exception&) {
+        panicq_.Push(std::current_exception());
+      }
+    }
+    glfwMakeContextCurrent(nullptr);
+
+    const CycleState cycle = cycle_;
+    if (cycle == kSyncDraw) {
+      // tell the main thread to start GUI drawing
+      cycle_ = kDraw;
+      cycle_.notify_all();
+    } else {
+      cycle_.wait(cycle);
     }
   }
 }
@@ -128,18 +158,26 @@ class Env final : public nf7::Env {
     }
   }
 
-  void ExecMain(const std::shared_ptr<nf7::Context>& ctx,
-                Task&& task) noexcept override {
-    mainq_.Push({ctx, std::move(task)});
-  }
-  void ExecSub(const std::shared_ptr<nf7::Context>& ctx,
-               Task&& task) noexcept override {
-    subq_.Push({ctx, std::move(task)});
-    cycle_.notify_all();
-  }
-  void ExecAsync(const std::shared_ptr<nf7::Context>& ctx,
-                 Task&& task, Time time) noexcept override {
-    asyncq_.Push(time, {ctx, std::move(task)});
+  void Exec(Executor                             type,
+            const std::shared_ptr<nf7::Context>& ctx,
+            Task&&                               task,
+            Time                                 time) noexcept override {
+    switch (type) {
+    case kMain:
+      mainq_.Push({ctx, std::move(task)});
+      break;
+    case kSub:
+      subq_.Push({ctx, std::move(task)});
+      cycle_.notify_all();
+      break;
+    case kAsync:
+      asyncq_.Push(time, {ctx, std::move(task)});
+      break;
+    case kGL:
+      glq_.Push(time, {ctx, std::move(task)});
+      cycle_.notify_all();
+      break;
+    }
   }
 
   void Handle(const nf7::File::Event& e) noexcept override
@@ -305,8 +343,10 @@ int main(int, char**) {
   auto th_worker = std::thread {WorkerThread};
 
   const auto cores = std::thread::hardware_concurrency();
-  std::vector<std::thread> th_async(cores > 3? cores-2: 1);
+  std::vector<std::thread> th_async(cores > 4? cores-3: 1);
   for (auto& th : th_async) th = std::thread {AsyncThread};
+
+  auto th_gl = std::thread {[window]() { GLThread(window); }};
 
   // init ImGUI
   IMGUI_CHECKVERSION();
@@ -342,9 +382,14 @@ int main(int, char**) {
     UpdatePanic();
     ImGui::Render();
 
-    // GUI draw (OpenGL calls occur)
-    cycle_ = kDraw;
+    // sync with GL thread
+    cycle_ = kSyncDraw;
     cycle_.notify_all();
+    glq_.Notify();
+    while (cycle_ == kSyncDraw) cycle_.wait(kSyncDraw);
+
+    // GUI draw (OpenGL calls occur)
+    assert(cycle_ == kDraw);
     glfwMakeContextCurrent(window);
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
@@ -370,7 +415,7 @@ int main(int, char**) {
   cycle_.notify_all();
 
   // wait for all tasks
-  while (mainq_.size() || subq_.size() || asyncq_.size()) {
+  while (mainq_.size() || subq_.size() || asyncq_.size() || glq_.size()) {
     std::this_thread::sleep_for(30ms);
   }
 
@@ -381,6 +426,11 @@ int main(int, char**) {
   asyncq_.Notify();
   for (auto& th : th_async) th.join();
   th_worker.join();
+
+  cycle_ = kSyncDraw;
+  cycle_.notify_all();
+  glq_.Notify();
+  th_gl.join();
 
   // tear down ImGUI
   ImGui_ImplOpenGL3_Shutdown();
