@@ -232,14 +232,14 @@ nf7::Future<std::shared_ptr<LuaNode::Meta>> LuaNode::Build() noexcept {
       auto ret = std::make_shared<Meta>();
 
       lua_getfield(L, 1, "inputs");
-      nf7::luajit::ToStringList(L, ret->inputs, -1);
+      nf7::luajit::ToStringList(L, -1, ret->inputs);
       if (nf7::util::Uniq(ret->inputs) > 0) {
         throw nf7::Exception {"duplicated inputs"};
       }
       lua_pop(L, 1);
 
       lua_getfield(L, 1, "outputs");
-      nf7::luajit::ToStringList(L, ret->outputs, -1);
+      nf7::luajit::ToStringList(L, -1, ret->outputs);
       if (nf7::util::Uniq(ret->outputs)) {
         throw nf7::Exception {"duplicated outputs"};
       }

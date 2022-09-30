@@ -19,14 +19,14 @@
 
 namespace nf7 {
 
-class NodeRootSelectLambda : public nf7::Node::Lambda,
-    public std::enable_shared_from_this<NodeRootSelectLambda> {
+class NodeRootLambda : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<NodeRootLambda> {
   public:
    using Pair = std::pair<std::string, nf7::Value>;
 
-   static std::shared_ptr<NodeRootSelectLambda> Create(
+   static std::shared_ptr<NodeRootLambda> Create(
        const std::shared_ptr<nf7::Context>& ctx, nf7::Node& n) noexcept {
-     auto ret = std::make_shared<NodeRootSelectLambda>(ctx->env(), ctx->initiator(), ctx);
+     auto ret = std::make_shared<NodeRootLambda>(ctx->env(), ctx->initiator(), ctx);
      ret->target_ = n.CreateLambda(ret);
      return ret;
    }

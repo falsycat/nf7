@@ -107,7 +107,7 @@ target_sources(nf7
     common/nfile_watcher.hh
     common/node.hh
     common/node_link_store.hh
-    common/node_root_select_lambda.hh
+    common/node_root_lambda.hh
     common/ptr_selector.hh
     common/queue.hh
     common/ring_buffer.hh

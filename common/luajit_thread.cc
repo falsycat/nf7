@@ -6,7 +6,7 @@
 #include <unordered_set>
 
 #include "common/node.hh"
-#include "common/node_root_select_lambda.hh"
+#include "common/node_root_lambda.hh"
 
 
 namespace nf7::luajit {
@@ -42,7 +42,7 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
 
   // set global table
   PushGlobalTable(L);
-  PushWeakPtr(L, weak_from_this());
+  NewUserData<std::weak_ptr<Thread>>(L, weak_from_this());
   PushMeta(L);
   lua_setmetatable(L, -2);
   lua_setfield(L, -2, "nf7");
@@ -120,7 +120,10 @@ Thread::Handler Thread::CreateNodeLambdaHandler(
 
 static void PushMeta(lua_State* L) noexcept {
   if (luaL_newmetatable(L, Thread::kTypeName)) {
-    PushWeakPtrDeleter<Thread>(L);
+    lua_pushcfunction(L, [](auto L) {
+      CheckRef<std::weak_ptr<Thread>>(L, 1, Thread::kTypeName).~weak_ptr();
+      return 0;
+    });
     lua_setfield(L, -2, "__gc");
 
     lua_createtable(L, 0, 0);
@@ -164,7 +167,7 @@ static void PushMeta(lua_State* L) noexcept {
             auto& f = th->env().GetFileOrThrow(static_cast<nf7::File::Id>(id));
             if (iface == "node") {
               th->ExecResume(
-                  L, nf7::NodeRootSelectLambda::Create(
+                  L, nf7::NodeRootLambda::Create(
                       th->ctx(), f.template interfaceOrThrow<nf7::Node>()));
             } else {
               throw nf7::Exception {"unknown interface: "+iface};
@@ -193,7 +196,7 @@ static void PushMeta(lua_State* L) noexcept {
       // nf7:send(obj, params...)
       lua_pushcfunction(L, [](auto L) {
         auto th = Thread::GetPtr(L, 1);
-        auto la = luajit::CheckNodeRootSelectLambda(L, 2);
+        auto la = luajit::CheckNodeRootLambda(L, 2);
         la->ExecSend(luaL_checkstring(L, 3), luajit::CheckValue(L, 4));
         return 0;
       });
@@ -202,7 +205,7 @@ static void PushMeta(lua_State* L) noexcept {
       // nf7:recv(obj, params...)
       lua_pushcfunction(L, [](auto L) {
         auto th = Thread::GetPtr(L, 1);
-        auto la = luajit::CheckNodeRootSelectLambda(L, 2);
+        auto la = luajit::CheckNodeRootLambda(L, 2);
 
         std::unordered_set<std::string> names;
         if (lua_istable(L, 3)) {

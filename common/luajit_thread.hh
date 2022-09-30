@@ -49,9 +49,14 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   // must be called on luajit thread
   static std::shared_ptr<Thread> GetPtr(lua_State* L, int idx) {
-    auto th = CheckWeakPtr<Thread>(L, idx, kTypeName);
-    th->EnsureActive(L);
-    return th;
+    auto th = CheckRef<std::weak_ptr<Thread>>(L, idx, kTypeName).lock();
+    if (th) {
+      th->EnsureActive(L);
+      return th;
+    } else {
+      luaL_error(L, "thread expired");
+      return nullptr;
+    }
   }
 
   Thread() = delete;
