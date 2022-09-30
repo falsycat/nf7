@@ -73,8 +73,15 @@ inline const std::shared_ptr<nf7::NodeRootLambda>& CheckNodeRootLambda(lua_State
 }
 
 inline void ToStringList(lua_State* L, int idx, std::vector<std::string>& v) noexcept {
-  const size_t n = lua_objlen(L, idx);
   v.clear();
+  if (!lua_istable(L, idx)) {
+    if (auto str = lua_tostring(L, idx)) {
+      v.emplace_back(str);
+    }
+    return;
+  }
+
+  const size_t n = lua_objlen(L, idx);
   v.reserve(n);
   for (int i = 1; i <= static_cast<int>(n); ++i) {
     lua_rawgeti(L, idx, i);

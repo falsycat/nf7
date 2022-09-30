@@ -341,15 +341,59 @@ void PushMutableVector(lua_State* L, std::vector<uint8_t>&& v) noexcept {
 
 void PushNodeRootLambda(
     lua_State* L, const std::shared_ptr<nf7::NodeRootLambda>& la) noexcept {
-  constexpr const char* kTypeName = "nf7::NodeRootLambda";
   assert(la);
 
   using T = std::shared_ptr<nf7::NodeRootLambda>;
   new (lua_newuserdata(L, sizeof(T))) T {la};
 
-  if (luaL_newmetatable(L, kTypeName)) {
+  if (luaL_newmetatable(L, "nf7::NodeRootLambda")) {
+    lua_createtable(L, 0, 0);
+    {
+      // la:send(nf7, key, value)
+      lua_pushcfunction(L, [](auto L) {
+        auto la = CheckNodeRootLambda(L, 1);
+        la->ExecSend(luaL_checkstring(L, 2), luajit::CheckValue(L, 3));
+        return 0;
+      });
+      lua_setfield(L, -2, "send");
+
+      // la:recv(nf7, {name1, name2, ...})
+      lua_pushcfunction(L, [](auto L) {
+        auto la = CheckNodeRootLambda(L, 1);
+        auto th = luajit::Thread::GetPtr(L, 2);
+
+        std::vector<std::string> names;
+        ToStringList(L, 3, names);
+        if (names.size() == 0) {
+          return 0;
+        }
+
+        auto fu = la->Select(
+            std::unordered_set<std::string>(names.begin(), names.end()));
+        if (fu.done()) {
+          try {
+            const auto& p = fu.value();
+            lua_pushstring(L, p.first.c_str());
+            luajit::PushValue(L, p.second);
+            return 2;
+          } catch (nf7::Exception&) {
+            return 0;
+          }
+        } else {
+          fu.ThenIf([L, th](auto& p) {
+            th->ExecResume(L, p.first, p.second);
+          }).template Catch<nf7::Exception>(nullptr, [L, th](nf7::Exception&) {
+            th->ExecResume(L);
+          });
+          return th->Yield(L);
+        }
+      });
+      lua_setfield(L, -2, "recv");
+    }
+    lua_setfield(L, -2, "__index");
+
     lua_pushcfunction(L, [](auto L) {
-      CheckRef<T>(L, 1, kTypeName).~T();
+      CheckNodeRootLambda(L, 1).~T();
       return 0;
     });
     lua_setfield(L, -2, "__gc");

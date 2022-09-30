@@ -84,9 +84,9 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   // must be called on luajit thread
   // handler_ won't be called on this yielding
-  int Yield(lua_State* L, int narg) {
+  int Yield(lua_State* L) {
     skip_handle_ = true;
-    return lua_yield(L, narg);
+    return lua_yield(L, 0);
   }
 
   // must be called on luajit thread

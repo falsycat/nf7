@@ -141,7 +141,7 @@ static void PushMeta(lua_State* L) noexcept {
             th->ExecResume(L, 0);
           }
         });
-        return th->Yield(L, 0);
+        return th->Yield(L);
       });
       lua_setfield(L, -2, "resolve");
 
@@ -176,7 +176,7 @@ static void PushMeta(lua_State* L) noexcept {
             th->ExecResume(L, nullptr, e.msg());
           }
         });
-        return th->Yield(L, 0);
+        return th->Yield(L);
       });
       lua_setfield(L, -2, "query");
 
@@ -189,61 +189,9 @@ static void PushMeta(lua_State* L) noexcept {
             std::chrono::milliseconds(static_cast<uint64_t>(sec*1000));
         th->ljq()->Push(th->ctx(), [th, L](auto) { th->ExecResume(L); }, time);
 
-        return th->Yield(L, 0);
+        return th->Yield(L);
       });
       lua_setfield(L, -2, "sleep");
-
-      // nf7:send(obj, params...)
-      lua_pushcfunction(L, [](auto L) {
-        auto th = Thread::GetPtr(L, 1);
-        auto la = luajit::CheckNodeRootLambda(L, 2);
-        la->ExecSend(luaL_checkstring(L, 3), luajit::CheckValue(L, 4));
-        return 0;
-      });
-      lua_setfield(L, -2, "send");
-
-      // nf7:recv(obj, params...)
-      lua_pushcfunction(L, [](auto L) {
-        auto th = Thread::GetPtr(L, 1);
-        auto la = luajit::CheckNodeRootLambda(L, 2);
-
-        std::unordered_set<std::string> names;
-        if (lua_istable(L, 3)) {
-          lua_pushnil(L);
-          while (lua_next(L, 3)) {
-            if (lua_isstring(L, -1)) {
-              names.insert(lua_tostring(L, -1));
-            } else {
-              return luaL_error(L, "table contains non-string value");
-            }
-            lua_pop(L, 1);
-          }
-        } else {
-          for (int i = 3; i <= lua_gettop(L); ++i) {
-            names.insert(luaL_checkstring(L, i));
-          }
-        }
-
-        auto fu = la->Select(std::move(names));
-        if (fu.done()) {
-          try {
-            const auto& p = fu.value();
-            lua_pushstring(L, p.first.c_str());
-            luajit::PushValue(L, p.second);
-            return 2;
-          } catch (nf7::Exception& e) {
-            return 0;
-          }
-        } else {
-          fu.ThenIf([L, th](auto& p) {
-            th->ExecResume(L, p.first, p.second);
-          }).template Catch<nf7::Exception>(nullptr, [L, th](nf7::Exception&) {
-            th->ExecResume(L);
-          });
-          return th->Yield(L, 0);
-        }
-      });
-      lua_setfield(L, -2, "recv");
 
       // nf7:yield(results...)
       lua_pushcfunction(L, [](auto L) {
