@@ -138,8 +138,7 @@ static void PushMeta(lua_State* L) noexcept {
             th->ExecResume(L, 0);
           }
         });
-        th->ExpectYield(L);
-        return lua_yield(L, 0);
+        return th->Yield(L, 0);
       });
       lua_setfield(L, -2, "resolve");
 
@@ -174,8 +173,7 @@ static void PushMeta(lua_State* L) noexcept {
             th->ExecResume(L, nullptr, e.msg());
           }
         });
-        th->ExpectYield(L);
-        return lua_yield(L, 0);
+        return th->Yield(L, 0);
       });
       lua_setfield(L, -2, "query");
 
@@ -188,8 +186,7 @@ static void PushMeta(lua_State* L) noexcept {
             std::chrono::milliseconds(static_cast<uint64_t>(sec*1000));
         th->ljq()->Push(th->ctx(), [th, L](auto) { th->ExecResume(L); }, time);
 
-        th->ExpectYield(L);
-        return lua_yield(L, 0);
+        return th->Yield(L, 0);
       });
       lua_setfield(L, -2, "sleep");
 
@@ -240,8 +237,7 @@ static void PushMeta(lua_State* L) noexcept {
           }).template Catch<nf7::Exception>(nullptr, [L, th](nf7::Exception&) {
             th->ExecResume(L);
           });
-          th->ExpectYield(L);
-          return lua_yield(L, 0);
+          return th->Yield(L, 0);
         }
       });
       lua_setfield(L, -2, "recv");

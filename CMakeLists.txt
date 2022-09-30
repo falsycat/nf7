@@ -76,9 +76,9 @@ target_sources(nf7
     common/generic_memento.hh
     common/generic_type_info.hh
     common/generic_watcher.hh
-    common/gui_dnd.hh
     common/gui_config.hh
     common/gui_context.hh
+    common/gui_dnd.hh
     common/gui_file.hh
     common/gui_file.cc
     common/gui_node.hh
@@ -107,7 +107,6 @@ target_sources(nf7
     common/nfile_watcher.hh
     common/node.hh
     common/node_link_store.hh
-    common/node_root_lambda.hh
     common/node_root_select_lambda.hh
     common/ptr_selector.hh
     common/queue.hh

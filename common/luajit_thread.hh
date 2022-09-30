@@ -37,12 +37,12 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     using nf7::Exception::Exception;
   };
 
-  // Creates a handler to finalize a promise.
+  // Creates a handler that finalizes a promise.
   template <typename T>
   static inline Handler CreatePromiseHandler(
       nf7::Future<T>::Promise& pro, std::function<T(lua_State*)>&&) noexcept;
 
-  // Creates a handler to emit yielded value to Node::Lambda.
+  // Creates a handler that emits yielded value to Node::Lambda.
   static Handler CreateNodeLambdaHandler(
       const std::shared_ptr<nf7::Node::Lambda>& caller,
       const std::shared_ptr<nf7::Node::Lambda>& callee) noexcept;
@@ -78,9 +78,10 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   void Resume(lua_State* L, int narg) noexcept;
 
   // must be called on luajit thread
-  // handler_ won't be called on next yielding
-  void ExpectYield(lua_State*) noexcept {
+  // handler_ won't be called on this yielding
+  int Yield(lua_State* L, int narg) {
     skip_handle_ = true;
+    return lua_yield(L, narg);
   }
 
   // must be called on luajit thread
