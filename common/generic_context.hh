@@ -10,13 +10,18 @@
 
 namespace nf7 {
 
-class GenericContext : public Context {
+class GenericContext : public nf7::Context {
  public:
-  GenericContext(Env& env, File::Id id, std::string_view desc = "") noexcept :
-      Context(env, id), desc_(desc) {
+  GenericContext(nf7::Env& env,
+                 nf7::File::Id id,
+                 std::string_view desc = "",
+                 const std::shared_ptr<nf7::Context>& parent = nullptr) noexcept :
+      nf7::Context(env, id, parent), desc_(desc) {
   }
-  GenericContext(File& f, std::string_view desc = "") noexcept :
-      GenericContext(f.env(), f.id(), desc) {
+  GenericContext(nf7::File& f,
+                 std::string_view desc = "",
+                 const std::shared_ptr<nf7::Context>& parent = nullptr) noexcept :
+      GenericContext(f.env(), f.id(), desc, parent) {
   }
 
   void CleanUp() noexcept override {

@@ -30,7 +30,7 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
 
-  class Lambda;
+  class Importer;
 
   class Exception final : public nf7::Exception {
    public:
@@ -74,6 +74,15 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     assert(state_ == kInitial);
     logger_ = logger;
   }
+  void Install(const std::shared_ptr<Importer>& importer) noexcept {
+    assert(state_ == kInitial);
+    importer_ = importer;
+  }
+  void Install(const Thread& th) noexcept {
+    assert(state_ == kInitial);
+    logger_   = th.logger_;
+    importer_ = th.importer_;
+  }
 
   // must be called on luajit thread
   lua_State* Init(lua_State* L) noexcept;
@@ -109,10 +118,11 @@ class Thread final : public std::enable_shared_from_this<Thread> {
     });
   }
 
-  nf7::Env& env() noexcept { return ctx_->env(); }
+  nf7::Env& env() const noexcept { return ctx_->env(); }
   const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
   const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
+  const std::shared_ptr<Importer>& importer() const noexcept { return importer_; }
   State state() const noexcept { return state_; }
 
  private:
@@ -133,11 +143,27 @@ class Thread final : public std::enable_shared_from_this<Thread> {
 
   // installed features
   std::shared_ptr<nf7::LoggerRef> logger_;
+  std::shared_ptr<Importer>       importer_;
 
 
   // mutable params
   bool active_      = false;  // true while executing lua_resume
   bool skip_handle_ = false;  // handler_ won't be called on next yield
+};
+
+
+class Thread::Importer {
+ public:
+  Importer() = default;
+  virtual ~Importer() = default;
+  Importer(const Importer&) = delete;
+  Importer(Importer&&) = delete;
+  Importer& operator=(const Importer&) = delete;
+  Importer& operator=(Importer&&) = delete;
+
+  // be called on luajit thread
+  virtual nf7::Future<std::shared_ptr<luajit::Ref>> Import(
+      const luajit::Thread&, std::string_view) noexcept = 0;
 };
 
 

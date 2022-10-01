@@ -95,6 +95,7 @@ target_sources(nf7
     common/logger_ref.hh
     common/luajit.hh
     common/luajit.cc
+    common/luajit_nfile_importer.hh
     common/luajit_queue.hh
     common/luajit_ref.hh
     common/luajit_thread.hh
@@ -133,7 +134,6 @@ target_sources(nf7
     file/audio_context.cc
     file/audio_device.cc
     file/luajit_context.cc
-    file/luajit_inline_node.cc
     file/luajit_node.cc
     file/node_imm.cc
     file/node_network.cc

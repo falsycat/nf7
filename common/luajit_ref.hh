@@ -44,4 +44,8 @@ class Ref final : public nf7::Value::Data {
   int idx_;
 };
 
+inline void Push(lua_State* L, const std::shared_ptr<Ref>& ref) noexcept {
+  ref->PushSelf(L);
+}
+
 }  // namespace nf7::luajit

@@ -128,6 +128,31 @@ static void PushMeta(lua_State* L) noexcept {
 
     lua_createtable(L, 0, 0);
     {
+      // nf7:import(npath)
+      lua_pushcfunction(L, [](auto L) {
+        auto th = Thread::GetPtr(L, 1);
+        auto im = th->importer();
+        if (!im) {
+          return luaL_error(L, "import is not available in the current thread");
+        }
+        if (const auto name = lua_tostring(L, 2)) {
+          auto fu = im->Import(*th, name);
+          fu.ThenIf([L, th](auto& obj) {
+            th->ExecResume(L, obj);
+          }).
+          template Catch<nf7::Exception>([L, th](auto&) {
+            if (auto log = th->logger()) {
+              log->Warn("import failed, returning nil");
+            }
+            th->ExecResume(L);
+          });
+          return th->Yield(L);
+        } else {
+          return luaL_error(L, "path should be a string");
+        }
+      });
+      lua_setfield(L, -2, "import");
+
       // nf7:resolve(path)
       lua_pushcfunction(L, [](auto L) {
         auto th   = Thread::GetPtr(L, 1);
