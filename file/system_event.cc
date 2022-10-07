@@ -142,11 +142,10 @@ class Event::Lambda final : public nf7::Node::Lambda {
       nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>&) noexcept
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept
   try {
     f_.EnforceAlive();
-    f_->TriggerCustomEvent(v);
+    f_->TriggerCustomEvent(in.value);
   } catch (nf7::Exception&) {
   }
 

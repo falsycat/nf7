@@ -268,14 +268,13 @@ class Logger::Node final : public nf7::FileBase, public nf7::Node {
         nf7::Node::Lambda(f, parent), f_(f.life_) {
     }
 
-    void Handle(std::string_view, const nf7::Value& v,
-                const std::shared_ptr<nf7::Node::Lambda>&) noexcept override
+    void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
     try {
       f_.EnforceAlive();
-      if (v.isString()) {
-        f_->logger_.Info(v.string());
+      if (in.value.isString()) {
+        f_->logger_.Info(in.value.string());
       } else {
-        f_->logger_.Info("["s+v.typeName()+"]");
+        f_->logger_.Info("["s+in.value.typeName()+"]");
       }
     } catch (nf7::Exception&) {
     }

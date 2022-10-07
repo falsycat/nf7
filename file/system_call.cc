@@ -73,20 +73,19 @@ class Call::Lambda final : public nf7::Node::Lambda,
       nf7::Node::Lambda(f, parent) {
   }
 
-  void Handle(std::string_view name, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>&) noexcept override {
-    if (name == "save") {
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
+    if (in.name == "save") {
       env().ExecMain(shared_from_this(), [this]() {
         env().Save();
       });
-    } else if (name == "exit") {
+    } else if (in.name == "exit") {
       env().Exit();
-    } else if (name == "abort") {
+    } else if (in.name == "abort") {
       std::abort();
-    } else if (name == "panic") {
+    } else if (in.name == "panic") {
       try {
-        if (v.isString()) {
-          throw nf7::Exception {v.string()};
+        if (in.value.isString()) {
+          throw nf7::Exception {in.value.string()};
         } else {
           throw nf7::Exception {
             "'panic' input can take a string as message shown here :)"};

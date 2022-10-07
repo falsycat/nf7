@@ -182,18 +182,18 @@ class Plot::Lambda final : public nf7::Node::Lambda {
       nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view k, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>&) noexcept override
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
 
     const auto& series = f_->mem_->series;
-    auto itr = std::find(series.begin(), series.end(), k);
+    auto itr = std::find(series.begin(), series.end(), in.name);
     if (itr == series.end()) {
       throw nf7::Exception {"unknown series name"};
     }
     const auto& s = *itr;
 
+    auto& v    = in.value;
     auto& data = *s.data;
     if (v.isVector()) {
       const auto& vec   = v.vector();

@@ -132,15 +132,14 @@ class Node::Lambda final : public nf7::Node::Lambda,
       nf7::Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
   }
 
-  void Handle(std::string_view k, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
 
     auto self = shared_from_this();
     f_->Build().
-        ThenIf(self, [this, k = std::string {k}, v, caller](auto& func) mutable {
-          if (f_) StartThread(std::move(k), v, func, caller);
+        ThenIf(self, [this, in](auto& func) mutable {
+          if (f_) StartThread(in, func);
         }).
         Catch<nf7::Exception>([log = log_](auto&) {
           log->Warn("skips execution because of build failure");
@@ -157,18 +156,17 @@ class Node::Lambda final : public nf7::Node::Lambda,
   std::optional<nf7::luajit::Ref> ctx_;
 
 
-  void StartThread(std::string&& k, const nf7::Value& v,
-                   const std::shared_ptr<nf7::luajit::Ref>& func,
-                   const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept {
+  void StartThread(const nf7::Node::Lambda::Msg& in,
+                   const std::shared_ptr<nf7::luajit::Ref>& func) noexcept {
     auto ljq  = func->ljq();
     auto self = shared_from_this();
 
-    auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(caller, self);
+    auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(in.sender, self);
     auto th   = std::make_shared<nf7::luajit::Thread>(self, ljq, std::move(hndl));
     th->Install(log_);
     th->Install(f_->importer_);
 
-    ljq->Push(self, [this, ljq, th, func, k = std::move(k), v, caller](auto L) mutable {
+    ljq->Push(self, [this, ljq, th, func, in](auto L) mutable {
       {
         std::unique_lock<std::mutex> k {mtx_};
         if (!ctx_ || ctx_->ljq() != ljq) {
@@ -178,7 +176,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
       }
       L = th->Init(L);
       func->PushSelf(L);
-      nf7::luajit::PushAll(L, k, v);
+      nf7::luajit::PushAll(L, in.name, in.value);
       ctx_->PushSelf(L);
       th->Resume(L, 3);
     });

@@ -55,26 +55,26 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
   class Instance;
   class Lambda;
 
-  enum Mode {
-    kPlayback, kCapture,
+  enum class Mode {
+    Playback, Capture,
   };
   static ma_device_type FromMode(Mode m) {
     return
-        m == kPlayback? ma_device_type_playback:
-        m == kCapture ? ma_device_type_capture:
+        m == Mode::Playback? ma_device_type_playback:
+        m == Mode::Capture ? ma_device_type_capture:
         throw 0;
   }
 
   // the least 4 bits represent size of the type
-  enum Format {
-    kU8 = 0x11, kS16 = 0x22, kS32 = 0x24, kF32 = 0x34,
+  enum class Format {
+    U8 = 0x11, S16 = 0x22, S32 = 0x24, F32 = 0x34,
   };
   static ma_format FromFormat(Format f) {
     return
-        f == kU8 ? ma_format_u8 :
-        f == kS16? ma_format_s16:
-        f == kS32? ma_format_s32:
-        f == kF32? ma_format_f32:
+        f == Format::U8 ? ma_format_u8 :
+        f == Format::S16? ma_format_s16:
+        f == Format::S32? ma_format_s32:
+        f == Format::F32? ma_format_f32:
         throw 0;
   }
 
@@ -89,10 +89,10 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
 
     nf7::File::Path ctxpath = {"$", "_audio"};
 
-    Mode mode = kPlayback;
+    Mode mode = Mode::Playback;
     std::string devname = "";
 
-    Format   fmt   = kF32;
+    Format   fmt   = Format::F32;
     uint32_t srate = 48000;
     uint32_t ch    = 1;
 
@@ -179,7 +179,8 @@ class Device::Instance final {
            const std::shared_ptr<nf7::audio::Queue>& aq,
            ma_context* ma, const Data& d) :
       ctx_(ctx), aq_(aq), data_(d),
-      sdata_(std::make_shared<SharedData>(d.fmt & 0xF, d.ring_size)) {
+      sdata_(std::make_shared<SharedData>(
+              magic_enum::enum_integer(d.fmt) & 0xF, d.ring_size)) {
     // get device list
     ma_device_info* pbs;
     ma_uint32       pbn;
@@ -192,13 +193,13 @@ class Device::Instance final {
     // construct device config
     ma_device_config cfg = ma_device_config_init(FromMode(d.mode));
     switch (d.mode) {
-    case kPlayback:
+    case Mode::Playback:
       cfg.dataCallback       = PlaybackCallback;
       cfg.playback.pDeviceID = ChooseDevice(pbs, pbn, d.devname, devname_);
       cfg.playback.format    = FromFormat(d.fmt);
       cfg.playback.channels  = d.ch;
       break;
-    case kCapture:
+    case Mode::Capture:
       cfg.dataCallback      = CaptureCallback;
       cfg.capture.pDeviceID = ChooseDevice(cps, cpn, d.devname, devname_);
       cfg.capture.format    = FromFormat(d.fmt);
@@ -274,14 +275,13 @@ class Device::Lambda final : public nf7::Node::Lambda,
       nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view k, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
     if (!f_) return;
     f_->Build().
-        ThenIf(shared_from_this(), [this, k = std::string {k}, v, caller](auto& inst) {
+        ThenIf(shared_from_this(), [this, in](auto& inst) {
           if (!f_) return;
           try {
-            Exec(k, v, caller, inst);
+            Exec(in, inst);
           } catch (nf7::Exception& e) {
             f_->log_.Error(e);
           }
@@ -299,8 +299,7 @@ class Device::Lambda final : public nf7::Node::Lambda,
 
   uint64_t time_ = 0;
 
-  void Exec(const std::string& k, const nf7::Value& v,
-            const std::shared_ptr<nf7::Node::Lambda>& caller,
+  void Exec(const nf7::Node::Lambda::Msg& in,
             const std::shared_ptr<Instance>& inst) {
     const bool reset = last_inst_.expired();
     last_inst_ = inst;
@@ -308,19 +307,19 @@ class Device::Lambda final : public nf7::Node::Lambda,
     const auto& data = inst->data();
     auto&       ring = inst->ring();
 
-    if (k == "info") {
+    if (in.name == "info") {
       std::vector<nf7::Value::TuplePair> tup {
         {"format", magic_enum::enum_name(data.fmt)},
         {"srate",  static_cast<nf7::Value::Integer>(data.srate)},
         {"ch",     static_cast<nf7::Value::Integer>(data.ch)},
       };
-      caller->Handle("result", std::move(tup), shared_from_this());
+      in.sender->Handle("result", std::move(tup), shared_from_this());
 
-    } else if (k == "mix") {
-      if (data.mode != kPlayback) {
+    } else if (in.name == "mix") {
+      if (data.mode != Mode::Playback) {
         throw nf7::Exception {"device mode is not playback"};
       }
-      const auto& vec = *v.vector();
+      const auto& vec = *in.value.vector();
 
       std::unique_lock<std::mutex> lock(inst->mtx());
       if (reset) time_ = ring.cur();
@@ -331,23 +330,24 @@ class Device::Lambda final : public nf7::Node::Lambda,
             time_, reinterpret_cast<const T*>(vec.data()), vec.size()/sizeof(T));
       };
       switch (data.fmt) {
-      case kU8 : Mix.operator()<uint8_t>(); break;
-      case kS16: Mix.operator()<int16_t>(); break;
-      case kS32: Mix.operator()<int32_t>(); break;
-      case kF32: Mix.operator()<float>(); break;
+      case Format::U8 : Mix.operator()<uint8_t>(); break;
+      case Format::S16: Mix.operator()<int16_t>(); break;
+      case Format::S32: Mix.operator()<int32_t>(); break;
+      case Format::F32: Mix.operator()<float>(); break;
       }
       lock.unlock();
 
       const auto wrote = (time_-ptime) / data.ch;
-      caller->Handle(
+      in.sender->Handle(
           "result", static_cast<nf7::Value::Integer>(wrote), shared_from_this());
 
-    } else if (k == "peek") {
-      if (data.mode != kPlayback) {
+    } else if (in.name == "peek") {
+      if (data.mode != Mode::Playback) {
         throw nf7::Exception {"device mode is not capture"};
       }
 
-      const auto expect_read = std::min(ring.bufn(), v.integer<uint64_t>()*data.ch);
+      const auto expect_read = std::min(
+          ring.bufn(), in.value.integer<uint64_t>()*data.ch);
       std::vector<uint8_t> buf(expect_read*ring.unit());
 
       std::unique_lock<std::mutex> lock(inst->mtx());
@@ -357,11 +357,11 @@ class Device::Lambda final : public nf7::Node::Lambda,
       lock.unlock();
 
       const auto read = time_ - ptime;
-      caller->Handle(
+      in.sender->Handle(
           "result", static_cast<nf7::Value::Integer>(read), shared_from_this());
 
     } else {
-      throw nf7::Exception {"unknown command type: "+k};
+      throw nf7::Exception {"unknown command type: "+in.name};
     }
   }
 };
@@ -477,30 +477,6 @@ try {
 
 }
 }  // namespace nf7
-
-
-namespace magic_enum::customize {
-
-template <>
-constexpr customize_t magic_enum::customize::enum_name<nf7::Device::Mode>(nf7::Device::Mode v) noexcept {
-  switch (v) {
-    case nf7::Device::Mode::kPlayback: return "playback";
-    case nf7::Device::Mode::kCapture : return "capture";
-  }
-  return invalid_tag;
-}
-template <>
-constexpr customize_t magic_enum::customize::enum_name<nf7::Device::Format>(nf7::Device::Format v) noexcept {
-  switch (v) {
-    case nf7::Device::Format::kU8 : return "u8";
-    case nf7::Device::Format::kS16: return "s16";
-    case nf7::Device::Format::kS32: return "s32";
-    case nf7::Device::Format::kF32: return "f32";
-  }
-  return invalid_tag;
-}
-
-}  // namespace magic_enum::customize
 
 
 namespace yas::detail {

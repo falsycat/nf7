@@ -309,11 +309,10 @@ class Curve::NodeLambda final : public nf7::Node::Lambda,
       nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
-    caller->Handle("y", f_->Calc(v.scalar()), shared_from_this());
+    in.sender->Handle("y", f_->Calc(in.value.scalar()), shared_from_this());
   } catch (nf7::Exception&) {
   }
 

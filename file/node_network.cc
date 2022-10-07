@@ -359,20 +359,19 @@ class Network::Lambda : public Node::Lambda,
       Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view name, const Value& v,
-              const std::shared_ptr<Node::Lambda>& caller) noexcept override {
-    env().ExecSub(shared_from_this(), [this, name = std::string(name), v, caller]() mutable {
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
+    env().ExecSub(shared_from_this(), [this, in]() mutable {
       if (abort_) return;
       f_.EnforceAlive();
 
       auto parent = this->parent();
 
       // send input from outer to input handlers
-      if (caller == parent) {
+      if (in.sender == parent) {
         for (auto& item : f_->items_) {
           if (item->iflags() & InternalNode::kInputHandler) {
             auto la = FindOrCreateLambda(item->id());
-            la->Handle(name, v, shared_from_this());
+            la->Handle(in.name, in.value, shared_from_this());
           }
         }
         return;
@@ -380,16 +379,16 @@ class Network::Lambda : public Node::Lambda,
 
       // send an output from children as input to children
       try {
-        auto itr = idmap_.find(caller.get());
+        auto itr = idmap_.find(in.sender.get());
         if (itr == idmap_.end()) {
           throw nf7::Exception {"called by unknown lambda"};
         }
         const auto  src_id   = itr->second;
         const auto& src_item = f_->GetItem(src_id);
-        const auto& src_name = name;
+        const auto& src_name = in.name;
 
         if (parent && src_item.iflags() & InternalNode::kOutputEmitter) {
-          parent->Handle(src_name, v, shared_from_this());
+          parent->Handle(src_name, in.value, shared_from_this());
         }
 
         for (auto& lk : f_->links_.items()) {
@@ -397,7 +396,7 @@ class Network::Lambda : public Node::Lambda,
             try {
               const auto& dst_name = lk.dst_name;
               const auto  dst_la   = FindOrCreateLambda(lk.dst_id);
-              dst_la->Handle(dst_name, v, shared_from_this());
+              dst_la->Handle(dst_name, in.value, shared_from_this());
             } catch (nf7::Exception&) {
               // ignore missing socket
             }
@@ -721,10 +720,9 @@ class Network::Initiator final : public nf7::File,
         public std::enable_shared_from_this<Emitter> {
      public:
       using Node::Lambda::Lambda;
-      void Handle(std::string_view name, const Value&,
-                  const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
-        if (name == "_force" || !std::exchange(done_, true)) {
-          caller->Handle("out", nf7::Value::Pulse {}, shared_from_this());
+      void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
+        if (in.name == "_force" || !std::exchange(done_, true)) {
+          in.sender->Handle("out", nf7::Value::Pulse {}, shared_from_this());
         }
       }
      private:
@@ -835,21 +833,20 @@ class Network::Terminal : public nf7::File,
         nf7::Node::Lambda(f, node), f_(f.life_) {
     }
 
-    void Handle(std::string_view name, const nf7::Value& v,
-                const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+    void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
     try {
       f_.EnforceAlive();
 
       const auto& data = f_->data();
       switch (data.type) {
       case kInput:
-        if (name == data.name) {
-          caller->Handle("out", v, shared_from_this());
+        if (in.name == data.name) {
+          in.sender->Handle("out", in.value, shared_from_this());
         }
         break;
       case kOutput:
-        if (name == "in") {
-          caller->Handle(data.name, v, shared_from_this());
+        if (in.name == "in") {
+          in.sender->Handle(data.name, in.value, shared_from_this());
         }
         break;
       default:

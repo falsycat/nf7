@@ -32,18 +32,16 @@ class NodeRootLambda : public nf7::Node::Lambda,
    }
    using nf7::Node::Lambda::Lambda;
 
-   void Handle(std::string_view k, const nf7::Value& v,
-               const std::shared_ptr<nf7::Node::Lambda>&) noexcept override {
-     std::unique_lock<std::mutex> lk(mtx_);
+   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
+     std::unique_lock<std::mutex> lk {mtx_};
 
-     const auto ks = std::string {k};
-     if (names_.contains(ks)) {
+     if (names_.contains(in.name)) {
        names_.clear();
        auto pro = *std::exchange(pro_, std::nullopt);
        lk.unlock();
-       pro.Return({ks, v});
+       pro.Return({in.name, in.value});
      } else {
-       q_.push_back({ks, v});
+       q_.push_back({in.name, in.value});
      }
    }
 

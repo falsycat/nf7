@@ -140,12 +140,10 @@ class Call::SessionLambda final : public nf7::Node::Lambda {
     }
     FinishIf();
   }
-  void Handle(std::string_view name, const nf7::Value& val,
-              const std::shared_ptr<nf7::Node::Lambda>&) noexcept override {
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
     if (!ss_) return;
-    ss_->Send(name, nf7::Value {val});
-
-    expects_.erase(std::string {name});
+    ss_->Send(in.name, nf7::Value {in.value});
+    expects_.erase(in.name);
     FinishIf();
   }
   void Abort() noexcept override {

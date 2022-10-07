@@ -93,11 +93,10 @@ class Imm::Lambda final : public nf7::Node::Lambda,
       nf7::Node::Lambda(f, parent), f_(f.life_) {
   }
 
-  void Handle(std::string_view name, const nf7::Value&,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override {
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
     if (!f_) return;
-    if (name == "in") {
-      caller->Handle("out", f_->mem_.data().entity(), shared_from_this());
+    if (in.name == "in") {
+      in.sender->Handle("out", f_->mem_.data().entity(), shared_from_this());
       return;
     }
   }

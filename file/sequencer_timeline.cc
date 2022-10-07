@@ -586,8 +586,7 @@ class TL::Lambda final : public Node::Lambda,
       Node::Lambda(f, parent), owner_(f.life_) {
   }
 
-  void Handle(std::string_view, const nf7::Value&,
-              const std::shared_ptr<Node::Lambda>&) noexcept override;
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override;
 
   std::shared_ptr<TL::Session> CreateSession(uint64_t t) noexcept {
     if (depth() != 0 && owner_ && owner_->lambda_.get() == this) {
@@ -783,14 +782,13 @@ class TL::Session final : public Sequencer::Session,
   }
 };
 
-void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
-                        const std::shared_ptr<Node::Lambda>&) noexcept {
-  if (name == "_exec") {
+void TL::Lambda::Handle(const nf7::Node::Lambda::Msg& in) noexcept {
+  if (in.name == "_exec") {
     if (!owner_) return;
 
     uint64_t t;
-    if (v.isInteger()) {
-      const auto ti = std::max(v.integer(), int64_t{0});
+    if (in.value.isInteger()) {
+      const auto ti = std::max(in.value.integer(), int64_t{0});
       t = static_cast<uint64_t>(ti);
     } else {
       owner_->log_.Error("_exec takes a frame index");
@@ -798,7 +796,7 @@ void TL::Lambda::Handle(std::string_view name, const nf7::Value& v,
     }
     CreateSession(t)->StartNext();
   } else {
-    vars_[std::string {name}] = v;
+    vars_[std::string {in.name}] = in.value;
   }
 }
 void TL::MoveCursorTo(uint64_t time) noexcept {

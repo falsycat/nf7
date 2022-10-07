@@ -73,6 +73,26 @@ class Node::Editor {
 
 class Node::Lambda : public nf7::Context {
  public:
+  struct Msg final {
+   public:
+    Msg() = delete;
+    Msg(std::string&& n, nf7::Value&& v, std::shared_ptr<Lambda>&& s) noexcept :
+        name(std::move(n)), value(std::move(v)), sender(std::move(s)) {
+    }
+    Msg(std::string_view n, const nf7::Value& v, const std::shared_ptr<Lambda>& s) noexcept :
+        name(n), value(v), sender(s) {
+    }
+
+    Msg(const Msg&) = default;
+    Msg(Msg&&) = default;
+    Msg& operator=(const Msg&) = default;
+    Msg& operator=(Msg&&) = default;
+
+    std::string name;
+    nf7::Value  value;
+    std::shared_ptr<Lambda> sender;
+  };
+
   Lambda(nf7::File& f, const std::shared_ptr<nf7::Context>& parent = nullptr) noexcept :
       Lambda(f.env(), f.id(), parent) {
   }
@@ -81,8 +101,11 @@ class Node::Lambda : public nf7::Context {
       parent_(std::dynamic_pointer_cast<Node::Lambda>(parent)) {
   }
 
-  virtual void Handle(
-      std::string_view, const nf7::Value&, const std::shared_ptr<Lambda>&) noexcept {
+  virtual void Handle(const Msg&) noexcept {
+  }
+  void Handle(std::string_view k, const nf7::Value& v,
+              const std::shared_ptr<nf7::Node::Lambda>& sender) noexcept {
+    return Handle({k, v, sender});
   }
 
   std::shared_ptr<Node::Lambda> parent() const noexcept { return parent_.lock(); }

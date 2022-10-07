@@ -217,18 +217,17 @@ class Ref::Lambda final : public Node::Lambda,
       Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
   }
 
-  void Handle(std::string_view name, const Value& v,
-              const std::shared_ptr<Node::Lambda>& caller) noexcept override
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     if (!f_) return;
 
     auto parent = this->parent();
     if (!parent) return;
 
-    if (caller == base_) {
-      parent->Handle(name, v, shared_from_this());
+    if (in.sender == base_) {
+      parent->Handle(in.name, in.value, shared_from_this());
     }
-    if (caller == parent) {
+    if (in.sender == parent) {
       if (!base_) {
         if (depth() > kMaxDepth) {
           log_->Error("stack overflow");
@@ -238,7 +237,7 @@ class Ref::Lambda final : public Node::Lambda,
             interfaceOrThrow<nf7::Node>().
             CreateLambda(shared_from_this());
       }
-      base_->Handle(name, v, shared_from_this());
+      base_->Handle(in.name, in.value, shared_from_this());
     }
   } catch (nf7::Exception& e) {
     log_->Error("failed to call referencee: "+e.msg());

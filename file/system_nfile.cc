@@ -201,22 +201,22 @@ class NFile::Lambda final : public nf7::Node::Lambda,
   ~Lambda() noexcept {
   }
 
-  void Handle(std::string_view, const nf7::Value& v,
-              const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept override
+  void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
 
-    const auto type = v.tuple("type").string();
+    const auto& v    = in.value;
+    const auto  type = v.tuple("type").string();
     if (type == "lock") {
       const auto ex = v.tuple("ex").boolean();
-      Push(caller, ex, []() { return nf7::Value::Pulse {}; });
+      Push(in.sender, ex, []() { return nf7::Value::Pulse {}; });
     } else if (type == "unlock") {
       lock_ = std::nullopt;
-      caller->Handle("result", nf7::Value::Pulse {}, shared_from_this());
+      in.sender->Handle("result", nf7::Value::Pulse {}, shared_from_this());
     } else if (type == "read") {
       const auto offset = v.tuple("offset").integer<size_t>();
       const auto size   = v.tuple("size").integer<size_t>();
-      Push(caller, false, [this, offset, size]() {
+      Push(in.sender, false, [this, offset, size]() {
         std::vector<uint8_t> buf;
         buf.resize(size);
         const auto actual = shared_->nfile->Read(offset, buf.data(), size);
@@ -226,13 +226,13 @@ class NFile::Lambda final : public nf7::Node::Lambda,
     } else if (type == "write") {
       const auto offset = v.tuple("offset").integer<size_t>();
       const auto buf    = v.tuple("buf").vector();
-      Push(caller, true, [this, offset, buf]() {
+      Push(in.sender, true, [this, offset, buf]() {
         const auto ret = shared_->nfile->Write(offset, buf->data(), buf->size());
         return nf7::Value {static_cast<nf7::Value::Integer>(ret)};
       });
     } else if (type == "truncate") {
       const auto size = v.tuple("size").integer<size_t>();
-      Push(caller, true, [this, size]() {
+      Push(in.sender, true, [this, size]() {
         shared_->nfile->Truncate(size);
         return nf7::Value::Pulse {};
       });
