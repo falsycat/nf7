@@ -39,6 +39,11 @@ class TimedQueue {
     return ret.task;
   }
 
+  bool idle(nf7::Env::Time now = nf7::Env::Clock::now()) const noexcept {
+    const auto t = next();
+    return !t || *t > now;
+  }
+
   std::optional<nf7::Env::Time> next() const noexcept {
     std::unique_lock<std::mutex> k(mtx_);
     return next_();
@@ -69,43 +74,6 @@ class TimedQueue {
   size_t index_ = 0;
 
   std::priority_queue<Item, std::vector<Item>, Comp> q_;
-};
-
-template <typename T>
-class TimedWaitQueue final : private TimedQueue<T> {
- public:
-  TimedWaitQueue() = default;
-  TimedWaitQueue(const TimedWaitQueue&) = delete;
-  TimedWaitQueue(TimedWaitQueue&&) = delete;
-  TimedWaitQueue& operator=(const TimedWaitQueue&) = delete;
-  TimedWaitQueue& operator=(TimedWaitQueue&&) = delete;
-
-  void Push(nf7::Env::Time time, T&& task) noexcept {
-    TimedQueue<T>::Push(time, std::move(task));
-    cv_.notify_all();
-  }
-  using TimedQueue<T>::Pop;
-
-  void Notify() noexcept {
-    cv_.notify_all();
-  }
-  void Wait(const auto& dur) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    if (auto t = next_()) {
-      cv_.wait_until(k, *t);
-    } else {
-      cv_.wait_for(k, dur);
-    }
-  }
-
-  using TimedQueue<T>::next;
-  using TimedQueue<T>::size;
-
- private:
-  using TimedQueue<T>::mtx_;
-  using TimedQueue<T>::next_;
-
-  std::condition_variable cv_;
 };
 
 }  // namespace nf7
