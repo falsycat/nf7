@@ -39,6 +39,7 @@ class Future final {
   class Promise;
   class Coro;
 
+  using Product    = T;
   using ThisFuture = nf7::Future<T>;
   using Handle     = std::coroutine_handle<Promise>;
   using Imm        = std::variant<T, std::exception_ptr>;

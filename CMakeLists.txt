@@ -67,6 +67,7 @@ target_sources(nf7
     common/audio_queue.hh
     common/dir.hh
     common/dir_item.hh
+    common/factory.hh
     common/file_base.hh
     common/file_holder.hh
     common/file_holder.cc
@@ -76,6 +77,8 @@ target_sources(nf7
     common/generic_memento.hh
     common/generic_type_info.hh
     common/generic_watcher.hh
+    common/gl_fence.hh
+    common/gl_obj.hh
     common/gui_config.hh
     common/gui_context.hh
     common/gui_dnd.hh
@@ -133,6 +136,7 @@ target_sources(nf7
 
     file/audio_context.cc
     file/audio_device.cc
+    file/gl_obj.cc
     file/luajit_context.cc
     file/luajit_node.cc
     file/node_imm.cc
