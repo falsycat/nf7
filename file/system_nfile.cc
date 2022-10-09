@@ -252,10 +252,10 @@ class NFile::Lambda final : public nf7::Node::Lambda,
 
 
   void Push(const std::shared_ptr<nf7::Node::Lambda>& caller, bool ex, auto&& f) noexcept {
-    if (!lock_) {
-      lock_ = f_->mtx_.AcquireLock(ex);
-    }
     auto self = shared_from_this();
+    if (!lock_) {
+      lock_ = f_->mtx_.AcquireLock(self, ex);
+    }
     lock_->ThenIf([self, this, caller, f = std::move(f)](auto&) mutable {
       f_->th_->Push(self, NFile::Runner::Task {
         .callee = self,
