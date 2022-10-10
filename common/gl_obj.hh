@@ -52,8 +52,7 @@ struct Obj_BufferMeta final {
 
   const GLenum type;
 
-  size_t   size = 0;
-  uint8_t* ptr  = nullptr;  // address returned by glMapBuffer or nullptr
+  size_t size = 0;
 
   static GLuint Gen() noexcept {
     GLuint id;
@@ -70,9 +69,14 @@ using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>
 
 struct Obj_TextureMeta final {
  public:
-  GLenum type;
-  GLenum format;
-  uint32_t w, h, d;
+  Obj_TextureMeta() = delete;
+  Obj_TextureMeta(GLenum t) noexcept : type(t) {
+  }
+
+  const GLenum type;
+
+  GLint format = 0;
+  uint32_t w = 0, h = 0, d = 0;
 
   static GLuint Gen() noexcept {
     GLuint id;

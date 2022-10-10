@@ -1,3 +1,4 @@
+#include <cinttypes>
 #include <optional>
 #include <span>
 #include <string>
@@ -352,26 +353,236 @@ struct ObjBase<Buffer>::TypeInfo final {
   static inline const nf7::GenericTypeInfo<ObjBase<Buffer>> kType = {"GL/Buffer", {"nf7::DirItem"}};
 };
 
+
+struct Texture {
+ public:
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("OpenGL texture");
+  }
+
+  static inline const std::vector<std::string> kInputs = {
+    "upload",
+  };
+  static inline const std::vector<std::string> kOutputs = {
+  };
+
+  using Product = nf7::gl::Texture;
+
+  enum class Type {
+    Tex2D = 0x20,
+    Rect  = 0x21,
+  };
+  enum class Format {
+    U8   = 0x01,
+    F32  = 0x14,
+  };
+  enum class Comp : uint8_t {
+    R    = 1,
+    RG   = 2,
+    RGB  = 3,
+    RGBA = 4,
+  };
+
+  Texture() = default;
+  Texture(const Texture&) = default;
+  Texture(Texture&&) = default;
+  Texture& operator=(const Texture&) = default;
+  Texture& operator=(Texture&&) = default;
+
+  void serialize(auto& ar) {
+    ar(type_, format_);
+  }
+
+  std::string Stringify() noexcept {
+    YAML::Emitter st;
+    st << YAML::BeginMap;
+    st << YAML::Key   << "type";
+    st << YAML::Value << std::string {magic_enum::enum_name(type_)};
+    st << YAML::Key   << "format";
+    st << YAML::Value << std::string {magic_enum::enum_name(format_)};
+    st << YAML::Key   << "comp";
+    st << YAML::Value << std::string {magic_enum::enum_name(comp_)};
+    st << YAML::EndMap;
+    return std::string {st.c_str(), st.size()};
+  }
+
+  void Parse(const std::string& v)
+  try {
+    const auto yaml = YAML::Load(v);
+
+    const auto new_type = magic_enum::
+        enum_cast<Type>(yaml["type"].as<std::string>()).value();
+    const auto new_format = magic_enum::
+        enum_cast<Format>(yaml["format"].as<std::string>()).value();
+    const auto new_comp = magic_enum::
+        enum_cast<Comp>(yaml["comp"].as<std::string>()).value();
+
+    type_   = new_type;
+    format_ = new_format;
+    comp_   = new_comp;
+  } catch (std::bad_optional_access&) {
+    throw nf7::Exception {"unknown enum"};
+  } catch (YAML::Exception& e) {
+    throw nf7::Exception {std::string {"YAML error: "}+e.what()};
+  }
+
+  nf7::Future<std::shared_ptr<Product>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept {
+    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
+    ctx->env().ExecGL(ctx, [ctx, pro, t = type_]() mutable {
+      pro.Return(std::make_shared<Product>(ctx, GLuint {0}, FromType(t)));
+    });
+    return pro.future();
+  }
+
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>& res,
+              const nf7::Node::Lambda::Msg&                         in) {
+    if (in.name == "upload") {
+      const auto& v = in.value;
+
+      const auto vec = v.tuple("vec").vector();
+
+      auto& tex = **res;
+      auto& m   = tex.meta();
+
+      uint32_t w = 0, h = 0, d = 0;
+      switch (type_) {
+      case Type::Tex2D:
+      case Type::Rect:
+        w = v.tuple("w").integer<uint32_t>();
+        h = v.tuple("h").integer<uint32_t>();
+        if (w == 0 || h == 0) return false;
+        break;
+      }
+      m.w = w, m.h = h, m.d = d;
+      m.format = ToInternalFormat(format_, comp_);
+
+      const auto vecsz =
+          w*h*                                        // number of texels
+          magic_enum::enum_integer(comp_)*            // number of color components
+          (magic_enum::enum_integer(format_) & 0xF);  // size of a component
+      if (vec->size() < static_cast<size_t>(vecsz)) {
+        throw nf7::Exception {"vector is too small"};
+      }
+
+      const auto type = ToCompType(format_);
+      const auto fmt  = ToFormat(comp_);
+      handler->env().ExecGL(handler, [handler, res, &tex, &m, type, fmt, vec]() {
+        glBindTexture(m.type, tex.id());
+        switch (m.type) {
+        case GL_TEXTURE_2D:
+        case GL_TEXTURE_RECTANGLE:
+          glTexImage2D(m.type, 0, m.format,
+                       static_cast<GLsizei>(m.w),
+                       static_cast<GLsizei>(m.h),
+                       0, fmt, type, vec->data());
+          break;
+        default:
+          assert(false);
+          break;
+        }
+        glTexParameteri(m.type, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(m.type, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(m.type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(m.type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindTexture(m.type, 0);
+      });
+      return true;
+    } else {
+      throw nf7::Exception {"unknown input: "+in.name};
+    }
+  }
+
+  void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
+    const auto t = magic_enum::enum_name(type_);
+    ImGui::Text("type  : %.*s", static_cast<int>(t.size()), t.data());
+
+    const auto f = magic_enum::enum_name(format_);
+    ImGui::Text("format: %.*s", static_cast<int>(f.size()), f.data());
+
+    const auto c = magic_enum::enum_name(comp_);
+    ImGui::Text("comp  : %.*s (%" PRIu8 " values)",
+                static_cast<int>(c.size()), c.data(),
+                magic_enum::enum_integer(comp_));
+
+    ImGui::Spacing();
+    if (prod) {
+      const auto  id = static_cast<intptr_t>(prod->id());
+      const auto& m  = prod->meta();
+      ImGui::Text("  id: %" PRIiPTR, id);
+      ImGui::Text("size: %" PRIu32 " x %" PRIu32 " x %" PRIu32, m.w, m.h, m.d);
+
+      if (m.type == GL_TEXTURE_2D) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted("preview:");
+        ImGui::Image(reinterpret_cast<void*>(id),
+                     ImVec2 {static_cast<float>(m.w), static_cast<float>(m.h)});
+      }
+    }
+  }
+
+ private:
+  Type    type_   = Type::Rect;
+  Format  format_ = Format::U8;
+  Comp    comp_   = Comp::RGBA;
+
+  static GLenum FromType(Type t) {
+    return
+        t == Type::Tex2D? GL_TEXTURE_2D:
+        t == Type::Rect?  GL_TEXTURE_RECTANGLE:
+        throw 0;
+  }
+  static GLenum ToCompType(Format c) {
+    return
+        c == Format::U8?  GL_UNSIGNED_BYTE:
+        c == Format::F32? GL_FLOAT:
+        throw 0;
+  }
+  static GLenum ToFormat(Comp f) {
+    return
+        f == Comp::R?    GL_RED:
+        f == Comp::RG?   GL_RG:
+        f == Comp::RGB?  GL_RGB:
+        f == Comp::RGBA? GL_RGBA:
+        throw 0;
+  }
+  static GLint ToInternalFormat(Format f, Comp c) {
+    switch (f) {
+    case Format::U8:
+      return
+          c == Comp::R?    GL_R8:
+          c == Comp::RG?   GL_RG8:
+          c == Comp::RGB?  GL_RGB8:
+          c == Comp::RGBA? GL_RGBA8:
+          throw 0;
+    case Format::F32:
+      return
+          c == Comp::R?    GL_R32F:
+          c == Comp::RG?   GL_RG32F:
+          c == Comp::RGB?  GL_RGB32F:
+          c == Comp::RGBA? GL_RGBA32F:
+          throw 0;
+    }
+    throw 0;
+  }
+};
+template <>
+struct ObjBase<Texture>::TypeInfo final {
+  static inline const nf7::GenericTypeInfo<ObjBase<Texture>> kType = {"GL/Texture", {"nf7::DirItem"}};
+};
+
 }
 }  // namespace nf7
 
 
 namespace yas::detail {
 
-template <size_t F>
-struct serializer<
-    yas::detail::type_prop::is_enum,
-    yas::detail::ser_case::use_internal_serializer,
-    F, nf7::Buffer::Type> :
-        nf7::EnumSerializer<nf7::Buffer::Type> {
-};
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Buffer::Type);
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Buffer::Usage);
 
-template <size_t F>
-struct serializer<
-    yas::detail::type_prop::is_enum,
-    yas::detail::ser_case::use_internal_serializer,
-    F, nf7::Buffer::Usage> :
-        nf7::EnumSerializer<nf7::Buffer::Usage> {
-};
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Type);
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Format);
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Comp);
 
 }  // namespace yas::detail

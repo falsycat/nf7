@@ -31,4 +31,12 @@ struct EnumSerializer {
   }
 };
 
+#define NF7_YAS_DEFINE_ENUM_SERIALIZER(T)  \
+    template <size_t F>  \
+    struct serializer<  \
+        yas::detail::type_prop::is_enum,  \
+        yas::detail::ser_case::use_internal_serializer,  \
+        F, T> : nf7::EnumSerializer<T> {  \
+    }
+
 }  // namespace nf7
