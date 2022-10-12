@@ -100,9 +100,12 @@ class ObjBase : public nf7::FileBase,
         fu_ = mem_->Create(ctx, *watcher_);
         watcher_->AddHandler(nf7::File::Event::kUpdate, [this](auto&) { Drop(); });
       }
-      fu_->ThenIf([pro, k](auto& obj) mutable { pro.Return({k, obj}); });
+      fu_->Chain(pro, [k](auto& obj) { return Resource {k, obj}; });
     });
-    return pro.future();
+    return pro.future().
+        template Catch<nf7::Exception>(ctx, [this](auto& e) {
+          log_.Error(e);
+        });
   }
 
   void UpdateMenu() noexcept override {
@@ -390,7 +393,7 @@ struct Texture {
   Texture& operator=(Texture&&) = default;
 
   void serialize(auto& ar) {
-    ar(type_, format_);
+    ar(type_, format_, comp_);
   }
 
   std::string Stringify() noexcept {
@@ -572,6 +575,118 @@ struct ObjBase<Texture>::TypeInfo final {
   static inline const nf7::GenericTypeInfo<ObjBase<Texture>> kType = {"GL/Texture", {"nf7::DirItem"}};
 };
 
+
+struct Shader {
+ public:
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("OpenGL shader");
+  }
+
+  static inline const std::vector<std::string> kInputs  = {};
+  static inline const std::vector<std::string> kOutputs = {};
+
+  using Product = nf7::gl::Shader;
+
+  enum class Type {
+    Vertex,
+    Fragment,
+  };
+
+  Shader() = default;
+  Shader(const Shader&) = default;
+  Shader(Shader&&) = default;
+  Shader& operator=(const Shader&) = default;
+  Shader& operator=(Shader&&) = default;
+
+  void serialize(auto& ar) {
+    ar(type_, src_);
+  }
+
+  std::string Stringify() noexcept {
+    YAML::Emitter st;
+    st << YAML::BeginMap;
+    st << YAML::Key   << "type";
+    st << YAML::Value << std::string {magic_enum::enum_name(type_)};
+    st << YAML::Key   << "src";
+    st << YAML::Value << YAML::Literal << src_;
+    st << YAML::EndMap;
+    return std::string {st.c_str(), st.size()};
+  }
+  void Parse(const std::string& v)
+  try {
+    const auto yaml = YAML::Load(v);
+
+    const auto new_type = magic_enum::
+        enum_cast<Type>(yaml["type"].as<std::string>()).value();
+    auto new_src = yaml["src"].as<std::string>();
+
+    type_ = new_type;
+    src_  = std::move(new_src);
+  } catch (std::bad_optional_access&) {
+    throw nf7::Exception {"unknown enum"};
+  } catch (YAML::Exception& e) {
+    throw nf7::Exception {std::string {"YAML error: "}+e.what()};
+  }
+
+  nf7::Future<std::shared_ptr<Product>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept {
+    // TODO: preprocessing GLSL source
+
+    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
+    ctx->env().ExecGL(ctx, [ctx, pro, type = type_, src = src_]() mutable {
+      auto sh = std::make_shared<Product>(ctx, GLuint {0}, FromType(type));
+      const GLchar* str = src.c_str();
+      glShaderSource(sh->id(), 1, &str, nullptr);
+      glCompileShader(sh->id());
+      assert(0 == glGetError());
+
+      GLint status;
+      glGetShaderiv(sh->id(), GL_COMPILE_STATUS, &status);
+      if (status == GL_TRUE) {
+        pro.Return(sh);
+      } else {
+        GLint len;
+        glGetShaderiv(sh->id(), GL_INFO_LOG_LENGTH, &len);
+
+        std::string ret(static_cast<size_t>(len), ' ');
+        glGetShaderInfoLog(sh->id(), len, nullptr, ret.data());
+
+        pro.Throw<nf7::Exception>(std::move(ret));
+      }
+    });
+    return pro.future();
+  }
+
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
+              const nf7::Node::Lambda::Msg&) {
+    return false;
+  }
+
+  void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
+    const auto t = magic_enum::enum_name(type_);
+    ImGui::Text("type: %.*s", static_cast<int>(t.size()), t.data());
+    if (prod) {
+      ImGui::Text("id  : %zu", static_cast<size_t>(prod->id()));
+    }
+  }
+
+ private:
+  Type type_;
+  std::string src_;
+
+  static GLenum FromType(Type t) {
+    return
+        t == Type::Vertex?   GL_VERTEX_SHADER:
+        t == Type::Fragment? GL_FRAGMENT_SHADER:
+        throw 0;
+  }
+};
+template <>
+struct ObjBase<Shader>::TypeInfo final {
+  static inline const nf7::GenericTypeInfo<ObjBase<Shader>> kType = {"GL/Shader", {"nf7::DirItem"}};
+};
+
 }
 }  // namespace nf7
 
@@ -584,5 +699,7 @@ NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Buffer::Usage);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Type);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Format);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Comp);
+
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Shader::Type);
 
 }  // namespace yas::detail

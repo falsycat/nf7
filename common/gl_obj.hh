@@ -21,7 +21,7 @@ class Obj final {
   Obj() = delete;
   template <typename... Args>
   Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, Args&&... args) noexcept :
-      ctx_(ctx), id_(id? id: T::Gen()), meta_(std::forward<Args>(args)...) {
+      ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id? id: meta_.Gen()) {
   }
   ~Obj() noexcept {
     ctx_->env().ExecGL(ctx_, [id = id_]() { T::Delete(id); });
@@ -39,8 +39,8 @@ class Obj final {
  private:
   std::shared_ptr<nf7::Context> ctx_;
 
-  GLuint id_;
   T meta_;
+  const GLuint id_;
 };
 
 
@@ -89,5 +89,24 @@ struct Obj_TextureMeta final {
 };
 using Texture        = Obj<Obj_TextureMeta>;
 using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture>>>;
+
+
+struct Obj_ShaderMeta final {
+ public:
+  Obj_ShaderMeta() = delete;
+  Obj_ShaderMeta(GLenum t) noexcept : type(t) {
+  }
+
+  const GLenum type;
+
+  GLuint Gen() noexcept {
+    return glCreateShader(type);
+  }
+  static void Delete(GLuint id) noexcept {
+    glDeleteShader(id);
+  }
+};
+using Shader = Obj<Obj_ShaderMeta>;
+using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>>;
 
 }  // namespace nf7::gl
