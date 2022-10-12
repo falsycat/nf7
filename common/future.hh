@@ -290,6 +290,17 @@ class Future final {
     return Catch<E>(nullptr, std::move(f));
   }
 
+  // Finalizes the other promise on finalize of this future.
+  ThisFuture& Chain(auto& pro, auto&& func) noexcept {
+    return Then([pro, func = std::move(func)](auto& fu) mutable {
+      try {
+        pro.Return(func(fu.value()));
+      } catch (...) {
+        pro.Throw(std::current_exception());
+      }
+    });
+  }
+
   const auto& value() const {
     if (imm_) {
       if (std::holds_alternative<T>(*imm_)) return std::get<T>(*imm_);
