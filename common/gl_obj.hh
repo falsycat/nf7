@@ -18,7 +18,6 @@ namespace nf7::gl {
 template <typename T>
 class Obj final {
  public:
-  Obj() = delete;
   template <typename... Args>
   Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, Args&&... args) noexcept :
       ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id? id: meta_.Gen()) {
@@ -108,5 +107,20 @@ struct Obj_ShaderMeta final {
 };
 using Shader = Obj<Obj_ShaderMeta>;
 using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>>;
+
+
+struct Obj_ProgramMeta final {
+ public:
+  Obj_ProgramMeta() = default;
+
+  GLuint Gen() noexcept {
+    return glCreateProgram();
+  }
+  static void Delete(GLuint id) noexcept {
+    glDeleteProgram(id);
+  }
+};
+using Program = Obj<Obj_ProgramMeta>;
+using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program>>>;
 
 }  // namespace nf7::gl

@@ -14,10 +14,13 @@
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
+#include <yas/types/std/string.hpp>
+#include <yas/types/std/vector.hpp>
 #include <yas/types/utility/usertype.hpp>
 
 #include "nf7.hh"
 
+#include "common/aggregate_promise.hh"
 #include "common/dir_item.hh"
 #include "common/factory.hh"
 #include "common/file_base.hh"
@@ -25,7 +28,6 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
-#include "common/gl_fence.hh"
 #include "common/gl_obj.hh"
 #include "common/gui_config.hh"
 #include "common/life.hh"
@@ -48,6 +50,7 @@ class ObjBase : public nf7::FileBase,
   using Resource        = nf7::Mutex::Resource<Product>;
   using ResourceFuture  = nf7::Future<Resource>;
   using ResourcePromise = typename ResourceFuture::Promise;
+  using ThisFactory     = nf7::AsyncFactory<Resource>;
 
   struct TypeInfo;
 
@@ -154,8 +157,7 @@ class ObjBase : public nf7::FileBase,
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node,
-        nf7::AsyncFactory<std::shared_ptr<T>>>(t).Select(this, &mem_);
+        nf7::DirItem, nf7::Memento, nf7::Node, ThisFactory>(t).Select(this, &mem_);
   }
 
  private:
@@ -685,6 +687,139 @@ struct Shader {
 template <>
 struct ObjBase<Shader>::TypeInfo final {
   static inline const nf7::GenericTypeInfo<ObjBase<Shader>> kType = {"GL/Shader", {"nf7::DirItem"}};
+};
+
+
+struct Program {
+ public:
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("OpenGL program");
+  }
+
+  static inline const std::vector<std::string> kInputs  = {
+    "draw",
+  };
+  static inline const std::vector<std::string> kOutputs = {
+    "done",
+  };
+
+  using Product = nf7::gl::Program;
+
+  Program() = default;
+  Program(const Program&) = default;
+  Program(Program&&) = default;
+  Program& operator=(const Program&) = default;
+  Program& operator=(Program&&) = default;
+
+  void serialize(auto& ar) {
+    ar(shaders_);
+  }
+
+  std::string Stringify() noexcept {
+    YAML::Emitter st;
+    st << YAML::BeginMap;
+    st << YAML::Key   << "shaders";
+    st << YAML::Value << YAML::BeginSeq;
+    for (const auto& shader : shaders_) {
+      st << shader.Stringify();
+    }
+    st << YAML::EndSeq;
+    st << YAML::EndMap;
+    return std::string {st.c_str(), st.size()};
+  }
+  void Parse(const std::string& v)
+  try {
+    const auto yaml = YAML::Load(v);
+
+    std::vector<nf7::File::Path> shaders;
+    for (const auto& shader : yaml["shaders"]) {
+      shaders.push_back(
+          nf7::File::Path::Parse(shader.as<std::string>()));
+    }
+    if (shaders.size() == 0) {
+      throw nf7::Exception {"no shader is attached"};
+    }
+
+    shaders_ = std::move(shaders);
+  } catch (YAML::Exception& e) {
+    throw nf7::Exception {std::string {"YAML error: "}+e.what()};
+  }
+
+  nf7::Future<std::shared_ptr<Product>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept
+  try {
+    // TODO: setup watcher
+    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
+
+    nf7::AggregatePromise sh_pro {ctx};
+    std::vector<
+        nf7::Future<
+            nf7::Mutex::Resource<
+                std::shared_ptr<nf7::gl::Shader>>>> sh;
+    for (auto& path : shaders_) {
+      sh.push_back(
+          base.ResolveOrThrow(path).
+          interfaceOrThrow<nf7::gl::ShaderFactory>().Create());
+      sh_pro.Add(sh.back());
+    }
+
+    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
+    sh_pro.future().Then([ctx, pro, shaders = std::move(sh)](auto&) mutable {
+      pro.Wrap([&]() {
+        std::vector<std::shared_ptr<nf7::gl::Shader>> sh;
+        for (auto& s : shaders) {
+          sh.push_back(*s.value());
+        }
+        return Link(ctx, sh);
+      });
+    });
+    return pro.future();
+  } catch (nf7::Exception&) {
+    return {std::current_exception()};
+  }
+  static std::shared_ptr<nf7::gl::Program> Link(
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::span<std::shared_ptr<nf7::gl::Shader>>& shaders) {
+    auto prog = std::make_shared<nf7::gl::Program>(ctx, GLuint {0});
+    assert(prog->id() > 0);
+    for (auto& sh : shaders) {
+      glAttachShader(prog->id(), sh->id());
+    }
+    glLinkProgram(prog->id());
+
+    GLint status;
+    glGetProgramiv(prog->id(), GL_LINK_STATUS, &status);
+    if (status == GL_TRUE) {
+      return prog;
+    } else {
+      GLint len;
+      glGetProgramiv(prog->id(), GL_INFO_LOG_LENGTH, &len);
+
+      std::string ret(static_cast<size_t>(len), ' ');
+      glGetProgramInfoLog(prog->id(), len, nullptr, ret.data());
+      throw nf7::Exception {std::move(ret)};
+    }
+  }
+
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
+              const nf7::Node::Lambda::Msg&) {
+    // TODO
+    return false;
+  }
+
+  void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
+    if (prod) {
+      ImGui::Text("id  : %zu", static_cast<size_t>(prod->id()));
+    }
+  }
+
+ private:
+  std::vector<nf7::File::Path> shaders_;
+};
+template <>
+struct ObjBase<Program>::TypeInfo final {
+  static inline const nf7::GenericTypeInfo<ObjBase<Program>> kType = {"GL/Program", {"nf7::DirItem"}};
 };
 
 }

@@ -78,7 +78,6 @@ target_sources(nf7
     common/generic_memento.hh
     common/generic_type_info.hh
     common/generic_watcher.hh
-    common/gl_fence.hh
     common/gl_obj.hh
     common/gui_config.hh
     common/gui_context.hh
