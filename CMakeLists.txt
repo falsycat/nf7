@@ -64,6 +64,7 @@ target_sources(nf7
     theme.hh
 
     common/aggregate_command.hh
+    common/aggregate_promise.hh
     common/audio_queue.hh
     common/dir.hh
     common/dir_item.hh

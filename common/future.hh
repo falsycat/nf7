@@ -324,11 +324,14 @@ class Future final {
     return !imm_ && data_->state == kYet;
   }
   bool done() const noexcept {
-    return (imm_ && std::holds_alternative<T>(*imm_)) || data_->state == kDone;
+    return
+        (imm_  && std::holds_alternative<T>(*imm_)) ||
+        (data_ && data_->state == kDone);
   }
   bool error() const noexcept {
-    return (imm_ && std::holds_alternative<std::exception_ptr>(*imm_)) ||
-        data_->state == kError;
+    return
+        (imm_  && std::holds_alternative<std::exception_ptr>(*imm_)) ||
+        (data_ && data_->state == kError);
   }
 
   bool await_ready() const noexcept { return !yet(); }
