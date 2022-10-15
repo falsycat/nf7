@@ -229,13 +229,15 @@ class Future final {
 
   // Schedules to execute f() immediately on any thread
   // when the promise is finished or aborted.
-  // If ctx is not nullptr, the function will be run synchronized with main thread.
-  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, std::function<void(const ThisFuture&)>&& f) noexcept {
+  // If ctx is not nullptr, the function will be run in the executor.
+  ThisFuture& Then(nf7::Env::Executor                       exec,
+                   const std::shared_ptr<nf7::Context>&     ctx,
+                   std::function<void(const ThisFuture&)>&& f) noexcept {
     auto fun = std::move(f);
     if (ctx) {
-      fun = [ctx, fun = std::move(fun)](auto& fu) {
-        ctx->env().ExecSub(
-            ctx, [fu, fun = std::move(fun)]() mutable { fun(fu); });
+      fun = [exec, ctx, fun = std::move(fun)](auto& fu) {
+        ctx->env().Exec(
+            exec, ctx, [fu, fun = std::move(fun)]() mutable { fun(fu); });
       };
     }
     if (data_) {
@@ -250,10 +252,11 @@ class Future final {
     return *this;
   }
   template <typename R>
-  nf7::Future<R> Then(const std::shared_ptr<nf7::Context>& ctx,
+  nf7::Future<R> Then(nf7::Env::Executor                   exec,
+                      const std::shared_ptr<nf7::Context>& ctx,
                       std::function<void(const ThisFuture&, typename nf7::Future<R>::Promise&)>&& f) noexcept {
     typename nf7::Future<R>::Promise pro;
-    Then(ctx, [pro, f = std::move(f)](auto& fu) mutable {
+    Then(exec, ctx, [pro, f = std::move(f)](auto& fu) mutable {
       try {
         f(fu, pro);
       } catch (...) {
@@ -262,16 +265,24 @@ class Future final {
     });
     return pro.future();
   }
+  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+    return Then(nf7::Env::kSub, ctx, std::move(f));
+  }
   ThisFuture& Then(auto&& f) noexcept {
     return Then(nullptr, std::move(f));
   }
 
   // same as Then() but called when it's done without error
-  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx, std::function<void(const T&)>&& f) noexcept {
-    Then(ctx, [f = std::move(f)](auto& fu) {
+  ThisFuture& ThenIf(nf7::Env::Executor                   exec,
+                     const std::shared_ptr<nf7::Context>& ctx,
+                     std::function<void(const T&)>&&      f) noexcept {
+    Then(exec, ctx, [f = std::move(f)](auto& fu) {
       if (fu.done()) f(fu.value());
     });
     return *this;
+  }
+  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+    return ThenIf(nf7::Env::kSub, ctx, std::move(f));
   }
   ThisFuture& ThenIf(auto&& f) noexcept {
     return ThenIf(nullptr, std::move(f));
@@ -279,11 +290,17 @@ class Future final {
 
   // same as Then() but called when it caused an exception
   template <typename E>
-  ThisFuture& Catch(const std::shared_ptr<nf7::Context>& ctx, std::function<void(E&)>&& f) noexcept {
-    Then(ctx, [f = std::move(f)](auto& fu) {
+  ThisFuture& Catch(nf7::Env::Executor                   exec,
+                    const std::shared_ptr<nf7::Context>& ctx,
+                    std::function<void(E&)>&&            f) noexcept {
+    Then(exec, ctx, [f = std::move(f)](auto& fu) {
       try { fu.value(); } catch (E& e) { f(e); } catch (...) { }
     });
     return *this;
+  }
+  template <typename E>
+  ThisFuture& Catch(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+    return Catch<E>(nf7::Env::kSub, ctx, std::move(f));
   }
   template <typename E>
   ThisFuture& Catch(auto&& f) noexcept {
