@@ -26,7 +26,7 @@ class AggregatePromise final :
   AggregatePromise& operator=(const AggregatePromise&) = delete;
   AggregatePromise& operator=(AggregatePromise&&) = delete;
 
-  AggregatePromise& Add(auto& fu) noexcept {
+  AggregatePromise& Add(auto fu) noexcept {
     data_->Ref();
     fu.Then([data = data_](auto&) { data->Unref(); });
     return *this;

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <GL/glew.h>
 
@@ -18,6 +19,8 @@ namespace nf7::gl {
 template <typename T>
 class Obj final {
  public:
+  using Meta = T;
+
   template <typename... Args>
   Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, Args&&... args) noexcept :
       ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id? id: meta_.Gen()) {
@@ -122,5 +125,33 @@ struct Obj_ProgramMeta final {
 };
 using Program = Obj<Obj_ProgramMeta>;
 using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program>>>;
+
+
+struct Obj_VertexArrayMeta final {
+ public:
+  struct Attr {
+    nf7::File::Id id = 0;
+    size_t size_per_vertex   = 0;
+    size_t size_per_instance = 0;
+  };
+  Obj_VertexArrayMeta(std::vector<Attr>&& a) noexcept : attrs(std::move(a)) {
+  }
+
+  const std::vector<Attr> attrs;
+
+  nf7::Future<std::vector<std::shared_ptr<nf7::Mutex::Lock>>> LockBuffers(
+      const std::shared_ptr<nf7::Context>& ctx, size_t vcnt, size_t icnt) const noexcept;
+
+  static GLuint Gen() noexcept {
+    GLuint id;
+    glGenVertexArrays(1, &id);
+    return id;
+  }
+  static void Delete(GLuint id) noexcept {
+    glDeleteVertexArrays(1, &id);
+  }
+};
+using VertexArray = Obj<Obj_VertexArrayMeta>;
+using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<VertexArray>>>;
 
 }  // namespace nf7::gl

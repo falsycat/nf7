@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
-set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+cmake_policy(SET CMP0077 NEW)
+cmake_policy(SET CMP0135 OLD)
 
 # ---- configuration ----
 project(nf7 C CXX)
@@ -79,6 +80,7 @@ target_sources(nf7
     common/generic_type_info.hh
     common/generic_watcher.hh
     common/gl_obj.hh
+    common/gl_obj.cc
     common/gui_config.hh
     common/gui_context.hh
     common/gui_dnd.hh

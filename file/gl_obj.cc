@@ -37,6 +37,8 @@
 #include "common/yas_enum.hh"
 
 
+using namespace std::literals;
+
 namespace nf7 {
 namespace {
 
@@ -748,7 +750,6 @@ struct Program {
   nf7::Future<std::shared_ptr<Product>> Create(
       const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept
   try {
-    // TODO: setup watcher
     auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
 
     nf7::AggregatePromise sh_pro {ctx};
@@ -761,10 +762,11 @@ struct Program {
           base.ResolveOrThrow(path).
           interfaceOrThrow<nf7::gl::ShaderFactory>().Create());
       sh_pro.Add(sh.back());
+      // TODO: setup watcher
     }
 
     nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    sh_pro.future().Then([ctx, pro, shaders = std::move(sh)](auto&) mutable {
+    sh_pro.future().Then(nf7::Env::kGL, ctx, [ctx, pro, shaders = std::move(sh)](auto&) mutable {
       pro.Wrap([&]() {
         std::vector<std::shared_ptr<nf7::gl::Shader>> sh;
         for (auto& s : shaders) {
@@ -778,8 +780,8 @@ struct Program {
     return {std::current_exception()};
   }
   static std::shared_ptr<nf7::gl::Program> Link(
-      const std::shared_ptr<nf7::Context>& ctx,
-      const std::span<std::shared_ptr<nf7::gl::Shader>>& shaders) {
+      const std::shared_ptr<nf7::Context>&        ctx,
+      std::span<std::shared_ptr<nf7::gl::Shader>> shaders) {
     auto prog = std::make_shared<nf7::gl::Program>(ctx, GLuint {0});
     assert(prog->id() > 0);
     for (auto& sh : shaders) {
@@ -820,6 +822,267 @@ struct Program {
 template <>
 struct ObjBase<Program>::TypeInfo final {
   static inline const nf7::GenericTypeInfo<ObjBase<Program>> kType = {"GL/Program", {"nf7::DirItem"}};
+};
+
+
+struct VertexArray {
+ public:
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("OpenGL Vertex Array Object");
+  }
+
+  static inline const std::vector<std::string> kInputs  = {
+  };
+  static inline const std::vector<std::string> kOutputs = {
+  };
+
+  using Product = nf7::gl::VertexArray;
+
+  enum class AttrType {
+    I8  = 0x11,
+    U8  = 0x21,
+    U16 = 0x12,
+    I16 = 0x22,
+    U32 = 0x14,
+    I32 = 0x24,
+    F16 = 0x32,
+    F32 = 0x34,
+    F64 = 0x38,
+  };
+  struct Attr {
+    GLuint          index     = 0;
+    GLint           size      = 1;
+    AttrType        type      = AttrType::F32;
+    bool            normalize = false;
+    GLsizei         stride    = 0;
+    uint64_t        offset    = 0;
+    GLuint          divisor   = 0;
+    nf7::File::Path buffer    = {};
+
+    void serialize(auto& ar) {
+      ar(index, size, type, normalize, stride, offset, divisor, buffer);
+    }
+
+    const char* Validate() const noexcept {
+      if (index >= GL_MAX_VERTEX_ATTRIBS) {
+        return "too huge index";
+      }
+      if (size <= 0 || 4 < size) {
+        return "invalid size (1, 2, 3 or 4 are allowed)";
+      }
+      if (stride < 0) {
+        return "negative stride";
+      }
+      if (offset > static_cast<uint64_t>(stride)) {
+        return "offset overflow";
+      }
+      return nullptr;
+    }
+    static void Validate(const std::vector<Attr>& attrs) {
+      for (auto& attr : attrs) {
+        if (const auto msg = attr.Validate()) {
+          throw nf7::Exception {"invalid attribute: "s+msg};
+        }
+      }
+      std::unordered_set<GLuint> idx;
+      for (auto& attr : attrs) {
+        const auto [itr, uniq] = idx.insert(attr.index);
+        (void) itr;
+        if (!uniq) {
+          throw nf7::Exception {"attribute index duplication"};
+        }
+      }
+    }
+  };
+
+  VertexArray() = default;
+  VertexArray(const VertexArray&) = default;
+  VertexArray(VertexArray&&) = default;
+  VertexArray& operator=(const VertexArray&) = default;
+  VertexArray& operator=(VertexArray&&) = default;
+
+  void serialize(auto& ar) {
+    ar(attrs_);
+    Attr::Validate(attrs_);
+  }
+
+  std::string Stringify() noexcept {
+    YAML::Emitter st;
+    st << YAML::BeginMap;
+    st << YAML::Key   << "attrs";
+    st << YAML::Value << YAML::BeginSeq;
+    for (const auto& attr : attrs_) {
+      st << YAML::BeginMap;
+      st << YAML::Key   << "index";
+      st << YAML::Value << attr.index;
+      st << YAML::Key   << "size";
+      st << YAML::Value << attr.size;
+      st << YAML::Key   << "type";
+      st << YAML::Value << std::string {magic_enum::enum_name(attr.type)};
+      st << YAML::Key   << "normalize";
+      st << YAML::Value << attr.normalize;
+      st << YAML::Key   << "stride";
+      st << YAML::Value << attr.stride;
+      st << YAML::Key   << "offset";
+      st << YAML::Value << attr.offset;
+      st << YAML::Key   << "divisor";
+      st << YAML::Value << attr.divisor;
+      st << YAML::Key   << "buffer";
+      st << YAML::Value << attr.buffer.Stringify();
+      st << YAML::EndMap;
+    }
+    st << YAML::EndSeq;
+    st << YAML::EndMap;
+    return std::string {st.c_str(), st.size()};
+  }
+  void Parse(const std::string& v)
+  try {
+    const auto yaml = YAML::Load(v);
+
+    std::vector<Attr> attrs;
+    for (const auto& attr : yaml["attrs"]) {
+      attrs.push_back({
+        .index     = attr["index"].as<GLuint>(),
+        .size      = attr["size"].as<GLint>(),
+        .type      = magic_enum::enum_cast<AttrType>(attr["type"].as<std::string>()).value(),
+        .normalize = attr["normalize"].as<bool>(),
+        .stride    = attr["stride"].as<GLsizei>(),
+        .offset    = attr["offset"].as<uint64_t>(),
+        .divisor   = attr["divisor"].as<GLuint>(),
+        .buffer    = nf7::File::Path::Parse(attr["buffer"].as<std::string>()),
+      });
+    }
+    Attr::Validate(attrs);
+
+    attrs_ = std::move(attrs);
+  } catch (std::bad_optional_access&) {
+    throw nf7::Exception {std::string {"invalid enum"}};
+  } catch (YAML::Exception& e) {
+    throw nf7::Exception {std::string {"YAML error: "}+e.what()};
+  }
+
+  nf7::Future<std::shared_ptr<Product>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept
+  try {
+    auto& base  = ctx->env().GetFileOrThrow(ctx->initiator());
+    auto  attrs = attrs_;  // copy it
+
+    nf7::AggregatePromise buf_pro {ctx};
+    std::vector<
+        std::pair<
+            nf7::File::Id,
+            nf7::Future<
+                nf7::Mutex::Resource<
+                    std::shared_ptr<nf7::gl::Buffer>>>>> bufs;
+    for (auto& attr : attrs) {
+      auto& f  = base.ResolveOrThrow(attr.buffer);
+      auto  fu = f.interfaceOrThrow<nf7::gl::BufferFactory>().Create();
+      bufs.emplace_back(f.id(), fu);
+      buf_pro.Add(fu);
+      // TODO: setup watcher
+    }
+
+    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
+    buf_pro.future().Then(
+        nf7::Env::kGL, ctx,
+        [ctx, pro, attrs = std::move(attrs), bufs = std::move(bufs)](auto&) mutable {
+      pro.Wrap([&]() { return Create(ctx, attrs, bufs); });
+    });
+    return pro.future();
+  } catch (nf7::Exception&) {
+    return {std::current_exception()};
+  }
+  static std::shared_ptr<nf7::gl::VertexArray> Create(
+      const std::shared_ptr<nf7::Context>& ctx, auto& attrs, auto& bufs) {
+    assert(attrs.size() == bufs.size());
+
+    std::vector<GLuint> bufids;
+    bufids.reserve(attrs.size());
+
+    // build metadata of new VAO
+    std::vector<nf7::gl::VertexArray::Meta::Attr> meta_attrs;
+    meta_attrs.reserve(attrs.size());
+    for (size_t i = 0; i < attrs.size(); ++i) {
+      const auto& attr = attrs[i];
+      const auto& buf  = **bufs[i].second.value();
+      bufids.push_back(buf.id());
+
+      // check buffer type
+      if (buf.meta().type != GL_ARRAY_BUFFER) {
+        throw nf7::Exception {
+          "buffer ("+std::to_string(i)+") is not GL_ARRAY_BUFFER"
+        };
+      }
+
+      // calculate meta data
+      const auto size = attr.size*(magic_enum::enum_integer(attr.type) & 0xF);
+      const auto stride = attr.stride?
+          static_cast<size_t>(attr.stride):
+          static_cast<size_t>(size);
+      meta_attrs.push_back({
+        .id                = bufs[i].first,
+        .size_per_vertex   = attr.divisor == 0? stride: 0,
+        .size_per_instance = attr.divisor >= 1? stride: 0,
+      });
+    }
+
+    // setup VAO
+    auto vao = std::make_shared<nf7::gl::VertexArray>(ctx, GLuint {0}, std::move(meta_attrs));
+    glBindVertexArray(vao->id());
+    for (size_t i = 0; i < attrs.size(); ++i) {
+      const auto& attr = attrs[i];
+
+      // attach buffer
+      glBindBuffer(GL_ARRAY_BUFFER, bufids[i]);
+      glEnableVertexAttribArray(attr.index);
+      glVertexAttribDivisor(attr.index, attr.divisor);
+      glVertexAttribPointer(
+          attr.index,
+          attr.size,
+          ToAttrType(attr.type),
+          attr.normalize,
+          attr.stride,
+          reinterpret_cast<GLvoid*>(static_cast<GLintptr>(attr.offset)));
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+    glBindVertexArray(0);
+
+    assert(0 == glGetError());
+    return vao;
+  }
+
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
+              const nf7::Node::Lambda::Msg&) {
+    return false;
+  }
+
+  void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
+    if (prod) {
+      ImGui::Text("id: %zu", static_cast<size_t>(prod->id()));
+    }
+  }
+
+ private:
+  std::vector<Attr> attrs_;
+
+  static GLenum ToAttrType(AttrType type) {
+    return
+        type == AttrType::U8? GL_UNSIGNED_BYTE:
+        type == AttrType::I8? GL_BYTE:
+        type == AttrType::U16? GL_UNSIGNED_SHORT:
+        type == AttrType::I16? GL_SHORT:
+        type == AttrType::U32? GL_UNSIGNED_INT:
+        type == AttrType::I32? GL_INT:
+        type == AttrType::F16? GL_HALF_FLOAT:
+        type == AttrType::F32? GL_FLOAT:
+        type == AttrType::F64? GL_DOUBLE:
+        throw 0;
+  }
+};
+template <>
+struct ObjBase<VertexArray>::TypeInfo final {
+  static inline const nf7::GenericTypeInfo<ObjBase<VertexArray>> kType = {"GL/VertexArray", {"nf7::DirItem"}};
 };
 
 }
