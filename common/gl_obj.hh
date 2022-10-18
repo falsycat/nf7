@@ -21,9 +21,15 @@ class Obj final {
  public:
   using Meta = T;
 
+  // NOT thread-safe
+  template <typename... Args>
+  static nf7::Future<std::shared_ptr<Obj<T>>> Create(Args&&... args) noexcept {
+    return Meta::Create(std::forward<Args>(args)...);
+  }
+
   template <typename... Args>
   Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, Args&&... args) noexcept :
-      ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id? id: meta_.Gen()) {
+      ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id) {
   }
   ~Obj() noexcept {
     ctx_->env().ExecGL(ctx_, [id = id_]() { T::Delete(id); });
@@ -48,6 +54,13 @@ class Obj final {
 
 struct Obj_BufferMeta final {
  public:
+  static nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept;
+
+  static void Delete(GLuint id) noexcept {
+    glDeleteBuffers(1, &id);
+  }
+
   Obj_BufferMeta() = delete;
   Obj_BufferMeta(GLenum t) noexcept : type(t) {
   }
@@ -55,15 +68,6 @@ struct Obj_BufferMeta final {
   const GLenum type;
 
   size_t size = 0;
-
-  static GLuint Gen() noexcept {
-    GLuint id;
-    glGenBuffers(1, &id);
-    return id;
-  }
-  static void Delete(GLuint id) noexcept {
-    glDeleteBuffers(1, &id);
-  }
 };
 using Buffer        = Obj<Obj_BufferMeta>;
 using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>>;
@@ -71,6 +75,13 @@ using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>
 
 struct Obj_TextureMeta final {
  public:
+  static nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept;
+
+  static void Delete(GLuint id) noexcept {
+    glDeleteTextures(1, &id);
+  }
+
   Obj_TextureMeta() = delete;
   Obj_TextureMeta(GLenum t) noexcept : type(t) {
   }
@@ -79,15 +90,6 @@ struct Obj_TextureMeta final {
 
   GLint format = 0;
   uint32_t w = 0, h = 0, d = 0;
-
-  static GLuint Gen() noexcept {
-    GLuint id;
-    glGenTextures(1, &id);
-    return id;
-  }
-  static void Delete(GLuint id) noexcept {
-    glDeleteTextures(1, &id);
-  }
 };
 using Texture        = Obj<Obj_TextureMeta>;
 using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture>>>;
@@ -95,18 +97,20 @@ using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture
 
 struct Obj_ShaderMeta final {
  public:
+  static nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx,
+      GLenum                               type,
+      const std::string&                   src) noexcept;
+
+  static void Delete(GLuint id) noexcept {
+    glDeleteShader(id);
+  }
+
   Obj_ShaderMeta() = delete;
   Obj_ShaderMeta(GLenum t) noexcept : type(t) {
   }
 
   const GLenum type;
-
-  GLuint Gen() noexcept {
-    return glCreateShader(type);
-  }
-  static void Delete(GLuint id) noexcept {
-    glDeleteShader(id);
-  }
 };
 using Shader = Obj<Obj_ShaderMeta>;
 using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>>;
@@ -114,14 +118,15 @@ using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>
 
 struct Obj_ProgramMeta final {
  public:
-  Obj_ProgramMeta() = default;
+  static nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::vector<nf7::File::Id>&    shaders) noexcept;
 
-  GLuint Gen() noexcept {
-    return glCreateProgram();
-  }
   static void Delete(GLuint id) noexcept {
     glDeleteProgram(id);
   }
+
+  Obj_ProgramMeta() = default;
 };
 using Program = Obj<Obj_ProgramMeta>;
 using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program>>>;
@@ -130,26 +135,38 @@ using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program
 struct Obj_VertexArrayMeta final {
  public:
   struct Attr {
-    nf7::File::Id id = 0;
-    size_t size_per_vertex   = 0;
-    size_t size_per_instance = 0;
+    nf7::File::Id buffer;
+    GLuint        index;
+    GLint         size;
+    GLenum        type;
+    bool          normalize;
+    GLsizei       stride;
+    uint64_t      offset;
+    GLuint        divisor;
   };
-  Obj_VertexArrayMeta(std::vector<Attr>&& a) noexcept : attrs(std::move(a)) {
-  }
 
-  const std::vector<Attr> attrs;
+  static nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx, std::vector<Attr>&& attrs) noexcept;
 
-  nf7::Future<std::vector<std::shared_ptr<nf7::Mutex::Lock>>> LockBuffers(
-      const std::shared_ptr<nf7::Context>& ctx, size_t vcnt, size_t icnt) const noexcept;
-
-  static GLuint Gen() noexcept {
-    GLuint id;
-    glGenVertexArrays(1, &id);
-    return id;
-  }
   static void Delete(GLuint id) noexcept {
     glDeleteVertexArrays(1, &id);
   }
+
+  static nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
+      LockBuffers(
+          const std::shared_ptr<nf7::Context>& ctx,
+          const std::vector<Attr>&             attrs,
+          size_t vcnt = 0, size_t icnt = 0) noexcept;
+
+  Obj_VertexArrayMeta(std::vector<Attr>&& a) noexcept : attrs(std::move(a)) {
+  }
+
+  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>> LockBuffers(
+      const std::shared_ptr<nf7::Context>& ctx, size_t vcnt = 0, size_t icnt = 0) const noexcept {
+    return LockBuffers(ctx, attrs, vcnt, icnt);
+  }
+
+  const std::vector<Attr> attrs;
 };
 using VertexArray = Obj<Obj_VertexArrayMeta>;
 using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<VertexArray>>>;

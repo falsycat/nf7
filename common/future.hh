@@ -308,14 +308,22 @@ class Future final {
   }
 
   // Finalizes the other promise on finalize of this future.
-  ThisFuture& Chain(auto& pro, auto&& func) noexcept {
-    return Then([pro, func = std::move(func)](auto& fu) mutable {
+  ThisFuture& Chain(nf7::Env::Executor exec,
+                    const std::shared_ptr<nf7::Context>& ctx,
+                    auto& pro, auto&& func) noexcept {
+    return Then(exec, ctx, [pro, func = std::move(func)](auto& fu) mutable {
       try {
         pro.Return(func(fu.value()));
       } catch (...) {
         pro.Throw(std::current_exception());
       }
     });
+  }
+  ThisFuture& Chain(const std::shared_ptr<nf7::Context>& ctx, auto& pro, auto&& func) noexcept {
+    return Chain(nf7::Env::kSub, ctx, pro, std::move(func));
+  }
+  ThisFuture& Chain(auto& pro, auto&& func) noexcept {
+    return Chain(nullptr, pro, std::move(func));
   }
 
   const auto& value() const {

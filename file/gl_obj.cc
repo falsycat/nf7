@@ -102,7 +102,7 @@ class ObjBase : public nf7::FileBase,
     mtx_.AcquireLock(ctx, ex).ThenIf([this, ctx, pro](auto& k) mutable {
       if (!fu_) {
         watcher_.emplace(env());
-        fu_ = mem_->Create(ctx, *watcher_);
+        fu_ = mem_->Create(ctx);
         watcher_->AddHandler(nf7::File::Event::kUpdate, [this](auto&) { Drop(); });
       }
       fu_->Chain(pro, [k](auto& obj) { return Resource {k, obj}; });
@@ -282,13 +282,8 @@ struct Buffer {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept {
-    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    ctx->env().ExecGL(ctx, [ctx, pro, t = type_]() mutable {
-      pro.Return(std::make_shared<Product>(ctx, GLuint {0}, FromType(t)));
-    });
-    return pro.future();
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    return Product::Create(ctx, FromType(type_));
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -433,13 +428,8 @@ struct Texture {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept {
-    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    ctx->env().ExecGL(ctx, [ctx, pro, t = type_]() mutable {
-      pro.Return(std::make_shared<Product>(ctx, GLuint {0}, FromType(t)));
-    });
-    return pro.future();
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    return Product::Create(ctx, FromType(type_));
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -633,32 +623,9 @@ struct Shader {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept {
+      const std::shared_ptr<nf7::Context>& ctx) noexcept {
     // TODO: preprocessing GLSL source
-
-    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    ctx->env().ExecGL(ctx, [ctx, pro, type = type_, src = src_]() mutable {
-      auto sh = std::make_shared<Product>(ctx, GLuint {0}, FromType(type));
-      const GLchar* str = src.c_str();
-      glShaderSource(sh->id(), 1, &str, nullptr);
-      glCompileShader(sh->id());
-      assert(0 == glGetError());
-
-      GLint status;
-      glGetShaderiv(sh->id(), GL_COMPILE_STATUS, &status);
-      if (status == GL_TRUE) {
-        pro.Return(sh);
-      } else {
-        GLint len;
-        glGetShaderiv(sh->id(), GL_INFO_LOG_LENGTH, &len);
-
-        std::string ret(static_cast<size_t>(len), ' ');
-        glGetShaderInfoLog(sh->id(), len, nullptr, ret.data());
-
-        pro.Throw<nf7::Exception>(std::move(ret));
-      }
-    });
-    return pro.future();
+    return Product::Create(ctx, FromType(type_), src_);
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
@@ -747,60 +714,17 @@ struct Program {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
   try {
     auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
 
-    nf7::AggregatePromise sh_pro {ctx};
-    std::vector<
-        nf7::Future<
-            nf7::Mutex::Resource<
-                std::shared_ptr<nf7::gl::Shader>>>> sh;
-    for (auto& path : shaders_) {
-      sh.push_back(
-          base.ResolveOrThrow(path).
-          interfaceOrThrow<nf7::gl::ShaderFactory>().Create());
-      sh_pro.Add(sh.back());
-      // TODO: setup watcher
+    std::vector<nf7::File::Id> shaders;
+    for (const auto& path : shaders_) {
+      shaders.push_back(base.ResolveOrThrow(path).id());
     }
-
-    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    sh_pro.future().Then(nf7::Env::kGL, ctx, [ctx, pro, shaders = std::move(sh)](auto&) mutable {
-      pro.Wrap([&]() {
-        std::vector<std::shared_ptr<nf7::gl::Shader>> sh;
-        for (auto& s : shaders) {
-          sh.push_back(*s.value());
-        }
-        return Link(ctx, sh);
-      });
-    });
-    return pro.future();
+    return Product::Create(ctx, shaders);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
-  }
-  static std::shared_ptr<nf7::gl::Program> Link(
-      const std::shared_ptr<nf7::Context>&        ctx,
-      std::span<std::shared_ptr<nf7::gl::Shader>> shaders) {
-    auto prog = std::make_shared<nf7::gl::Program>(ctx, GLuint {0});
-    assert(prog->id() > 0);
-    for (auto& sh : shaders) {
-      glAttachShader(prog->id(), sh->id());
-    }
-    glLinkProgram(prog->id());
-
-    GLint status;
-    glGetProgramiv(prog->id(), GL_LINK_STATUS, &status);
-    if (status == GL_TRUE) {
-      return prog;
-    } else {
-      GLint len;
-      glGetProgramiv(prog->id(), GL_INFO_LOG_LENGTH, &len);
-
-      std::string ret(static_cast<size_t>(len), ' ');
-      glGetProgramInfoLog(prog->id(), len, nullptr, ret.data());
-      throw nf7::Exception {std::move(ret)};
-    }
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
@@ -961,94 +885,27 @@ struct VertexArray {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, nf7::Env::Watcher&) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
   try {
-    auto& base  = ctx->env().GetFileOrThrow(ctx->initiator());
-    auto  attrs = attrs_;  // copy it
+    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
 
-    nf7::AggregatePromise buf_pro {ctx};
-    std::vector<
-        std::pair<
-            nf7::File::Id,
-            nf7::Future<
-                nf7::Mutex::Resource<
-                    std::shared_ptr<nf7::gl::Buffer>>>>> bufs;
-    for (auto& attr : attrs) {
-      auto& f  = base.ResolveOrThrow(attr.buffer);
-      auto  fu = f.interfaceOrThrow<nf7::gl::BufferFactory>().Create();
-      bufs.emplace_back(f.id(), fu);
-      buf_pro.Add(fu);
-      // TODO: setup watcher
-    }
-
-    nf7::Future<std::shared_ptr<Product>>::Promise pro {ctx};
-    buf_pro.future().Then(
-        nf7::Env::kGL, ctx,
-        [ctx, pro, attrs = std::move(attrs), bufs = std::move(bufs)](auto&) mutable {
-      pro.Wrap([&]() { return Create(ctx, attrs, bufs); });
-    });
-    return pro.future();
-  } catch (nf7::Exception&) {
-    return {std::current_exception()};
-  }
-  static std::shared_ptr<nf7::gl::VertexArray> Create(
-      const std::shared_ptr<nf7::Context>& ctx, auto& attrs, auto& bufs) {
-    assert(attrs.size() == bufs.size());
-
-    std::vector<GLuint> bufids;
-    bufids.reserve(attrs.size());
-
-    // build metadata of new VAO
-    std::vector<nf7::gl::VertexArray::Meta::Attr> meta_attrs;
-    meta_attrs.reserve(attrs.size());
-    for (size_t i = 0; i < attrs.size(); ++i) {
-      const auto& attr = attrs[i];
-      const auto& buf  = **bufs[i].second.value();
-      bufids.push_back(buf.id());
-
-      // check buffer type
-      if (buf.meta().type != GL_ARRAY_BUFFER) {
-        throw nf7::Exception {
-          "buffer ("+std::to_string(i)+") is not GL_ARRAY_BUFFER"
-        };
-      }
-
-      // calculate meta data
-      const auto size = attr.size*(magic_enum::enum_integer(attr.type) & 0xF);
-      const auto stride = attr.stride?
-          static_cast<size_t>(attr.stride):
-          static_cast<size_t>(size);
-      meta_attrs.push_back({
-        .id                = bufs[i].first,
-        .size_per_vertex   = attr.divisor == 0? stride: 0,
-        .size_per_instance = attr.divisor >= 1? stride: 0,
+    std::vector<Product::Meta::Attr> attrs;
+    attrs.reserve(attrs_.size());
+    for (auto& attr : attrs_) {
+      attrs.push_back({
+        .buffer    = base.ResolveOrThrow(attr.buffer).id(),
+        .index     = attr.index,
+        .size      = attr.size,
+        .type      = ToAttrType(attr.type),
+        .normalize = attr.normalize,
+        .stride    = attr.stride,
+        .offset    = attr.offset,
+        .divisor   = attr.divisor,
       });
     }
-
-    // setup VAO
-    auto vao = std::make_shared<nf7::gl::VertexArray>(ctx, GLuint {0}, std::move(meta_attrs));
-    glBindVertexArray(vao->id());
-    for (size_t i = 0; i < attrs.size(); ++i) {
-      const auto& attr = attrs[i];
-
-      // attach buffer
-      glBindBuffer(GL_ARRAY_BUFFER, bufids[i]);
-      glEnableVertexAttribArray(attr.index);
-      glVertexAttribDivisor(attr.index, attr.divisor);
-      glVertexAttribPointer(
-          attr.index,
-          attr.size,
-          ToAttrType(attr.type),
-          attr.normalize,
-          attr.stride,
-          reinterpret_cast<GLvoid*>(static_cast<GLintptr>(attr.offset)));
-      glBindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    glBindVertexArray(0);
-
-    assert(0 == glGetError());
-    return vao;
+    return Product::Create(ctx, std::move(attrs));
+  } catch (nf7::Exception&) {
+    return {std::current_exception()};
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
