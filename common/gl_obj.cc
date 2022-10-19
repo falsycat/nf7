@@ -25,12 +25,22 @@ nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
 
 
 nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
-    const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept {
+    const std::shared_ptr<nf7::Context>& ctx,
+    GLenum type, GLint fmt, GLsizei w, GLsizei h, GLsizei d) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>>::Promise pro {ctx};
-  ctx->env().ExecGL(ctx, [ctx, type, pro]() mutable {
+  ctx->env().ExecGL(ctx, [ctx, type, fmt, w, h, d, pro]() mutable {
     GLuint id;
     glGenTextures(1, &id);
-    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, type));
+
+    glBindTexture(type, id);
+    glTexParameteri(type, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(type, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexImage2D(type, 0, fmt, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(type, 0);
+
+    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, type, fmt, w, h, d));
   });
   return pro.future();
 }

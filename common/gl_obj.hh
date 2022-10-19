@@ -75,21 +75,23 @@ using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>
 
 struct Obj_TextureMeta final {
  public:
+  // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept;
+      const std::shared_ptr<nf7::Context>& ctx,
+      GLenum type, GLint fmt, GLsizei w, GLsizei h, GLsizei d) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteTextures(1, &id);
   }
 
   Obj_TextureMeta() = delete;
-  Obj_TextureMeta(GLenum t) noexcept : type(t) {
+  Obj_TextureMeta(GLenum t, GLint f, GLsizei w, GLsizei h, GLsizei d) noexcept :
+      type(t), format(f), w(w), h(h), d(d) {
   }
 
-  const GLenum type;
-
-  GLint format = 0;
-  uint32_t w = 0, h = 0, d = 0;
+  const GLenum  type;
+  const GLint   format;
+  const GLsizei w, h, d;
 };
 using Texture        = Obj<Obj_TextureMeta>;
 using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture>>>;

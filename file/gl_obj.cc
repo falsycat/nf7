@@ -392,7 +392,7 @@ struct Texture {
   Texture& operator=(Texture&&) = default;
 
   void serialize(auto& ar) {
-    ar(type_, format_, comp_);
+    ar(type_, format_, comp_, w_, h_, d_);
   }
 
   std::string Stringify() noexcept {
@@ -404,6 +404,8 @@ struct Texture {
     st << YAML::Value << std::string {magic_enum::enum_name(format_)};
     st << YAML::Key   << "comp";
     st << YAML::Value << std::string {magic_enum::enum_name(comp_)};
+    st << YAML::Key   << "size";
+    st << YAML::Value << YAML::Flow << std::vector<uint32_t> {w_, h_, d_};
     st << YAML::EndMap;
     return std::string {st.c_str(), st.size()};
   }
@@ -412,16 +414,27 @@ struct Texture {
   try {
     const auto yaml = YAML::Load(v);
 
-    const auto new_type = magic_enum::
+    const auto type = magic_enum::
         enum_cast<Type>(yaml["type"].as<std::string>()).value();
-    const auto new_format = magic_enum::
+    const auto format = magic_enum::
         enum_cast<Format>(yaml["format"].as<std::string>()).value();
-    const auto new_comp = magic_enum::
+    const auto comp = magic_enum::
         enum_cast<Comp>(yaml["comp"].as<std::string>()).value();
+    const auto size = yaml["size"].as<std::vector<uint32_t>>();
 
-    type_   = new_type;
-    format_ = new_format;
-    comp_   = new_comp;
+    const auto dim = magic_enum::enum_integer(type) >> 4;
+    const auto itr = std::find(size.begin(), size.end(), 0);
+    if (dim > std::distance(size.begin(), itr)) {
+      throw nf7::Exception {"invalid size specification"};
+    }
+
+    type_   = type;
+    format_ = format;
+    comp_   = comp;
+
+    w_ = size.size() >= 1? size[0]: 0;
+    h_ = size.size() >= 2? size[1]: 0;
+    d_ = size.size() >= 3? size[2]: 0;
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {"unknown enum"};
   } catch (YAML::Exception& e) {
@@ -429,7 +442,11 @@ struct Texture {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return Product::Create(ctx, FromType(type_));
+    return Product::Create(
+        ctx, FromType(type_), ToInternalFormat(format_, comp_),
+        static_cast<GLsizei>(w_),
+        static_cast<GLsizei>(h_),
+        static_cast<GLsizei>(d_));
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -439,9 +456,7 @@ struct Texture {
       const auto& v = in.value;
 
       const auto vec = v.tuple("vec").vector();
-
       auto& tex = **res;
-      auto& m   = tex.meta();
 
       uint32_t w = 0, h = 0, d = 0;
       switch (type_) {
@@ -452,8 +467,6 @@ struct Texture {
         if (w == 0 || h == 0) return false;
         break;
       }
-      m.w = w, m.h = h, m.d = d;
-      m.format = ToInternalFormat(format_, comp_);
 
       const auto vecsz =
           w*h*                                        // number of texels
@@ -463,27 +476,25 @@ struct Texture {
         throw nf7::Exception {"vector is too small"};
       }
 
-      const auto type = ToCompType(format_);
       const auto fmt  = ToFormat(comp_);
-      handler->env().ExecGL(handler, [handler, res, &tex, &m, type, fmt, vec]() {
-        glBindTexture(m.type, tex.id());
-        switch (m.type) {
+      const auto type = ToCompType(format_);
+      handler->env().ExecGL(handler, [handler, res, &tex, w, h, d, fmt, type, vec]() {
+        const auto target = tex.meta().type;
+        glBindTexture(target, tex.id());
+        switch (target) {
         case GL_TEXTURE_2D:
         case GL_TEXTURE_RECTANGLE:
-          glTexImage2D(m.type, 0, m.format,
-                       static_cast<GLsizei>(m.w),
-                       static_cast<GLsizei>(m.h),
-                       0, fmt, type, vec->data());
+          glTexSubImage2D(target, 0,
+                       0, 0,
+                       static_cast<GLsizei>(w), static_cast<GLsizei>(h),
+                       fmt, type, vec->data());
           break;
         default:
           assert(false);
           break;
         }
-        glTexParameteri(m.type, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(m.type, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(m.type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(m.type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindTexture(m.type, 0);
+        glBindTexture(target, 0);
+        assert(0 == glGetError());
       });
       return true;
     } else {
@@ -523,6 +534,8 @@ struct Texture {
   Type    type_   = Type::Rect;
   Format  format_ = Format::U8;
   Comp    comp_   = Comp::RGBA;
+
+  uint32_t w_, h_, d_;
 
   static GLenum FromType(Type t) {
     return
