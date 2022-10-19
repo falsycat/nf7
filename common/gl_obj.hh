@@ -21,7 +21,7 @@ class Obj final {
  public:
   using Meta = T;
 
-  // NOT thread-safe
+  // must be called from main or sub task
   template <typename... Args>
   static nf7::Future<std::shared_ptr<Obj<T>>> Create(Args&&... args) noexcept {
     return Meta::Create(std::forward<Args>(args)...);
@@ -54,6 +54,7 @@ class Obj final {
 
 struct Obj_BufferMeta final {
  public:
+  // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept;
 
@@ -99,6 +100,7 @@ using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture
 
 struct Obj_ShaderMeta final {
  public:
+  // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
       GLenum                               type,
@@ -120,6 +122,7 @@ using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>
 
 struct Obj_ProgramMeta final {
  public:
+  // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
       const std::vector<nf7::File::Id>&    shaders) noexcept;
@@ -147,6 +150,7 @@ struct Obj_VertexArrayMeta final {
     GLuint        divisor;
   };
 
+  // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx, std::vector<Attr>&& attrs) noexcept;
 
@@ -154,6 +158,7 @@ struct Obj_VertexArrayMeta final {
     glDeleteVertexArrays(1, &id);
   }
 
+  // must be called from main or sub task
   static nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
       LockBuffers(
           const std::shared_ptr<nf7::Context>& ctx,
@@ -172,5 +177,43 @@ struct Obj_VertexArrayMeta final {
 };
 using VertexArray = Obj<Obj_VertexArrayMeta>;
 using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<VertexArray>>>;
+
+
+struct Obj_FramebufferMeta final {
+ public:
+  struct Attachment {
+    nf7::File::Id tex;
+    GLenum        slot;
+  };
+
+  // must be called from main or sub task
+  static nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx,
+      std::vector<Attachment>&&            attachments) noexcept;
+
+  static void Delete(GLuint id) noexcept {
+    glDeleteFramebuffers(1, &id);
+  }
+
+  // must be called from main or sub task
+  static nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> LockAttachments(
+      const std::shared_ptr<nf7::Context>& ctx,
+      std::span<const Attachment>          attachments) noexcept;
+
+  // must be called on GL thread
+  static void ThrowStatus(GLenum status);
+
+  Obj_FramebufferMeta(std::vector<Attachment>&& a) noexcept : attachments(std::move(a)) {
+  }
+
+  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> LockAttachments(
+      const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    return LockAttachments(ctx, attachments);
+  }
+
+  const std::vector<Attachment> attachments;
+};
+using Framebuffer = Obj<Obj_FramebufferMeta>;
+using FramebufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Framebuffer>>>;
 
 }  // namespace nf7::gl

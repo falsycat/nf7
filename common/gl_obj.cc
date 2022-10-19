@@ -240,4 +240,95 @@ try {
   return { std::current_exception() };
 }
 
+
+nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Obj_FramebufferMeta::Create(
+    const std::shared_ptr<nf7::Context>& ctx,
+    std::vector<Attachment>&&            atts) noexcept {
+  nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>>::Promise pro {ctx};
+  LockAttachments(ctx, atts).
+      Chain(nf7::Env::kGL, ctx, pro, [ctx, atts = std::move(atts)](auto& texs) mutable {
+        assert(atts.size() == texs.size());
+
+        GLuint id;
+        glGenFramebuffers(1, &id);
+
+        const char* err = nullptr;
+        glBindFramebuffer(GL_FRAMEBUFFER, id);
+        for (size_t i = 0; i < atts.size() && !err; ++i) {
+          glFramebufferTexture(GL_FRAMEBUFFER, atts[i].slot, (*texs[i])->id(), 0);
+          if (0 != glGetError()) {
+            err = "failed to attach texture";
+          }
+        }
+        const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        assert(0 == glGetError());
+
+        const auto ret = std::make_shared<Obj<Obj_FramebufferMeta>>(ctx, id, std::move(atts));
+        if (err) {
+          throw nf7::Exception {err};
+        }
+        ThrowStatus(status);
+        return ret;
+      });
+  return pro.future();
+}
+
+nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>
+    Obj_FramebufferMeta::LockAttachments(
+        const std::shared_ptr<nf7::Context>& ctx,
+        std::span<const Attachment>          attachments) noexcept
+try {
+  nf7::AggregatePromise apro {ctx};
+  std::vector<nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> fus;
+
+  for (const auto& attachment : attachments) {
+    nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>::Promise pro {ctx};
+    auto fu = ctx->env().GetFileOrThrow(attachment.tex).
+        interfaceOrThrow<nf7::gl::TextureFactory>().Create().
+        Chain(nf7::Env::kGL, ctx, pro, [](auto& tex) {
+          if ((*tex)->meta().type != GL_TEXTURE_2D) {
+            throw nf7::Exception {"only 2D texture is allowed"};
+          }
+          return tex;
+        });
+
+    fus.push_back(fu);
+    apro.Add(fu);
+  }
+
+  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>::Promise pro {ctx};
+  apro.future().Chain(pro, [fus = std::move(fus)](auto&) {
+    std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>> ret;
+    for (auto& fu : fus) {
+      ret.emplace_back(fu.value());
+    }
+    return ret;
+  });
+  return pro.future();
+} catch (nf7::Exception&) {
+  return { std::current_exception() };
+}
+
+void Obj_FramebufferMeta::ThrowStatus(GLenum status) {
+  switch (status) {
+  case GL_FRAMEBUFFER_COMPLETE:
+    return;
+  case GL_FRAMEBUFFER_UNDEFINED:
+    throw nf7::Exception {"no framebuffer bound"};
+  case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+    throw nf7::Exception {"no framebuffer bound"};
+  case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+    throw nf7::Exception {"nothing attached"};
+  case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+    throw nf7::Exception {"no color attachments"};
+  case GL_FRAMEBUFFER_UNSUPPORTED:
+    throw nf7::Exception {"unsupported internal format"};
+  case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+    throw nf7::Exception {"incomplete multisample"};
+  default:
+    throw nf7::Exception {"unknown framebuffer status"};
+  }
+}
+
 }  // namespace nf7::gl

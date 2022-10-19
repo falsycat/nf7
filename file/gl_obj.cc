@@ -815,7 +815,7 @@ struct VertexArray {
       }
       return nullptr;
     }
-    static void Validate(const std::vector<Attr>& attrs) {
+    static void Validate(std::span<const Attr> attrs) {
       for (auto& attr : attrs) {
         if (const auto msg = attr.Validate()) {
           throw nf7::Exception {"invalid attribute: "s+msg};
@@ -955,6 +955,129 @@ struct ObjBase<VertexArray>::TypeInfo final {
   static inline const nf7::GenericTypeInfo<ObjBase<VertexArray>> kType = {"GL/VertexArray", {"nf7::DirItem"}};
 };
 
+
+struct Framebuffer {
+ public:
+  static void UpdateTypeTooltip() noexcept {
+    ImGui::TextUnformatted("OpenGL Framebuffer Object");
+  }
+
+  static inline const std::vector<std::string> kInputs  = {
+  };
+  static inline const std::vector<std::string> kOutputs = {
+  };
+
+  using Product = nf7::gl::Framebuffer;
+
+  enum class Slot {
+    Color0, Color1, Color2, Color3, Color4, Color5, Color6, Color7,
+  };
+  struct Attachment {
+   public:
+    Slot            slot;
+    nf7::File::Path path;
+
+    void serialize(auto& ar) {
+      ar(slot, path);
+    }
+  };
+
+  Framebuffer() = default;
+  Framebuffer(const Framebuffer&) = default;
+  Framebuffer(Framebuffer&&) = default;
+  Framebuffer& operator=(const Framebuffer&) = default;
+  Framebuffer& operator=(Framebuffer&&) = default;
+
+  void serialize(auto& ar) {
+    ar(attachments_);
+  }
+
+  std::string Stringify() noexcept {
+    YAML::Emitter st;
+    st << YAML::BeginMap;
+    st << YAML::Key   << "attachments";
+    st << YAML::Value << YAML::BeginMap;
+    for (const auto& attachment : attachments_) {
+      st << YAML::Key   << std::string {magic_enum::enum_name(attachment.slot)};
+      st << YAML::Value << attachment.path.Stringify();
+    }
+    st << YAML::EndMap;
+    st << YAML::EndMap;
+    return std::string {st.c_str(), st.size()};
+  }
+  void Parse(const std::string& v)
+  try {
+    const auto  yaml             = YAML::Load(v);
+    const auto& yaml_attachments = yaml["attachments"];
+    std::vector<Attachment> attachments;
+    for (auto [slot, name] : magic_enum::enum_entries<Slot>()) {
+      if (const auto& yaml_attachment = yaml_attachments[std::string {name}]) {
+        attachments.push_back({
+          .slot = slot,
+          .path = nf7::File::Path::Parse(yaml_attachment.as<std::string>()),
+        });
+      }
+    }
+    attachments_ = std::move(attachments);
+  } catch (std::bad_optional_access&) {
+    throw nf7::Exception {std::string {"invalid enum"}};
+  } catch (YAML::Exception& e) {
+    throw nf7::Exception {std::string {"YAML error: "}+e.what()};
+  }
+
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  try {
+    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
+
+    std::vector<nf7::gl::Framebuffer::Meta::Attachment> attachments;
+    for (auto& attachment : attachments_) {
+      nf7::File::Id fid = 0;
+      if (attachment.path.terms().size() > 0) {
+        fid = base.ResolveOrThrow(attachment.path).id();
+      }
+      attachments.push_back({
+        .tex  = fid,
+        .slot = ToSlot(attachment.slot),
+      });
+    }
+    return Product::Create(ctx, std::move(attachments));
+  } catch (nf7::Exception&) {
+    return {std::current_exception()};
+  }
+
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
+              const nf7::Node::Lambda::Msg&) {
+    return false;
+  }
+
+  void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
+    if (prod) {
+      ImGui::Text("id: %zu", static_cast<size_t>(prod->id()));
+    }
+  }
+
+ private:
+  std::vector<Attachment> attachments_;
+
+  static GLenum ToSlot(Slot slot) {
+    return
+        slot == Slot::Color0? GL_COLOR_ATTACHMENT0:
+        slot == Slot::Color1? GL_COLOR_ATTACHMENT0+1:
+        slot == Slot::Color2? GL_COLOR_ATTACHMENT0+2:
+        slot == Slot::Color3? GL_COLOR_ATTACHMENT0+3:
+        slot == Slot::Color4? GL_COLOR_ATTACHMENT0+4:
+        slot == Slot::Color5? GL_COLOR_ATTACHMENT0+5:
+        slot == Slot::Color6? GL_COLOR_ATTACHMENT0+6:
+        slot == Slot::Color7? GL_COLOR_ATTACHMENT0+7:
+        throw 0;
+  }
+};
+template <>
+struct ObjBase<Framebuffer>::TypeInfo final {
+  static inline const nf7::GenericTypeInfo<ObjBase<Framebuffer>> kType = {"GL/Framebuffer", {"nf7::DirItem"}};
+};
+
 }
 }  // namespace nf7
 
@@ -969,5 +1092,9 @@ NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Format);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Comp);
 
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Shader::Type);
+
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::VertexArray::AttrType);
+
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Framebuffer::Slot);
 
 }  // namespace yas::detail
