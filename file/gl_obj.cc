@@ -740,11 +740,77 @@ struct Program {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
-              const nf7::Node::Lambda::Msg&) {
-    // TODO
-    return false;
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>& la,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>& prog,
+              const nf7::Node::Lambda::Msg& msg) {
+    const auto& base = la->env().GetFileOrThrow(la->initiator());
+
+    if (msg.name == "draw") {
+      const auto  mode     = ToDrawMode(msg.value.tuple("mode").string());
+      const auto  first    = msg.value.tuple("first").integer<GLint>();
+      const auto  count    = msg.value.tuple("count").integer<GLsizei>();
+      const auto& fbo_path = msg.value.tuple("fbo").string();
+      const auto& vao_path = msg.value.tuple("vao").string();
+
+      auto fbo_fu = base.
+          ResolveOrThrow(fbo_path).
+          interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
+
+      auto vao_fu = base.
+          ResolveOrThrow(vao_path).
+          interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
+
+      nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
+      nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise     vao_lock_pro;
+
+      fbo_fu.ThenIf([la, fbo_lock_pro](auto& fbo) mutable {
+        (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
+      });
+      vao_fu.ThenIf([la, vao_lock_pro](auto& vao) mutable {
+        (**vao).meta().LockBuffers(la).Chain(vao_lock_pro);
+      });
+
+      nf7::AggregatePromise apro {la};
+      auto fbo_lock_fu = fbo_lock_pro.future();
+      auto vao_lock_fu = vao_lock_pro.future();
+      apro.Add(fbo_lock_fu);
+      apro.Add(vao_lock_fu);
+
+      apro.future().Then(
+          nf7::Env::kGL, la,
+          [prog, fbo_fu, vao_fu, mode, first, count, fbo_lock_fu, vao_lock_fu](auto&) {
+            if (!fbo_lock_fu.done() || !vao_lock_fu.done()) {
+              // TODO
+              std::cout << "err" << std::endl;
+              return;
+            }
+            const auto& fbo = *fbo_fu.value();
+            const auto& vao = *vao_fu.value();
+
+            glUseProgram((*prog)->id());
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
+            glBindVertexArray(vao->id());
+
+            glViewport(0, 0, 256, 256);
+            glDrawArrays(mode, first, count);
+
+            const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glUseProgram(0);
+            assert(0 == glGetError());
+
+            try {
+              nf7::gl::Framebuffer::Meta::ThrowStatus(status);
+            } catch (nf7::Exception& e) {
+              std::cout << e.msg() << std::endl;
+            }
+          });
+      return false;
+    } else {
+      throw nf7::Exception {"unknown input: "+msg.name};
+    }
   }
 
   void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
@@ -755,6 +821,23 @@ struct Program {
 
  private:
   std::vector<nf7::File::Path> shaders_;
+
+
+  static GLenum ToDrawMode(std::string_view v) {
+    return
+        v == "Points"?                 GL_POINTS:
+        v == "LineStrip"?              GL_LINE_STRIP:
+        v == "LineLoop"?               GL_LINE_LOOP:
+        v == "Lines"?                  GL_LINES:
+        v == "LineStripAdjacency"?     GL_LINE_STRIP_ADJACENCY:
+        v == "LinesAdjacency"?         GL_LINES_ADJACENCY:
+        v == "TriangleStrip"?          GL_TRIANGLE_STRIP:
+        v == "TriangleFan"?            GL_TRIANGLE_FAN:
+        v == "Triangles"?              GL_TRIANGLES:
+        v == "TriangleStripAdjacency"? GL_TRIANGLE_STRIP_ADJACENCY:
+        v == "TrianglesAdjacency"?     GL_TRIANGLES_ADJACENCY:
+        throw nf7::Exception {"unknown draw mode"};
+  }
 };
 template <>
 struct ObjBase<Program>::TypeInfo final {

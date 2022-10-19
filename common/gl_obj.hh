@@ -139,6 +139,9 @@ using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program
 
 struct Obj_VertexArrayMeta final {
  public:
+  using LockedBuffersFuture =
+      nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>;
+
   struct Attr {
     nf7::File::Id buffer;
     GLuint        index;
@@ -159,7 +162,7 @@ struct Obj_VertexArrayMeta final {
   }
 
   // must be called from main or sub task
-  static nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
+  static LockedBuffersFuture
       LockBuffers(
           const std::shared_ptr<nf7::Context>& ctx,
           const std::vector<Attr>&             attrs,
@@ -181,6 +184,9 @@ using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Ver
 
 struct Obj_FramebufferMeta final {
  public:
+  using LockedAttachmentsFuture =
+      nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>;
+
   struct Attachment {
     nf7::File::Id tex;
     GLenum        slot;
@@ -196,7 +202,7 @@ struct Obj_FramebufferMeta final {
   }
 
   // must be called from main or sub task
-  static nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> LockAttachments(
+  static LockedAttachmentsFuture LockAttachments(
       const std::shared_ptr<nf7::Context>& ctx,
       std::span<const Attachment>          attachments) noexcept;
 
