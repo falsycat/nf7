@@ -325,6 +325,9 @@ class Future final {
   ThisFuture& Chain(auto& pro, auto&& func) noexcept {
     return Chain(nullptr, pro, std::move(func));
   }
+  ThisFuture& Chain(auto& pro) noexcept {
+    return Chain(pro, [](auto& v) { return v; });
+  }
 
   const auto& value() const {
     if (imm_) {
