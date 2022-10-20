@@ -1046,6 +1046,7 @@ struct Framebuffer {
   }
 
   static inline const std::vector<std::string> kInputs  = {
+    "clear",
   };
   static inline const std::vector<std::string> kOutputs = {
   };
@@ -1128,10 +1129,19 @@ struct Framebuffer {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
-              const nf7::Node::Lambda::Msg&) {
-    return false;
+  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             la,
+              const nf7::Mutex::Resource<std::shared_ptr<Product>>& fb,
+              const nf7::Node::Lambda::Msg&                         msg) {
+    if (msg.name == "clear") {
+      (**fb).meta().LockAttachments(la).ThenIf(nf7::Env::kGL, la, [fb](auto&) {
+        glBindFramebuffer(GL_FRAMEBUFFER, (**fb).id());
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      });
+      return false;
+    } else {
+      throw nf7::Exception {"unknown command: "+msg.name};
+    }
   }
 
   void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
