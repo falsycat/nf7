@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
 cmake_policy(SET CMP0077 NEW)
-cmake_policy(SET CMP0135 OLD)
 
 # ---- configuration ----
 project(nf7 C CXX)
