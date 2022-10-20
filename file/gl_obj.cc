@@ -747,10 +747,18 @@ struct Program {
 
     if (msg.name == "draw") {
       const auto  mode     = ToDrawMode(msg.value.tuple("mode").string());
-      const auto  first    = msg.value.tuple("first").integer<GLint>();
       const auto  count    = msg.value.tuple("count").integer<GLsizei>();
       const auto& fbo_path = msg.value.tuple("fbo").string();
       const auto& vao_path = msg.value.tuple("vao").string();
+
+      const auto& vp = msg.value.tuple("viewport");
+      const auto vp_x = vp.tuple(0).integer<GLint>();
+      const auto vp_y = vp.tuple(1).integer<GLint>();
+      const auto vp_w = vp.tuple(2).integer<GLsizei>();
+      const auto vp_h = vp.tuple(3).integer<GLsizei>();
+      if (vp_w < 0 || vp_h < 0) {
+        throw nf7::Exception {"negative size viewport"};
+      }
 
       auto fbo_fu = base.
           ResolveOrThrow(fbo_path).
@@ -777,8 +785,7 @@ struct Program {
       apro.Add(vao_lock_fu);
 
       apro.future().Then(
-          nf7::Env::kGL, la,
-          [prog, fbo_fu, vao_fu, mode, first, count, fbo_lock_fu, vao_lock_fu](auto&) {
+          nf7::Env::kGL, la, [=](auto&) {
             if (!fbo_lock_fu.done() || !vao_lock_fu.done()) {
               // TODO
               std::cout << "err" << std::endl;
@@ -791,8 +798,8 @@ struct Program {
             glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
             glBindVertexArray(vao->id());
 
-            glViewport(0, 0, 256, 256);
-            glDrawArrays(mode, first, count);
+            glViewport(vp_x, vp_y, vp_w, vp_h);
+            glDrawArrays(mode, 0, count);
 
             const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
