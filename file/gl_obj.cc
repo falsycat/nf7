@@ -748,6 +748,7 @@ struct Program {
     if (msg.name == "draw") {
       const auto  mode     = ToDrawMode(msg.value.tuple("mode").string());
       const auto  count    = msg.value.tuple("count").integer<GLsizei>();
+      const auto  inst     = msg.value.tuple("instance").integer<GLsizei>();
       const auto& fbo_path = msg.value.tuple("fbo").string();
       const auto& vao_path = msg.value.tuple("vao").string();
 
@@ -760,17 +761,17 @@ struct Program {
         throw nf7::Exception {"negative size viewport"};
       }
 
+      // find object
       auto fbo_fu = base.
           ResolveOrThrow(fbo_path).
           interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
-
       auto vao_fu = base.
           ResolveOrThrow(vao_path).
           interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
 
+      // lock child objects
       nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
       nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise     vao_lock_pro;
-
       fbo_fu.ThenIf([la, fbo_lock_pro](auto& fbo) mutable {
         (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
       });
@@ -778,42 +779,43 @@ struct Program {
         (**vao).meta().LockBuffers(la).Chain(vao_lock_pro);
       });
 
+      // wait for locking
       nf7::AggregatePromise apro {la};
       auto fbo_lock_fu = fbo_lock_pro.future();
       auto vao_lock_fu = vao_lock_pro.future();
       apro.Add(fbo_lock_fu);
       apro.Add(vao_lock_fu);
 
-      apro.future().Then(
-          nf7::Env::kGL, la, [=](auto&) {
-            if (!fbo_lock_fu.done() || !vao_lock_fu.done()) {
-              // TODO
-              std::cout << "err" << std::endl;
-              return;
-            }
-            const auto& fbo = *fbo_fu.value();
-            const auto& vao = *vao_fu.value();
+      // FIXME: deadlock when vao_fu or fbo_fu failed
+      apro.future().Then(nf7::Env::kGL, la, [=](auto&) {
+        if (!fbo_lock_fu.done() || !vao_lock_fu.done()) {
+          // TODO
+          std::cout << "err" << std::endl;
+          return;
+        }
+        const auto& fbo = *fbo_fu.value();
+        const auto& vao = *vao_fu.value();
 
-            glUseProgram((*prog)->id());
-            glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
-            glBindVertexArray(vao->id());
+        glUseProgram((*prog)->id());
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
+        glBindVertexArray(vao->id());
 
-            glViewport(vp_x, vp_y, vp_w, vp_h);
-            glDrawArrays(mode, 0, count);
+        glViewport(vp_x, vp_y, vp_w, vp_h);
+        glDrawArraysInstanced(mode, 0, count, inst);
 
-            const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
-            glBindVertexArray(0);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glUseProgram(0);
-            assert(0 == glGetError());
+        glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glUseProgram(0);
+        assert(0 == glGetError());
 
-            try {
-              nf7::gl::Framebuffer::Meta::ThrowStatus(status);
-            } catch (nf7::Exception& e) {
-              std::cout << e.msg() << std::endl;
-            }
-          });
+        try {
+          nf7::gl::Framebuffer::Meta::ThrowStatus(status);
+        } catch (nf7::Exception& e) {
+          std::cout << e.msg() << std::endl;
+        }
+      });
       return false;
     } else {
       throw nf7::Exception {"unknown input: "+msg.name};
