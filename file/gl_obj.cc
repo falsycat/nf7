@@ -744,57 +744,72 @@ struct Program {
               const nf7::Mutex::Resource<std::shared_ptr<Product>>& prog,
               const nf7::Node::Lambda::Msg& msg) {
     const auto& base = la->env().GetFileOrThrow(la->initiator());
+    const auto& v    = msg.value;
 
     if (msg.name == "draw") {
       const auto  mode     = ToDrawMode(msg.value.tuple("mode").string());
-      const auto  count    = msg.value.tuple("count").integer<GLsizei>();
-      const auto  inst     = msg.value.tuple("instance").integer<GLsizei>();
-      const auto& fbo_path = msg.value.tuple("fbo").string();
-      const auto& vao_path = msg.value.tuple("vao").string();
+      const auto  count    = v.tuple("count").integer<GLsizei>();
+      const auto  inst     = v.tupleOr("instance", nf7::Value::Integer{1}).integer<GLsizei>();
+      const auto& fbo_path = v.tuple("fbo").string();
+      const auto& vao_path = v.tuple("vao").string();
 
       const auto& vp = msg.value.tuple("viewport");
-      const auto vp_x = vp.tuple(0).integer<GLint>();
-      const auto vp_y = vp.tuple(1).integer<GLint>();
-      const auto vp_w = vp.tuple(2).integer<GLsizei>();
-      const auto vp_h = vp.tuple(3).integer<GLsizei>();
+      const auto vp_x = vp.tuple(0).integerOrScalar<GLint>();
+      const auto vp_y = vp.tuple(1).integerOrScalar<GLint>();
+      const auto vp_w = vp.tuple(2).integerOrScalar<GLsizei>();
+      const auto vp_h = vp.tuple(3).integerOrScalar<GLsizei>();
       if (vp_w < 0 || vp_h < 0) {
         throw nf7::Exception {"negative size viewport"};
       }
 
-      // find object
-      auto fbo_fu = base.
-          ResolveOrThrow(fbo_path).
-          interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
-      auto vao_fu = base.
-          ResolveOrThrow(vao_path).
-          interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
-
-      // lock child objects
-      nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
-      nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise     vao_lock_pro;
-      fbo_fu.ThenIf([la, fbo_lock_pro](auto& fbo) mutable {
-        (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
-      });
-      vao_fu.ThenIf([la, vao_lock_pro](auto& vao) mutable {
-        (**vao).meta().LockBuffers(la).Chain(vao_lock_pro);
-      });
-
-      // wait for locking
+      // this will be triggered when all preparation done
       nf7::AggregatePromise apro {la};
-      auto fbo_lock_fu = fbo_lock_pro.future();
-      auto vao_lock_fu = vao_lock_pro.future();
-      apro.Add(fbo_lock_fu);
-      apro.Add(vao_lock_fu);
 
-      // FIXME: deadlock when vao_fu or fbo_fu failed
+      // find, fetch and lock FBO
+      std::optional<nf7::gl::FramebufferFactory::Product>                fbo_fu;
+      std::optional<nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture> fbo_lock_fu;
+      {
+        fbo_fu = base.
+            ResolveOrThrow(fbo_path).
+            interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
+
+        nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
+        fbo_fu->ThenIf([la, fbo_lock_pro](auto& fbo) mutable {
+          (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
+        });
+
+        fbo_lock_fu = fbo_lock_pro.future();
+        apro.Add(*fbo_lock_fu);
+      }
+
+      // find, fetch and lock VAO
+      std::optional<nf7::gl::VertexArrayFactory::Product>            vao_fu;
+      std::optional<nf7::gl::VertexArray::Meta::LockedBuffersFuture> vao_lock_fu;
+      {
+        vao_fu = base.
+            ResolveOrThrow(vao_path).
+            interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
+
+        nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise vao_lock_pro;
+        vao_fu->ThenIf([la, vao_lock_pro](auto& vao) mutable {
+          (**vao).meta().LockBuffers(la).Chain(vao_lock_pro);
+        });
+
+        vao_lock_fu = vao_lock_pro.future();
+        apro.Add(*vao_lock_fu);
+      }
+
+      // execute drawing after successful locking
       apro.future().Then(nf7::Env::kGL, la, [=](auto&) {
-        if (!fbo_lock_fu.done() || !vao_lock_fu.done()) {
+        assert(fbo_lock_fu);
+        assert(vao_lock_fu);
+        if (!fbo_lock_fu->done() || !vao_lock_fu->done()) {
           // TODO
           std::cout << "err" << std::endl;
           return;
         }
-        const auto& fbo = *fbo_fu.value();
-        const auto& vao = *vao_fu.value();
+        const auto& fbo = *fbo_fu->value();
+        const auto& vao = *vao_fu->value();
 
         glUseProgram((*prog)->id());
         glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
