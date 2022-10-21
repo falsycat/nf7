@@ -121,20 +121,31 @@ class Value {
   const ConstTuple tuple() const { return get<Tuple>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
 
-  template <typename I>
-  I integer() const {
-    const auto ret = integer();
-    if constexpr (std::is_unsigned<I>::value) {
-      if (ret < 0) {
-        throw IncompatibleException("integer underflow");
-      }
-    } else {
-      if (ret != static_cast<Integer>(static_cast<I>(ret))) {
-        throw IncompatibleException("integer out of range");
-      }
-    }
-    return static_cast<I>(ret);
+  template <typename N>
+  N integer() const {
+    return SafeCast<N>(integer());
   }
+  template <typename N>
+  N scalar() const {
+    return SafeCast<N>(scalar());
+  }
+  template <typename N>
+  N integerOrScalar() const {
+    try {
+      return SafeCast<N>(integer());
+    } catch (nf7::Exception&) {
+      return SafeCast<N>(scalar());
+    }
+  }
+  template <typename N>
+  N scalarOrInteger() const {
+    try {
+      return SafeCast<N>(scalar());
+    } catch (nf7::Exception&) {
+      return SafeCast<N>(integer());
+    }
+  }
+
   const Value& tuple(size_t idx) const {
     auto& tup = *tuple();
     return idx < tup.size()? tup[idx].second:
@@ -146,6 +157,13 @@ class Value {
                              [&name](auto& x) { return x.first == name; });
     return itr < tup.end()? itr->second:
         throw IncompatibleException("unknown tuple field: "+std::string {name});
+  }
+  const Value& tupleOr(auto idx, const Value& v) const noexcept {
+    try {
+      return tuple(idx);
+    } catch (nf7::Exception&) {
+      return v;
+    }
   }
   template <typename T>
   std::shared_ptr<T> data() const {
@@ -187,20 +205,17 @@ class Value {
 
 
   template <typename T>
-  const T& get() const
-  try {
-    return std::get<T>(value_);
-  } catch (std::bad_variant_access&) {
-    throw IncompatibleException(
-        std::string{"expected "}+typeid(T).name()+" but it's "+typeName());
+  const T& get() const {
+    return const_cast<Value&>(*this).get<T>();
   }
   template <typename T>
   T& get()
   try {
     return std::get<T>(value_);
   } catch (std::bad_variant_access&) {
-    throw IncompatibleException(
-        std::string{"expected "}+typeid(T).name()+" but it's "+typeName());
+    std::stringstream st;
+    st << "expected " << typeid(T).name() << " but it's " << typeName();
+    throw IncompatibleException(st.str());
   }
   template <typename T>
   T getUniq() {
@@ -210,6 +225,28 @@ class Value {
     } else {
       return std::make_shared<typename T::element_type>(*v);
     }
+  }
+
+  template <typename R, typename N>
+  static R SafeCast(N in) {
+    const auto ret  = static_cast<R>(in);
+    const auto retn = static_cast<N>(ret);
+    if constexpr (std::is_unsigned<R>::value) {
+      if (in < 0) {
+        throw IncompatibleException("integer underflow");
+      }
+    }
+    if constexpr (std::is_integral<R>::value && std::is_integral<N>::value) {
+      if (in != retn) {
+        throw IncompatibleException("integer out of range");
+      }
+    }
+    if constexpr (std::is_integral<R>::value && std::is_floating_point<N>::value) {
+      if (std::max(retn, in) - std::min(retn, in) > 1) {
+        throw IncompatibleException("bad precision while conversion of floating point");
+      }
+    }
+    return ret;
   }
 };
 
