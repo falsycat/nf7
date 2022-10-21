@@ -83,6 +83,11 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
   lua_setmetatable(L, -2);
 }
 std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
+  // get absolute position on stack because recursion call may occur
+  if (idx < 0) {
+    idx = lua_gettop(L)+idx+1;
+  }
+
   if (lua_isnoneornil(L, idx)) {
     return nf7::Value {nf7::Value::Pulse {}};
   }
@@ -108,8 +113,8 @@ std::optional<nf7::Value> ToValue(lua_State* L, int idx) noexcept {
     std::vector<nf7::Value::TuplePair> tup;
     lua_pushnil(L);
     while (lua_next(L, idx)) {
-      std::string name = "";
-      if (lua_isstring(L, -2)) {
+      std::string name;
+      if (lua_type(L, -2) == LUA_TSTRING) {
         name = lua_tostring(L, -2);
       }
       auto val = ToValue(L, -1);
