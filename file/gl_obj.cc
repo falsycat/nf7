@@ -747,11 +747,11 @@ struct Program {
     const auto& v    = msg.value;
 
     if (msg.name == "draw") {
-      const auto  mode     = ToDrawMode(msg.value.tuple("mode").string());
-      const auto  count    = v.tuple("count").integer<GLsizei>();
-      const auto  inst     = v.tupleOr("instance", nf7::Value::Integer{1}).integer<GLsizei>();
-      const auto& fbo_path = v.tuple("fbo").string();
-      const auto& vao_path = v.tuple("vao").string();
+      const auto mode  = ToDrawMode(msg.value.tuple("mode").string());
+      const auto count = v.tuple("count").integer<GLsizei>();
+      const auto inst  = v.tupleOr("instance",        nf7::Value::Integer{1}).integer<GLsizei>();
+      const auto uni   = msg.value.tupleOr("uniform", nf7::Value::Tuple {});
+      uni.tuple();
 
       const auto& vp = msg.value.tuple("viewport");
       const auto vp_x = vp.tuple(0).integerOrScalar<GLint>();
@@ -770,7 +770,7 @@ struct Program {
       std::optional<nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture> fbo_lock_fu;
       {
         fbo_fu = base.
-            ResolveOrThrow(fbo_path).
+            ResolveOrThrow(v.tuple("fbo").string()).
             interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
 
         nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
@@ -787,7 +787,7 @@ struct Program {
       std::optional<nf7::gl::VertexArray::Meta::LockedBuffersFuture> vao_lock_fu;
       {
         vao_fu = base.
-            ResolveOrThrow(vao_path).
+            ResolveOrThrow(v.tuple("vao").string()).
             interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
 
         nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise vao_lock_pro;
@@ -798,6 +798,8 @@ struct Program {
         vao_lock_fu = vao_lock_pro.future();
         apro.Add(*vao_lock_fu);
       }
+
+      // TODO: find, fetch and lock textures
 
       // execute drawing after successful locking
       apro.future().Then(nf7::Env::kGL, la, [=](auto&) {
@@ -811,15 +813,24 @@ struct Program {
         const auto& fbo = *fbo_fu->value();
         const auto& vao = *vao_fu->value();
 
+        // bind objects
         glUseProgram((*prog)->id());
         glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
         glBindVertexArray(vao->id());
-
         glViewport(vp_x, vp_y, vp_w, vp_h);
-        glDrawArraysInstanced(mode, 0, count, inst);
 
+        // setup uniforms
+        for (const auto& p : *uni.tuple()) {
+          if (!SetUniform((*prog)->id(), p.first.c_str(), p.second)) {
+            // TODO: warn user that the value is ignored
+          }
+        }
+
+        // draw
+        glDrawArraysInstanced(mode, 0, count, inst);
         const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
+        // unbind all
         glBindVertexArray(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glUseProgram(0);
@@ -861,6 +872,47 @@ struct Program {
         v == "TriangleStripAdjacency"? GL_TRIANGLE_STRIP_ADJACENCY:
         v == "TrianglesAdjacency"?     GL_TRIANGLES_ADJACENCY:
         throw nf7::Exception {"unknown draw mode"};
+  }
+  static bool SetUniform(GLuint prog, const char* name, const nf7::Value& v) noexcept {
+    const GLint loc = glGetUniformLocation(prog, name);
+    if (loc < 0) {
+      return false;
+    }
+
+    // single integer
+    try {
+      glUniform1i(loc, v.integer<GLint>());
+      return true;
+    } catch (nf7::Exception&) {
+    }
+
+    // single float
+    try {
+      glUniform1f(loc, v.scalar<GLfloat>());
+      return true;
+    } catch (nf7::Exception&) {
+    }
+  
+    // 1~4 dim float vector
+    try {
+      const auto& tup = *v.tuple();
+      switch (tup.size()) {
+      case 1: glUniform1f(loc, tup[0].second.scalar<GLfloat>()); break;
+      case 2: glUniform2f(loc, tup[0].second.scalar<GLfloat>(),
+                               tup[1].second.scalar<GLfloat>()); break;
+      case 3: glUniform3f(loc, tup[0].second.scalar<GLfloat>(),
+                               tup[1].second.scalar<GLfloat>(),
+                               tup[2].second.scalar<GLfloat>()); break;
+      case 4: glUniform4f(loc, tup[0].second.scalar<GLfloat>(),
+                               tup[1].second.scalar<GLfloat>(),
+                               tup[2].second.scalar<GLfloat>(),
+                               tup[3].second.scalar<GLfloat>()); break;
+      default: throw nf7::Exception {"invalid tuple size (must be 1~4)"};
+      }
+      return true;
+    } catch (nf7::Exception&) {
+    }
+    return false;
   }
 };
 template <>
