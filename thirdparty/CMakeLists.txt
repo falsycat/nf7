@@ -1,9 +1,7 @@
 include(FetchContent)
-
-if (CMAKE_POLICY_DEFAULT_CMP0135)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
   cmake_policy(SET CMP0135 OLD)
 endif()
-
 
 if (NF7_STATIC)
   set(BUILD_SHARED_LIBS OFF)
