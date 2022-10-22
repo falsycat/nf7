@@ -28,6 +28,7 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
+#include "common/gl_fence.hh"
 #include "common/gl_obj.hh"
 #include "common/gui_config.hh"
 #include "common/life.hh"
@@ -363,9 +364,10 @@ struct Texture {
   }
 
   static inline const std::vector<std::string> kInputs = {
-    "upload",
+    "upload", "download",
   };
   static inline const std::vector<std::string> kOutputs = {
+    "buffer",
   };
 
   using Product = nf7::gl::Texture;
@@ -497,6 +499,55 @@ struct Texture {
         assert(0 == glGetError());
       });
       return true;
+    } else if (in.name == "download") {
+      const auto fmt = ToReadFormat(
+          in.value.tupleOr("comp", nf7::Value {""s}).string());
+
+      const auto type = ToCompType(magic_enum::enum_cast<Format>(
+          in.value.tupleOr("type", nf7::Value {""s}).string()).value_or(format_));
+
+      handler->env().ExecGL(handler, [handler, res, sender = in.sender, fmt, type]() {
+        GLuint pbo;
+        glGenBuffers(1, &pbo);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+
+        const auto& tex  = **res;
+        const auto  w    = tex.meta().w;
+        const auto  h    = tex.meta().h;
+        const auto  size = static_cast<size_t>(w*h)*CalcReadPixelSize(fmt, type);
+        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(size), nullptr, GL_DYNAMIC_READ);
+
+        const auto  target = tex.meta().type;
+        glBindTexture(target, tex.id());
+        glGetTexImage(target, 0, fmt, type, nullptr);
+        glBindTexture(target, 0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        assert(0 == glGetError());
+
+        nf7::gl::ExecFenceSync(handler).ThenIf([=, &tex](auto&) {
+          glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+
+          auto buf = std::make_shared<std::vector<uint8_t>>(size);
+
+          const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+          std::memcpy(buf->data(), ptr, size);
+          glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+
+          glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+          glDeleteBuffers(1, &pbo);
+          assert(0 == glGetError());
+
+          handler->env().ExecSub(handler, [=, &tex]() {
+            auto v = nf7::Value {std::vector<nf7::Value::TuplePair> {
+              {"w",      static_cast<nf7::Value::Integer>(w)},
+              {"h",      static_cast<nf7::Value::Integer>(h)},
+              {"vector", buf},
+            }};
+            sender->Handle("buffer", std::move(v), handler);
+          });
+        });
+      });
+      return false;
     } else {
       throw nf7::Exception {"unknown input: "+in.name};
     }
@@ -575,6 +626,54 @@ struct Texture {
           throw 0;
     }
     throw 0;
+  }
+
+  static GLenum ToReadFormat(Comp c) {
+    return
+        c == Comp::R?    GL_RED:
+        c == Comp::RG?   GL_RG:
+        c == Comp::RGB?  GL_RGB:
+        c == Comp::RGBA? GL_RGBA:
+        throw 0;
+  }
+  GLenum ToReadFormat(const std::string& v) {
+    // There's additional options for format enum for glGetTexture.
+    const auto comp = magic_enum::enum_cast<Comp>(v).value_or(comp_);
+    return
+        v == ""? ToReadFormat(comp):
+        v == "G"? GL_GREEN:
+        v == "B"? GL_BLUE:
+        throw nf7::Exception {"unknown comp specifier: "+v};
+  }
+  static size_t CalcReadPixelSize(GLenum fmt, GLenum type) noexcept {
+    size_t comp = 0;
+    switch (fmt) {
+    case GL_RED:
+    case GL_GREEN:
+    case GL_BLUE: comp = 1; break;
+    case GL_RG:   comp = 2; break;
+    case GL_RGB:  comp = 3; break;
+    case GL_RGBA: comp = 4; break;
+    default: assert(false);
+    }
+    size_t val = 0;
+    switch (type) {
+    case GL_UNSIGNED_BYTE:
+    case GL_BYTE:
+      val = 1;
+      break;
+    case GL_UNSIGNED_SHORT:
+    case GL_SHORT:
+    case GL_HALF_FLOAT:
+      val = 2;
+      break;
+    case GL_UNSIGNED_INT:
+    case GL_INT:
+    case GL_FLOAT:
+      val = 4;
+      break;
+    }
+    return comp * val;
   }
 };
 template <>
