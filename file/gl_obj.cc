@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <array>
 #include <cinttypes>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -14,6 +17,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
+#include <yas/types/std/array.hpp>
 #include <yas/types/std/string.hpp>
 #include <yas/types/std/vector.hpp>
 #include <yas/types/utility/usertype.hpp>
@@ -372,19 +376,19 @@ struct Texture {
 
   using Product = nf7::gl::Texture;
 
-  enum class Type {
+  enum class Type : uint8_t {
     Tex2D = 0x20,
     Rect  = 0x21,
   };
-  enum class Format {
+  enum class Format : uint8_t {
     U8   = 0x01,
     F32  = 0x14,
   };
   enum class Comp : uint8_t {
-    R    = 1,
-    RG   = 2,
-    RGB  = 3,
-    RGBA = 4,
+    R    = 0x01,
+    RG   = 0x02,
+    RGB  = 0x03,
+    RGBA = 0x04,
   };
 
   Texture() = default;
@@ -394,7 +398,7 @@ struct Texture {
   Texture& operator=(Texture&&) = default;
 
   void serialize(auto& ar) {
-    ar(type_, format_, comp_, w_, h_, d_);
+    ar(type_, format_, comp_, size_);
   }
 
   std::string Stringify() noexcept {
@@ -407,7 +411,12 @@ struct Texture {
     st << YAML::Key   << "comp";
     st << YAML::Value << std::string {magic_enum::enum_name(comp_)};
     st << YAML::Key   << "size";
-    st << YAML::Value << YAML::Flow << std::vector<uint32_t> {w_, h_, d_};
+    st << YAML::Value << YAML::Flow;
+    st << YAML::BeginSeq;
+    st << size_[0];
+    st << size_[1];
+    st << size_[2];
+    st << YAML::EndSeq;
     st << YAML::EndMap;
     return std::string {st.c_str(), st.size()};
   }
@@ -434,9 +443,8 @@ struct Texture {
     format_ = format;
     comp_   = comp;
 
-    w_ = size.size() >= 1? size[0]: 0;
-    h_ = size.size() >= 2? size[1]: 0;
-    d_ = size.size() >= 3? size[2]: 0;
+    std::copy(size.begin(), size.begin()+dim, size_.begin());
+    std::fill(size_.begin()+dim, size_.end(), 1);
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {"unknown enum"};
   } catch (YAML::Exception& e) {
@@ -444,11 +452,11 @@ struct Texture {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+    std::array<GLsizei, 3> size;
+    std::transform(size_.begin(), size_.end(), size.begin(),
+                   [](auto x) { return static_cast<GLsizei>(x); });
     return Product::Create(
-        ctx, FromType(type_), ToInternalFormat(format_, comp_),
-        static_cast<GLsizei>(w_),
-        static_cast<GLsizei>(h_),
-        static_cast<GLsizei>(d_));
+        ctx, FromType(type_), ToInternalFormat(format_, comp_), size);
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -460,19 +468,26 @@ struct Texture {
       const auto vec = v.tuple("vec").vector();
       auto& tex = **res;
 
-      uint32_t w = 0, h = 0, d = 0;
-      switch (type_) {
-      case Type::Tex2D:
-      case Type::Rect:
-        w = v.tuple("w").integer<uint32_t>();
-        h = v.tuple("h").integer<uint32_t>();
-        if (w == 0 || h == 0) return false;
-        break;
+      static const char* kOffsetNames[] = {"x", "y", "z"};
+      static const char* kSizeNames[]   = {"w", "h", "d"};
+      std::array<uint32_t, 3> offset = {0};
+      std::array<uint32_t, 3> size   = {1, 1, 1};
+
+      const auto dim = static_cast<size_t>(magic_enum::enum_integer(type_) >> 4);
+      for (size_t i = 0; i < dim; ++i) {
+        offset[i] = v.tupleOr(kOffsetNames[i], nf7::Value::Integer {0}).integer<uint32_t>();
+        size[i]   = v.tuple(kSizeNames[i]).integer<uint32_t>();
+        if (size[i] == 0) {
+          return false;
+        }
+        if (offset[i]+size[i] > size_[i]) {
+          throw nf7::Exception {"texture size overflow"};
+        }
       }
 
-      const auto vecsz =
-          w*h*                                        // number of texels
-          magic_enum::enum_integer(comp_)*            // number of color components
+      const auto texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
+      const auto vecsz = texel*
+          (magic_enum::enum_integer(comp_) & 0xF)*    // number of color components
           (magic_enum::enum_integer(format_) & 0xF);  // size of a component
       if (vec->size() < static_cast<size_t>(vecsz)) {
         throw nf7::Exception {"vector is too small"};
@@ -480,16 +495,18 @@ struct Texture {
 
       const auto fmt  = ToFormat(comp_);
       const auto type = ToCompType(format_);
-      handler->env().ExecGL(handler, [handler, res, &tex, w, h, d, fmt, type, vec]() {
+      handler->env().ExecGL(handler, [=, &tex]() {
         const auto target = tex.meta().type;
         glBindTexture(target, tex.id());
         switch (target) {
         case GL_TEXTURE_2D:
         case GL_TEXTURE_RECTANGLE:
           glTexSubImage2D(target, 0,
-                       0, 0,
-                       static_cast<GLsizei>(w), static_cast<GLsizei>(h),
-                       fmt, type, vec->data());
+                          static_cast<GLint>(offset[0]),
+                          static_cast<GLint>(offset[1]),
+                          static_cast<GLsizei>(size[0]),
+                          static_cast<GLsizei>(size[1]),
+                          fmt, type, vec->data());
           break;
         default:
           assert(false);
@@ -500,7 +517,7 @@ struct Texture {
       });
       return true;
     } else if (in.name == "download") {
-      const auto fmt = ToReadFormat(
+      const auto fmt = ToFetchFormat(
           in.value.tupleOr("comp", nf7::Value {""s}).string());
 
       const auto type = ToCompType(magic_enum::enum_cast<Format>(
@@ -511,11 +528,11 @@ struct Texture {
         glGenBuffers(1, &pbo);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
-        const auto& tex  = **res;
-        const auto  w    = tex.meta().w;
-        const auto  h    = tex.meta().h;
-        const auto  size = static_cast<size_t>(w*h)*CalcReadPixelSize(fmt, type);
-        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(size), nullptr, GL_DYNAMIC_READ);
+        const auto& tex   = **res;
+        const auto  size  = tex.meta().size;
+        const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
+        const auto  bsize = static_cast<size_t>(texel)*CalcFetchPixelSize(fmt, type);
+        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_DYNAMIC_READ);
 
         const auto  target = tex.meta().type;
         glBindTexture(target, tex.id());
@@ -527,10 +544,10 @@ struct Texture {
         nf7::gl::ExecFenceSync(handler).ThenIf([=, &tex](auto&) {
           glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
-          auto buf = std::make_shared<std::vector<uint8_t>>(size);
+          auto buf = std::make_shared<std::vector<uint8_t>>(bsize);
 
           const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-          std::memcpy(buf->data(), ptr, size);
+          std::memcpy(buf->data(), ptr, bsize);
           glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 
           glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -539,8 +556,9 @@ struct Texture {
 
           handler->env().ExecSub(handler, [=, &tex]() {
             auto v = nf7::Value {std::vector<nf7::Value::TuplePair> {
-              {"w",      static_cast<nf7::Value::Integer>(w)},
-              {"h",      static_cast<nf7::Value::Integer>(h)},
+              {"w",      static_cast<nf7::Value::Integer>(size[0])},
+              {"h",      static_cast<nf7::Value::Integer>(size[1])},
+              {"d",      static_cast<nf7::Value::Integer>(size[2])},
               {"vector", buf},
             }};
             sender->Handle("buffer", std::move(v), handler);
@@ -565,18 +583,19 @@ struct Texture {
                 static_cast<int>(c.size()), c.data(),
                 magic_enum::enum_integer(comp_));
 
+    ImGui::Text("size  : %" PRIu32 " x %" PRIu32 " x %" PRIu32, size_[0], size_[1], size_[2]);
+
     ImGui::Spacing();
     if (prod) {
       const auto  id = static_cast<intptr_t>(prod->id());
       const auto& m  = prod->meta();
-      ImGui::Text("  id: %" PRIiPTR, id);
-      ImGui::Text("size: %" PRIu32 " x %" PRIu32 " x %" PRIu32, m.w, m.h, m.d);
+      ImGui::Text("id: %" PRIiPTR, id);
 
       if (m.type == GL_TEXTURE_2D) {
         ImGui::Spacing();
         ImGui::TextUnformatted("preview:");
         ImGui::Image(reinterpret_cast<void*>(id),
-                     ImVec2 {static_cast<float>(m.w), static_cast<float>(m.h)});
+                     ImVec2 {static_cast<float>(size_[0]), static_cast<float>(size_[1])});
       }
     }
   }
@@ -586,7 +605,7 @@ struct Texture {
   Format  format_ = Format::U8;
   Comp    comp_   = Comp::RGBA;
 
-  uint32_t w_, h_, d_;
+  std::array<uint32_t, 3> size_ = {256, 256, 1};
 
   static GLenum FromType(Type t) {
     return
@@ -628,7 +647,7 @@ struct Texture {
     throw 0;
   }
 
-  static GLenum ToReadFormat(Comp c) {
+  static GLenum ToFetchFormat(Comp c) {
     return
         c == Comp::R?    GL_RED:
         c == Comp::RG?   GL_RG:
@@ -636,16 +655,16 @@ struct Texture {
         c == Comp::RGBA? GL_RGBA:
         throw 0;
   }
-  GLenum ToReadFormat(const std::string& v) {
+  GLenum ToFetchFormat(const std::string& v) {
     // There's additional options for format enum for glGetTexture.
     const auto comp = magic_enum::enum_cast<Comp>(v).value_or(comp_);
     return
-        v == ""? ToReadFormat(comp):
+        v == ""? ToFetchFormat(comp):
         v == "G"? GL_GREEN:
         v == "B"? GL_BLUE:
         throw nf7::Exception {"unknown comp specifier: "+v};
   }
-  static size_t CalcReadPixelSize(GLenum fmt, GLenum type) noexcept {
+  static size_t CalcFetchPixelSize(GLenum fmt, GLenum type) noexcept {
     size_t comp = 0;
     switch (fmt) {
     case GL_RED:

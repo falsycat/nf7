@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cassert>
 #include <memory>
 #include <utility>
@@ -79,20 +80,20 @@ struct Obj_TextureMeta final {
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
-      GLenum type, GLint fmt, GLsizei w, GLsizei h, GLsizei d) noexcept;
+      GLenum type, GLint fmt, std::array<GLsizei, 3> size) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteTextures(1, &id);
   }
 
   Obj_TextureMeta() = delete;
-  Obj_TextureMeta(GLenum t, GLint f, GLsizei w, GLsizei h, GLsizei d) noexcept :
-      type(t), format(f), w(w), h(h), d(d) {
+  Obj_TextureMeta(GLenum t, GLint f, std::array<GLsizei, 3> s) noexcept :
+      type(t), format(f), size(s) {
   }
 
-  const GLenum  type;
-  const GLint   format;
-  const GLsizei w, h, d;
+  const GLenum                 type;
+  const GLint                  format;
+  const std::array<GLsizei, 3> size;
 };
 using Texture        = Obj<Obj_TextureMeta>;
 using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture>>>;

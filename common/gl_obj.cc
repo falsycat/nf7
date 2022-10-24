@@ -1,6 +1,7 @@
 #include "common/gl_obj.hh"
 
 #include <algorithm>
+#include <array>
 #include <exception>
 #include <memory>
 #include <vector>
@@ -15,7 +16,7 @@ namespace nf7::gl {
 nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>>::Promise pro {ctx};
-  ctx->env().ExecGL(ctx, [ctx, type, pro]() mutable {
+  ctx->env().ExecGL(ctx, [=]() mutable {
     GLuint id;
     glGenBuffers(1, &id);
     pro.Return(std::make_shared<Obj<Obj_BufferMeta>>(ctx, id, type));
@@ -26,9 +27,9 @@ nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
 
 nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx,
-    GLenum type, GLint fmt, GLsizei w, GLsizei h, GLsizei d) noexcept {
+    GLenum type, GLint fmt, std::array<GLsizei, 3> size) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>>::Promise pro {ctx};
-  ctx->env().ExecGL(ctx, [ctx, type, fmt, w, h, d, pro]() mutable {
+  ctx->env().ExecGL(ctx, [=]() mutable {
     GLuint id;
     glGenTextures(1, &id);
 
@@ -37,10 +38,18 @@ nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
     glTexParameteri(type, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    glTexImage2D(type, 0, fmt, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    switch (type) {
+    case GL_TEXTURE_2D:
+    case GL_TEXTURE_RECTANGLE:
+      glTexImage2D(type, 0, fmt, size[0], size[1], 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+      break;
+    default:
+      assert(false && "unknown texture type");
+      break;
+    }
     glBindTexture(type, 0);
 
-    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, type, fmt, w, h, d));
+    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, type, fmt, size));
   });
   return pro.future();
 }
@@ -51,7 +60,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Obj_ShaderMeta::Create(
     GLenum                               type,
     const std::string&                   src) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>>::Promise pro {ctx};
-  ctx->env().ExecGL(ctx, [ctx, type, src, pro]() mutable {
+  ctx->env().ExecGL(ctx, [=]() mutable {
     const auto id = glCreateShader(type);
     if (id == 0) {
       pro.Throw<nf7::Exception>("failed to allocate new shader");
