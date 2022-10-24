@@ -32,6 +32,7 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_watcher.hh"
+#include "common/gl_enum.hh"
 #include "common/gl_fence.hh"
 #include "common/gl_obj.hh"
 #include "common/gui_config.hh"
@@ -233,22 +234,6 @@ struct Buffer {
 
   using Product = nf7::gl::Buffer;
 
-  enum class Type {
-    Array,
-    Element,
-  };
-  enum class Usage {
-    StaticDraw,
-    DynamicDraw,
-    StreamDraw,
-    StaticRead,
-    DynamicRead,
-    StreamRead,
-    StaticCopy,
-    DynamicCopy,
-    StreamCopy,
-  };
-
   Buffer() = default;
   Buffer(const Buffer&) = default;
   Buffer(Buffer&&) = default;
@@ -256,14 +241,14 @@ struct Buffer {
   Buffer& operator=(Buffer&&) = default;
 
   void serialize(auto& ar) {
-    ar(type_, usage_);
+    ar(target_, usage_);
   }
 
   std::string Stringify() noexcept {
     YAML::Emitter st;
     st << YAML::BeginMap;
-    st << YAML::Key   << "type";
-    st << YAML::Value << std::string {magic_enum::enum_name(type_)};
+    st << YAML::Key   << "target";
+    st << YAML::Value << std::string {magic_enum::enum_name(target_)};
     st << YAML::Key   << "usage";
     st << YAML::Value << std::string {magic_enum::enum_name(usage_)};
     st << YAML::EndMap;
@@ -274,13 +259,13 @@ struct Buffer {
   try {
     const auto yaml = YAML::Load(v);
 
-    const auto new_type = magic_enum::
-        enum_cast<Type>(yaml["type"].as<std::string>()).value();
-    const auto new_usage = magic_enum::
-        enum_cast<Usage>(yaml["usage"].as<std::string>()).value();
+    const auto target = magic_enum::
+        enum_cast<gl::BufferTarget>(yaml["target"].as<std::string>()).value();
+    const auto usage = magic_enum::
+        enum_cast<gl::BufferUsage>(yaml["usage"].as<std::string>()).value();
 
-    type_  = new_type;
-    usage_ = new_usage;
+    target_ = target;
+    usage_  = usage;
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {"unknown enum"};
   } catch (YAML::Exception& e) {
@@ -288,7 +273,7 @@ struct Buffer {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return Product::Create(ctx, FromType(type_));
+    return Product::Create(ctx, gl::ToEnum(target_));
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -298,7 +283,7 @@ struct Buffer {
       const auto& vec = in.value.vector();
       if (vec->size() == 0) return false;
 
-      const auto usage = FromUsage(usage_);
+      const auto usage = gl::ToEnum(usage_);
       handler->env().ExecGL(handler, [res, vec, usage]() {
         const auto n = static_cast<GLsizeiptr>(vec->size());
 
@@ -323,37 +308,18 @@ struct Buffer {
   }
 
   void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
-    const auto t = magic_enum::enum_name(type_);
-    ImGui::Text("type: %.*s", static_cast<int>(t.size()), t.data());
+    const auto t = magic_enum::enum_name(target_);
+    ImGui::Text("target: %.*s", static_cast<int>(t.size()), t.data());
     if (prod) {
+      ImGui::Spacing();
       ImGui::Text("  id: %zu", static_cast<size_t>(prod->id()));
       ImGui::Text("size: %zu bytes", prod->meta().size);
     }
   }
 
  private:
-  Type  type_  = Type::Array;
-  Usage usage_ = Usage::StaticDraw;
-
-  static GLenum FromType(Type t) {
-    return
-        t == Type::Array?   GL_ARRAY_BUFFER:
-        t == Type::Element? GL_ELEMENT_ARRAY_BUFFER:
-        throw 0;
-  }
-  static GLenum FromUsage(Usage u) {
-    return
-        u == Usage::StaticDraw?  GL_STATIC_DRAW:
-        u == Usage::DynamicDraw? GL_DYNAMIC_DRAW:
-        u == Usage::StreamDraw?  GL_STREAM_DRAW:
-        u == Usage::StaticRead?  GL_STATIC_READ:
-        u == Usage::DynamicRead? GL_DYNAMIC_READ:
-        u == Usage::StreamRead?  GL_STREAM_READ:
-        u == Usage::StaticCopy?  GL_STATIC_COPY:
-        u == Usage::DynamicCopy? GL_DYNAMIC_COPY:
-        u == Usage::StreamCopy?  GL_STREAM_COPY:
-        throw 0;
-  }
+  gl::BufferTarget target_ = gl::BufferTarget::Array;
+  gl::BufferUsage  usage_  = gl::BufferUsage::StaticDraw;
 };
 template <>
 struct ObjBase<Buffer>::TypeInfo final {
@@ -376,21 +342,6 @@ struct Texture {
 
   using Product = nf7::gl::Texture;
 
-  enum class Type : uint8_t {
-    Tex2D = 0x20,
-    Rect  = 0x21,
-  };
-  enum class Format : uint8_t {
-    U8   = 0x01,
-    F32  = 0x14,
-  };
-  enum class Comp : uint8_t {
-    R    = 0x01,
-    RG   = 0x02,
-    RGB  = 0x03,
-    RGBA = 0x04,
-  };
-
   Texture() = default;
   Texture(const Texture&) = default;
   Texture(Texture&&) = default;
@@ -398,16 +349,16 @@ struct Texture {
   Texture& operator=(Texture&&) = default;
 
   void serialize(auto& ar) {
-    ar(type_, format_, comp_, size_);
+    ar(target_, numtype_, comp_, size_);
   }
 
   std::string Stringify() noexcept {
     YAML::Emitter st;
     st << YAML::BeginMap;
-    st << YAML::Key   << "type";
-    st << YAML::Value << std::string {magic_enum::enum_name(type_)};
-    st << YAML::Key   << "format";
-    st << YAML::Value << std::string {magic_enum::enum_name(format_)};
+    st << YAML::Key   << "target";
+    st << YAML::Value << std::string {magic_enum::enum_name(target_)};
+    st << YAML::Key   << "numtype";
+    st << YAML::Value << std::string {magic_enum::enum_name(numtype_)};
     st << YAML::Key   << "comp";
     st << YAML::Value << std::string {magic_enum::enum_name(comp_)};
     st << YAML::Key   << "size";
@@ -425,23 +376,23 @@ struct Texture {
   try {
     const auto yaml = YAML::Load(v);
 
-    const auto type = magic_enum::
-        enum_cast<Type>(yaml["type"].as<std::string>()).value();
-    const auto format = magic_enum::
-        enum_cast<Format>(yaml["format"].as<std::string>()).value();
+    const auto target = magic_enum::
+        enum_cast<gl::TextureTarget>(yaml["target"].as<std::string>()).value();
+    const auto numtype = magic_enum::
+        enum_cast<gl::NumericType>(yaml["numtype"].as<std::string>()).value();
     const auto comp = magic_enum::
-        enum_cast<Comp>(yaml["comp"].as<std::string>()).value();
+        enum_cast<gl::ColorComp>(yaml["comp"].as<std::string>()).value();
     const auto size = yaml["size"].as<std::vector<uint32_t>>();
 
-    const auto dim = magic_enum::enum_integer(type) >> 4;
+    const auto dim = gl::GetDimension(target);
     const auto itr = std::find(size.begin(), size.end(), 0);
     if (dim > std::distance(size.begin(), itr)) {
       throw nf7::Exception {"invalid size specification"};
     }
 
-    type_   = type;
-    format_ = format;
-    comp_   = comp;
+    target_  = target;
+    numtype_ = numtype;
+    comp_    = comp;
 
     std::copy(size.begin(), size.begin()+dim, size_.begin());
     std::fill(size_.begin()+dim, size_.end(), 1);
@@ -451,12 +402,16 @@ struct Texture {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
+  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  try {
     std::array<GLsizei, 3> size;
     std::transform(size_.begin(), size_.end(), size.begin(),
                    [](auto x) { return static_cast<GLsizei>(x); });
+    // FIXME cast is unnecessary
     return Product::Create(
-        ctx, FromType(type_), ToInternalFormat(format_, comp_), size);
+        ctx, gl::ToEnum(target_), static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
+  } catch (nf7::Exception&) {
+    return {std::current_exception()};
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -473,7 +428,7 @@ struct Texture {
       std::array<uint32_t, 3> offset = {0};
       std::array<uint32_t, 3> size   = {1, 1, 1};
 
-      const auto dim = static_cast<size_t>(magic_enum::enum_integer(type_) >> 4);
+      const auto dim = gl::GetDimension(target_);
       for (size_t i = 0; i < dim; ++i) {
         offset[i] = v.tupleOr(kOffsetNames[i], nf7::Value::Integer {0}).integer<uint32_t>();
         size[i]   = v.tuple(kSizeNames[i]).integer<uint32_t>();
@@ -486,15 +441,13 @@ struct Texture {
       }
 
       const auto texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-      const auto vecsz = texel*
-          (magic_enum::enum_integer(comp_) & 0xF)*    // number of color components
-          (magic_enum::enum_integer(format_) & 0xF);  // size of a component
+      const auto vecsz = texel*gl::GetCompCount(comp_)*gl::GetByteSize(numtype_);
       if (vec->size() < static_cast<size_t>(vecsz)) {
         throw nf7::Exception {"vector is too small"};
       }
 
-      const auto fmt  = ToFormat(comp_);
-      const auto type = ToCompType(format_);
+      const auto fmt  = gl::ToEnum(comp_);
+      const auto type = gl::ToEnum(numtype_);
       handler->env().ExecGL(handler, [=, &tex]() {
         const auto target = tex.meta().type;
         glBindTexture(target, tex.id());
@@ -517,13 +470,12 @@ struct Texture {
       });
       return true;
     } else if (in.name == "download") {
-      const auto fmt = ToFetchFormat(
-          in.value.tupleOr("comp", nf7::Value {""s}).string());
+      const auto numtype = magic_enum::
+          enum_cast<gl::NumericType>(in.value.tuple("numtype").string()).value_or(numtype_);
+      const auto comp = magic_enum::
+          enum_cast<gl::ColorComp>(in.value.tuple("comp").string()).value_or(comp_);
 
-      const auto type = ToCompType(magic_enum::enum_cast<Format>(
-          in.value.tupleOr("type", nf7::Value {""s}).string()).value_or(format_));
-
-      handler->env().ExecGL(handler, [handler, res, sender = in.sender, fmt, type]() {
+      handler->env().ExecGL(handler, [=]() {
         GLuint pbo;
         glGenBuffers(1, &pbo);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
@@ -531,12 +483,12 @@ struct Texture {
         const auto& tex   = **res;
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-        const auto  bsize = static_cast<size_t>(texel)*CalcFetchPixelSize(fmt, type);
+        const auto  bsize = static_cast<size_t>(texel)*GetCompCount(comp)*GetByteSize(numtype);
         glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_DYNAMIC_READ);
 
         const auto  target = tex.meta().type;
         glBindTexture(target, tex.id());
-        glGetTexImage(target, 0, fmt, type, nullptr);
+        glGetTexImage(target, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
         glBindTexture(target, 0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         assert(0 == glGetError());
@@ -561,7 +513,7 @@ struct Texture {
               {"d",      static_cast<nf7::Value::Integer>(size[2])},
               {"vector", buf},
             }};
-            sender->Handle("buffer", std::move(v), handler);
+            in.sender->Handle("buffer", std::move(v), handler);
           });
         });
       });
@@ -572,18 +524,18 @@ struct Texture {
   }
 
   void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
-    const auto t = magic_enum::enum_name(type_);
-    ImGui::Text("type  : %.*s", static_cast<int>(t.size()), t.data());
+    const auto t = magic_enum::enum_name(target_);
+    ImGui::Text("target : %.*s", static_cast<int>(t.size()), t.data());
 
-    const auto f = magic_enum::enum_name(format_);
-    ImGui::Text("format: %.*s", static_cast<int>(f.size()), f.data());
+    const auto f = magic_enum::enum_name(numtype_);
+    ImGui::Text("numtype: %.*s", static_cast<int>(f.size()), f.data());
 
     const auto c = magic_enum::enum_name(comp_);
-    ImGui::Text("comp  : %.*s (%" PRIu8 " values)",
+    ImGui::Text("comp   : %.*s (%" PRIu8 " values)",
                 static_cast<int>(c.size()), c.data(),
                 magic_enum::enum_integer(comp_));
 
-    ImGui::Text("size  : %" PRIu32 " x %" PRIu32 " x %" PRIu32, size_[0], size_[1], size_[2]);
+    ImGui::Text("size   : %" PRIu32 " x %" PRIu32 " x %" PRIu32, size_[0], size_[1], size_[2]);
 
     ImGui::Spacing();
     if (prod) {
@@ -601,99 +553,11 @@ struct Texture {
   }
 
  private:
-  Type    type_   = Type::Rect;
-  Format  format_ = Format::U8;
-  Comp    comp_   = Comp::RGBA;
+  gl::TextureTarget target_  = gl::TextureTarget::Rect;
+  gl::NumericType   numtype_ = gl::NumericType::U8;
+  gl::ColorComp     comp_    = gl::ColorComp::RGBA;
 
   std::array<uint32_t, 3> size_ = {256, 256, 1};
-
-  static GLenum FromType(Type t) {
-    return
-        t == Type::Tex2D? GL_TEXTURE_2D:
-        t == Type::Rect?  GL_TEXTURE_RECTANGLE:
-        throw 0;
-  }
-  static GLenum ToCompType(Format c) {
-    return
-        c == Format::U8?  GL_UNSIGNED_BYTE:
-        c == Format::F32? GL_FLOAT:
-        throw 0;
-  }
-  static GLenum ToFormat(Comp f) {
-    return
-        f == Comp::R?    GL_RED:
-        f == Comp::RG?   GL_RG:
-        f == Comp::RGB?  GL_RGB:
-        f == Comp::RGBA? GL_RGBA:
-        throw 0;
-  }
-  static GLint ToInternalFormat(Format f, Comp c) {
-    switch (f) {
-    case Format::U8:
-      return
-          c == Comp::R?    GL_R8:
-          c == Comp::RG?   GL_RG8:
-          c == Comp::RGB?  GL_RGB8:
-          c == Comp::RGBA? GL_RGBA8:
-          throw 0;
-    case Format::F32:
-      return
-          c == Comp::R?    GL_R32F:
-          c == Comp::RG?   GL_RG32F:
-          c == Comp::RGB?  GL_RGB32F:
-          c == Comp::RGBA? GL_RGBA32F:
-          throw 0;
-    }
-    throw 0;
-  }
-
-  static GLenum ToFetchFormat(Comp c) {
-    return
-        c == Comp::R?    GL_RED:
-        c == Comp::RG?   GL_RG:
-        c == Comp::RGB?  GL_RGB:
-        c == Comp::RGBA? GL_RGBA:
-        throw 0;
-  }
-  GLenum ToFetchFormat(const std::string& v) {
-    // There's additional options for format enum for glGetTexture.
-    const auto comp = magic_enum::enum_cast<Comp>(v).value_or(comp_);
-    return
-        v == ""? ToFetchFormat(comp):
-        v == "G"? GL_GREEN:
-        v == "B"? GL_BLUE:
-        throw nf7::Exception {"unknown comp specifier: "+v};
-  }
-  static size_t CalcFetchPixelSize(GLenum fmt, GLenum type) noexcept {
-    size_t comp = 0;
-    switch (fmt) {
-    case GL_RED:
-    case GL_GREEN:
-    case GL_BLUE: comp = 1; break;
-    case GL_RG:   comp = 2; break;
-    case GL_RGB:  comp = 3; break;
-    case GL_RGBA: comp = 4; break;
-    default: assert(false);
-    }
-    size_t val = 0;
-    switch (type) {
-    case GL_UNSIGNED_BYTE:
-    case GL_BYTE:
-      val = 1;
-      break;
-    case GL_UNSIGNED_SHORT:
-    case GL_SHORT:
-    case GL_HALF_FLOAT:
-      val = 2;
-      break;
-    case GL_UNSIGNED_INT:
-    case GL_INT:
-    case GL_FLOAT:
-      val = 4;
-      break;
-    }
-    return comp * val;
-  }
 };
 template <>
 struct ObjBase<Texture>::TypeInfo final {
@@ -711,11 +575,6 @@ struct Shader {
   static inline const std::vector<std::string> kOutputs = {};
 
   using Product = nf7::gl::Shader;
-
-  enum class Type {
-    Vertex,
-    Fragment,
-  };
 
   Shader() = default;
   Shader(const Shader&) = default;
@@ -741,12 +600,12 @@ struct Shader {
   try {
     const auto yaml = YAML::Load(v);
 
-    const auto new_type = magic_enum::
-        enum_cast<Type>(yaml["type"].as<std::string>()).value();
-    auto new_src = yaml["src"].as<std::string>();
+    const auto type = magic_enum::
+        enum_cast<gl::ShaderType>(yaml["type"].as<std::string>()).value();
+    auto src = yaml["src"].as<std::string>();
 
-    type_ = new_type;
-    src_  = std::move(new_src);
+    type_ = type;
+    src_  = std::move(src);
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {"unknown enum"};
   } catch (YAML::Exception& e) {
@@ -756,7 +615,7 @@ struct Shader {
   nf7::Future<std::shared_ptr<Product>> Create(
       const std::shared_ptr<nf7::Context>& ctx) noexcept {
     // TODO: preprocessing GLSL source
-    return Product::Create(ctx, FromType(type_), src_);
+    return Product::Create(ctx, gl::ToEnum(type_), src_);
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
@@ -774,15 +633,8 @@ struct Shader {
   }
 
  private:
-  Type type_;
+  gl::ShaderType type_;
   std::string src_;
-
-  static GLenum FromType(Type t) {
-    return
-        t == Type::Vertex?   GL_VERTEX_SHADER:
-        t == Type::Fragment? GL_FRAGMENT_SHADER:
-        throw 0;
-  }
 };
 template <>
 struct ObjBase<Shader>::TypeInfo final {
@@ -865,7 +717,7 @@ struct Program {
     const auto& v    = msg.value;
 
     if (msg.name == "draw") {
-      const auto mode  = ToDrawMode(msg.value.tuple("mode").string());
+      const auto mode  = gl::ToEnum<gl::DrawMode>(msg.value.tuple("mode").string());
       const auto count = v.tuple("count").integer<GLsizei>();
       const auto inst  = v.tupleOr("instance",        nf7::Value::Integer{1}).integer<GLsizei>();
       const auto uni   = msg.value.tupleOr("uniform", nf7::Value::Tuple {});
@@ -976,21 +828,6 @@ struct Program {
   std::vector<nf7::File::Path> shaders_;
 
 
-  static GLenum ToDrawMode(std::string_view v) {
-    return
-        v == "Points"?                 GL_POINTS:
-        v == "LineStrip"?              GL_LINE_STRIP:
-        v == "LineLoop"?               GL_LINE_LOOP:
-        v == "Lines"?                  GL_LINES:
-        v == "LineStripAdjacency"?     GL_LINE_STRIP_ADJACENCY:
-        v == "LinesAdjacency"?         GL_LINES_ADJACENCY:
-        v == "TriangleStrip"?          GL_TRIANGLE_STRIP:
-        v == "TriangleFan"?            GL_TRIANGLE_FAN:
-        v == "Triangles"?              GL_TRIANGLES:
-        v == "TriangleStripAdjacency"? GL_TRIANGLE_STRIP_ADJACENCY:
-        v == "TrianglesAdjacency"?     GL_TRIANGLES_ADJACENCY:
-        throw nf7::Exception {"unknown draw mode"};
-  }
   static bool SetUniform(GLuint prog, const char* name, const nf7::Value& v) noexcept {
     const GLint loc = glGetUniformLocation(prog, name);
     if (loc < 0) {
@@ -1052,21 +889,10 @@ struct VertexArray {
 
   using Product = nf7::gl::VertexArray;
 
-  enum class AttrType {
-    I8  = 0x11,
-    U8  = 0x21,
-    U16 = 0x12,
-    I16 = 0x22,
-    U32 = 0x14,
-    I32 = 0x24,
-    F16 = 0x32,
-    F32 = 0x34,
-    F64 = 0x38,
-  };
   struct Attr {
     GLuint          index     = 0;
     GLint           size      = 1;
-    AttrType        type      = AttrType::F32;
+    gl::NumericType type      = gl::NumericType::F32;
     bool            normalize = false;
     GLsizei         stride    = 0;
     uint64_t        offset    = 0;
@@ -1158,7 +984,7 @@ struct VertexArray {
       attrs.push_back({
         .index     = attr["index"].as<GLuint>(),
         .size      = attr["size"].as<GLint>(),
-        .type      = magic_enum::enum_cast<AttrType>(attr["type"].as<std::string>()).value(),
+        .type      = magic_enum::enum_cast<gl::NumericType>(attr["type"].as<std::string>()).value(),
         .normalize = attr["normalize"].as<bool>(),
         .stride    = attr["stride"].as<GLsizei>(),
         .offset    = attr["offset"].as<uint64_t>(),
@@ -1186,7 +1012,7 @@ struct VertexArray {
         .buffer    = base.ResolveOrThrow(attr.buffer).id(),
         .index     = attr.index,
         .size      = attr.size,
-        .type      = ToAttrType(attr.type),
+        .type      = gl::ToEnum(attr.type),
         .normalize = attr.normalize,
         .stride    = attr.stride,
         .offset    = attr.offset,
@@ -1212,20 +1038,6 @@ struct VertexArray {
 
  private:
   std::vector<Attr> attrs_;
-
-  static GLenum ToAttrType(AttrType type) {
-    return
-        type == AttrType::U8? GL_UNSIGNED_BYTE:
-        type == AttrType::I8? GL_BYTE:
-        type == AttrType::U16? GL_UNSIGNED_SHORT:
-        type == AttrType::I16? GL_SHORT:
-        type == AttrType::U32? GL_UNSIGNED_INT:
-        type == AttrType::I32? GL_INT:
-        type == AttrType::F16? GL_HALF_FLOAT:
-        type == AttrType::F32? GL_FLOAT:
-        type == AttrType::F64? GL_DOUBLE:
-        throw 0;
-  }
 };
 template <>
 struct ObjBase<VertexArray>::TypeInfo final {
@@ -1247,13 +1059,9 @@ struct Framebuffer {
 
   using Product = nf7::gl::Framebuffer;
 
-  enum class Slot {
-    Color0, Color1, Color2, Color3, Color4, Color5, Color6, Color7,
-  };
   struct Attachment {
-   public:
-    Slot            slot;
-    nf7::File::Path path;
+    gl::FramebufferSlot slot;
+    nf7::File::Path     path;
 
     void serialize(auto& ar) {
       ar(slot, path);
@@ -1288,7 +1096,7 @@ struct Framebuffer {
     const auto  yaml             = YAML::Load(v);
     const auto& yaml_attachments = yaml["attachments"];
     std::vector<Attachment> attachments;
-    for (auto [slot, name] : magic_enum::enum_entries<Slot>()) {
+    for (auto [slot, name] : magic_enum::enum_entries<gl::FramebufferSlot>()) {
       if (const auto& yaml_attachment = yaml_attachments[std::string {name}]) {
         attachments.push_back({
           .slot = slot,
@@ -1315,7 +1123,7 @@ struct Framebuffer {
       }
       attachments.push_back({
         .tex  = fid,
-        .slot = ToSlot(attachment.slot),
+        .slot = gl::ToEnum(attachment.slot),
       });
     }
     return Product::Create(ctx, std::move(attachments));
@@ -1346,19 +1154,6 @@ struct Framebuffer {
 
  private:
   std::vector<Attachment> attachments_;
-
-  static GLenum ToSlot(Slot slot) {
-    return
-        slot == Slot::Color0? GL_COLOR_ATTACHMENT0:
-        slot == Slot::Color1? GL_COLOR_ATTACHMENT0+1:
-        slot == Slot::Color2? GL_COLOR_ATTACHMENT0+2:
-        slot == Slot::Color3? GL_COLOR_ATTACHMENT0+3:
-        slot == Slot::Color4? GL_COLOR_ATTACHMENT0+4:
-        slot == Slot::Color5? GL_COLOR_ATTACHMENT0+5:
-        slot == Slot::Color6? GL_COLOR_ATTACHMENT0+6:
-        slot == Slot::Color7? GL_COLOR_ATTACHMENT0+7:
-        throw 0;
-  }
 };
 template <>
 struct ObjBase<Framebuffer>::TypeInfo final {
@@ -1367,21 +1162,3 @@ struct ObjBase<Framebuffer>::TypeInfo final {
 
 }
 }  // namespace nf7
-
-
-namespace yas::detail {
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Buffer::Type);
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Buffer::Usage);
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Type);
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Format);
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Texture::Comp);
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Shader::Type);
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::VertexArray::AttrType);
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::Framebuffer::Slot);
-
-}  // namespace yas::detail
