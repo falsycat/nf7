@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -144,6 +145,10 @@ struct Obj_VertexArrayMeta final {
   using LockedBuffersFuture =
       nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>;
 
+  struct Index {
+    nf7::File::Id   buffer;
+    gl::NumericType numtype;
+  };
   struct Attr {
     nf7::File::Id   buffer;
     GLuint          location;
@@ -154,32 +159,47 @@ struct Obj_VertexArrayMeta final {
     uint64_t        offset;
     GLuint          divisor;
   };
+  struct ValidationHint {
+    ValidationHint() noexcept { }
+
+    size_t vertices  = 0;
+    size_t instances = 0;
+  };
 
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,std::vector<Attr>&& attrs) noexcept;
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::optional<Index>&          index,
+      std::vector<Attr>&&                  attrs) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteVertexArrays(1, &id);
   }
 
   // must be called from main or sub task
+  // it's guaranteed that the last element of the returned vector is an index buffer if index != std::nullopt
   static LockedBuffersFuture
       LockBuffers(
           const std::shared_ptr<nf7::Context>& ctx,
+          const std::optional<Index>&          index,
           const std::vector<Attr>&             attrs,
-          size_t                               vcnt = 0,
-          size_t                               icnt = 0) noexcept;
+          const ValidationHint&                vhint = {}) noexcept;
 
-  Obj_VertexArrayMeta(std::vector<Attr>&& a) noexcept : attrs(std::move(a)) {
+  Obj_VertexArrayMeta(const std::optional<Index>& idx,
+                      std::vector<Attr>&&         a) noexcept :
+      index(idx), attrs(std::move(a)) {
   }
 
+  // must be called from main or sub task
+  // it's guaranteed that the last element of the returned vector is an index buffer if index != std::nullopt
   nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>> LockBuffers(
-      const std::shared_ptr<nf7::Context>& ctx, size_t vcnt = 0, size_t icnt = 0) const noexcept {
-    return LockBuffers(ctx, attrs, vcnt, icnt);
+      const std::shared_ptr<nf7::Context>& ctx,
+      const ValidationHint&                vhint = {}) const noexcept {
+    return LockBuffers(ctx, index, attrs, vhint);
   }
 
-  const std::vector<Attr> attrs;
+  const std::optional<Index> index;
+  const std::vector<Attr>    attrs;
 };
 using VertexArray = Obj<Obj_VertexArrayMeta>;
 using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<VertexArray>>>;

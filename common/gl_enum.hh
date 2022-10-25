@@ -87,13 +87,13 @@ inline uint8_t GetCompCount(ColorComp c) noexcept {
 
 enum class BufferTarget {
   Array,
-  Element,
+  ElementArray,
 };
 template <>
 struct EnumMeta<BufferTarget> {
   static inline const std::unordered_map<BufferTarget, GLenum> glmap = {
-    {BufferTarget::Array,   GL_ARRAY_BUFFER},
-    {BufferTarget::Element, GL_ELEMENT_ARRAY_BUFFER},
+    {BufferTarget::Array,        GL_ARRAY_BUFFER},
+    {BufferTarget::ElementArray, GL_ELEMENT_ARRAY_BUFFER},
   };
 };
 

@@ -5,6 +5,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -179,16 +180,34 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
 
 
 nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Obj_VertexArrayMeta::Create(
-    const std::shared_ptr<nf7::Context>& ctx, std::vector<Attr>&& attrs) noexcept
+    const std::shared_ptr<nf7::Context>& ctx,
+    const std::optional<Index>&          index,
+    std::vector<Attr>&&                  attrs) noexcept
 try {
+  if (index) {
+    if (index->numtype != gl::NumericType::U8 &&
+        index->numtype != gl::NumericType::U16 &&
+        index->numtype != gl::NumericType::U32) {
+      throw nf7::Exception {"invalid index buffer numtype (only u8/u16/u32 are allowed)"};
+    }
+  }
+
   nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>>::Promise pro {ctx};
-  LockBuffers(ctx, attrs).Chain(
+  LockBuffers(ctx, index, attrs).Chain(
       nf7::Env::kGL, ctx, pro,
-      [ctx, attrs = std::move(attrs), pro](auto& bufs) mutable {
+      [ctx, index, attrs = std::move(attrs), pro](auto& bufs) mutable {
         // check all buffers
-        assert(attrs.size() == bufs.size());
-        for (auto& buf : bufs) {
-          if ((*buf.value()).meta().target != gl::BufferTarget::Array) {
+        if (index) {
+          assert(bufs.size() == attrs.size()+1);
+          const auto& m = (*bufs.back().value()).meta();
+          if (m.target != gl::BufferTarget::ElementArray) {
+            throw nf7::Exception {"index buffer is not ElementArray"};
+          }
+        } else {
+          assert(bufs.size() == attrs.size());
+        }
+        for (size_t i = 0; i < attrs.size(); ++i) {
+          if ((*bufs[i].value()).meta().target != gl::BufferTarget::Array) {
             throw nf7::Exception {"buffer is not Array"};
           }
         }
@@ -211,11 +230,15 @@ try {
               attr.stride,
               reinterpret_cast<GLvoid*>(static_cast<GLintptr>(attr.offset)));
         }
+        if (index) {
+          const auto& buf = *bufs.back().value();
+          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buf.id());
+        }
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         assert(0 == glGetError());
 
-        return std::make_shared<Obj<Obj_VertexArrayMeta>>(ctx, id, std::move(attrs));
+        return std::make_shared<Obj<Obj_VertexArrayMeta>>(ctx, id, index, std::move(attrs));
       });
   return pro.future();
 } catch (nf7::Exception&) {
@@ -225,8 +248,9 @@ try {
 nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
     Obj_VertexArrayMeta::LockBuffers(
         const std::shared_ptr<nf7::Context>& ctx,
+        const std::optional<Index>&          index,
         const std::vector<Attr>&             attrs,
-        size_t vcnt, size_t icnt) noexcept
+        const ValidationHint&                vhint) noexcept
 try {
   nf7::AggregatePromise apro {ctx};
 
@@ -235,17 +259,31 @@ try {
 
   // lock array buffers
   for (const auto& attr : attrs) {
-    size_t required = 0;
-    if (attr.divisor == 0 && vcnt > 0) {
-      required = static_cast<size_t>(attr.size)*vcnt*gl::GetByteSize(attr.type);
-    } else if (attr.divisor > 0 && icnt > 0) {
-      required = static_cast<size_t>(attr.stride)*(icnt-1) + attr.offset;
-    }
+    const size_t required =
+        // when non-instanced and no-index-buffer drawing
+        attr.divisor == 0 && vhint.vertices > 0 && !index?
+          static_cast<size_t>(attr.size) * vhint.vertices * gl::GetByteSize(attr.type):
+        // when instanced drawing
+        attr.divisor > 0 && vhint.instances > 0?
+          static_cast<size_t>(attr.stride) * (vhint.instances-1) + attr.offset:
+        size_t {0};
 
     auto& factory = ctx->env().
         GetFileOrThrow(attr.buffer).
         interfaceOrThrow<gl::BufferFactory>();
     auto fu = LockAndValidate(ctx, factory, gl::BufferTarget::Array, required);
+    apro.Add(fu);
+    fus.emplace_back(fu);
+  }
+
+  // lock index buffers (it must be the last element in `fus`)
+  if (index) {
+    const auto required = gl::GetByteSize(index->numtype) * vhint.vertices;
+
+    auto& factory = ctx->env().
+        GetFileOrThrow(index->buffer).
+        interfaceOrThrow<gl::BufferFactory>();
+    auto fu = LockAndValidate(ctx, factory, gl::BufferTarget::ElementArray, required);
     apro.Add(fu);
     fus.emplace_back(fu);
   }

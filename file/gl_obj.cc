@@ -761,9 +761,13 @@ struct Program {
             ResolveOrThrow(v.tuple("vao").string()).
             interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
 
+        nf7::gl::VertexArray::Meta::ValidationHint vhint;
+        vhint.vertices  = static_cast<size_t>(count);
+        vhint.instances = static_cast<size_t>(inst);
+
         nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise vao_lock_pro;
-        vao_fu->ThenIf([la, vao_lock_pro](auto& vao) mutable {
-          (**vao).meta().LockBuffers(la).Chain(vao_lock_pro);
+        vao_fu->ThenIf([la, vao_lock_pro, vhint](auto& vao) mutable {
+          (**vao).meta().LockBuffers(la, vhint).Chain(vao_lock_pro);
         });
 
         vao_lock_fu = vao_lock_pro.future();
@@ -798,7 +802,12 @@ struct Program {
         }
 
         // draw
-        glDrawArraysInstanced(mode, 0, count, inst);
+        if (vao->meta().index) {
+          const auto numtype = gl::ToEnum(vao->meta().index->numtype);
+          glDrawElementsInstanced(mode, count, numtype, nullptr, inst);
+        } else {
+          glDrawArraysInstanced(mode, 0, count, inst);
+        }
         const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
         // unbind all
@@ -891,7 +900,7 @@ struct VertexArray {
   using Product = nf7::gl::VertexArray;
 
   struct Attr {
-    GLuint          index     = 0;
+    GLuint          location  = 0;
     GLint           size      = 1;
     gl::NumericType type      = gl::NumericType::F32;
     bool            normalize = false;
@@ -901,12 +910,12 @@ struct VertexArray {
     nf7::File::Path buffer    = {};
 
     void serialize(auto& ar) {
-      ar(index, size, type, normalize, stride, offset, divisor, buffer);
+      ar(location, size, type, normalize, stride, offset, divisor, buffer);
     }
 
     const char* Validate() const noexcept {
-      if (index >= GL_MAX_VERTEX_ATTRIBS) {
-        return "too huge index";
+      if (location >= GL_MAX_VERTEX_ATTRIBS) {
+        return "too huge location";
       }
       if (size <= 0 || 4 < size) {
         return "invalid size (1, 2, 3 or 4 are allowed)";
@@ -927,10 +936,10 @@ struct VertexArray {
       }
       std::unordered_set<GLuint> idx;
       for (auto& attr : attrs) {
-        const auto [itr, uniq] = idx.insert(attr.index);
+        const auto [itr, uniq] = idx.insert(attr.location);
         (void) itr;
         if (!uniq) {
-          throw nf7::Exception {"attribute index duplication"};
+          throw nf7::Exception {"attribute location duplicated"};
         }
       }
     }
@@ -943,19 +952,26 @@ struct VertexArray {
   VertexArray& operator=(VertexArray&&) = default;
 
   void serialize(auto& ar) {
-    ar(attrs_);
+    ar(index_, index_numtype_, attrs_);
     Attr::Validate(attrs_);
   }
 
   std::string Stringify() noexcept {
     YAML::Emitter st;
     st << YAML::BeginMap;
+    st << YAML::Key   << "index";
+    st << YAML::BeginMap;
+    st << YAML::Key   << "buffer";
+    st << YAML::Value << index_.Stringify();
+    st << YAML::Key   << "type";
+    st << YAML::Value << std::string {magic_enum::enum_name(index_numtype_)};
+    st << YAML::EndMap;
     st << YAML::Key   << "attrs";
     st << YAML::Value << YAML::BeginSeq;
     for (const auto& attr : attrs_) {
       st << YAML::BeginMap;
-      st << YAML::Key   << "index";
-      st << YAML::Value << attr.index;
+      st << YAML::Key   << "location";
+      st << YAML::Value << attr.location;
       st << YAML::Key   << "size";
       st << YAML::Value << attr.size;
       st << YAML::Key   << "type";
@@ -980,10 +996,15 @@ struct VertexArray {
   try {
     const auto yaml = YAML::Load(v);
 
+    auto index = nf7::File::Path::Parse(yaml["index"]["buffer"].as<std::string>());
+
+    const auto index_numtype = magic_enum::enum_cast<gl::NumericType>(
+        yaml["index"]["type"].as<std::string>()).value();
+
     std::vector<Attr> attrs;
     for (const auto& attr : yaml["attrs"]) {
       attrs.push_back({
-        .index     = attr["index"].as<GLuint>(),
+        .location  = attr["location"].as<GLuint>(),
         .size      = attr["size"].as<GLint>(),
         .type      = magic_enum::enum_cast<gl::NumericType>(attr["type"].as<std::string>()).value(),
         .normalize = attr["normalize"].as<bool>(),
@@ -995,7 +1016,9 @@ struct VertexArray {
     }
     Attr::Validate(attrs);
 
-    attrs_ = std::move(attrs);
+    index_         = std::move(index);
+    index_numtype_ = index_numtype;
+    attrs_         = std::move(attrs);
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {std::string {"invalid enum"}};
   } catch (YAML::Exception& e) {
@@ -1006,12 +1029,19 @@ struct VertexArray {
   try {
     auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
 
+    std::optional<nf7::gl::VertexArray::Meta::Index> index;
+    if (index_.terms().size() > 0) {
+      index.emplace();
+      index->buffer  = base.ResolveOrThrow(index_).id();
+      index->numtype = index_numtype_;
+    }
+
     std::vector<Product::Meta::Attr> attrs;
     attrs.reserve(attrs_.size());
     for (auto& attr : attrs_) {
       attrs.push_back({
         .buffer    = base.ResolveOrThrow(attr.buffer).id(),
-        .index     = attr.index,
+        .location  = attr.location,
         .size      = attr.size,
         .type      = attr.type,
         .normalize = attr.normalize,
@@ -1020,7 +1050,7 @@ struct VertexArray {
         .divisor   = attr.divisor,
       });
     }
-    return Product::Create(ctx, std::move(attrs));
+    return Product::Create(ctx, index, std::move(attrs));
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
@@ -1038,6 +1068,8 @@ struct VertexArray {
   }
 
  private:
+  nf7::File::Path index_;
+  gl::NumericType index_numtype_;
   std::vector<Attr> attrs_;
 };
 template <>
