@@ -471,10 +471,22 @@ struct Texture {
       });
       return true;
     } else if (in.name == "download") {
-      const auto numtype = magic_enum::
-          enum_cast<gl::NumericType>(in.value.tuple("numtype").string()).value_or(numtype_);
-      const auto comp = magic_enum::
-          enum_cast<gl::ColorComp>(in.value.tuple("comp").string()).value_or(comp_);
+      auto numtype = numtype_;
+      auto comp    = comp_;
+      try {
+        try {
+          numtype = magic_enum::enum_cast<
+              gl::NumericType>(in.value.tuple("numtype").string()).value();
+        } catch (nf7::Exception&) {
+        }
+        try {
+          comp = magic_enum::enum_cast<
+              gl::ColorComp>(in.value.tuple("comp").string()).value();
+        } catch (nf7::Exception&) {
+        }
+      } catch (std::bad_optional_access&) {
+        throw nf7::Exception {"unknown enum"};
+      }
 
       handler->env().ExecGL(handler, [=]() {
         GLuint pbo;
