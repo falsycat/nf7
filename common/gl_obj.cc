@@ -14,12 +14,12 @@
 namespace nf7::gl {
 
 nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
-    const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept {
+    const std::shared_ptr<nf7::Context>& ctx, gl::BufferTarget target) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=]() mutable {
     GLuint id;
     glGenBuffers(1, &id);
-    pro.Return(std::make_shared<Obj<Obj_BufferMeta>>(ctx, id, type));
+    pro.Return(std::make_shared<Obj<Obj_BufferMeta>>(ctx, id, target));
   });
   return pro.future();
 }
@@ -27,29 +27,29 @@ nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
 
 nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx,
-    GLenum type, GLint fmt, std::array<GLsizei, 3> size) noexcept {
+    gl::TextureTarget target, GLint fmt, std::array<GLsizei, 3> size) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=]() mutable {
     GLuint id;
     glGenTextures(1, &id);
 
-    glBindTexture(type, id);
-    glTexParameteri(type, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(type, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    switch (type) {
-    case GL_TEXTURE_2D:
-    case GL_TEXTURE_RECTANGLE:
-      glTexImage2D(type, 0, fmt, size[0], size[1], 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    const auto t = gl::ToEnum(target);
+    glBindTexture(t, id);
+    glTexParameteri(t, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(t, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(t, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(t, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    switch (gl::GetDimension(target)) {
+    case 2:
+      glTexImage2D(t, 0, fmt, size[0], size[1], 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
       break;
     default:
-      assert(false && "unknown texture type");
+      assert(false && "unknown texture target");
       break;
     }
-    glBindTexture(type, 0);
+    glBindTexture(t, 0);
 
-    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, type, fmt, size));
+    pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, target, fmt, size));
   });
   return pro.future();
 }
@@ -57,11 +57,12 @@ nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
 
 nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Obj_ShaderMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx,
-    GLenum                               type,
+    gl::ShaderType                       type,
     const std::string&                   src) noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=]() mutable {
-    const auto id = glCreateShader(type);
+    const auto t  = gl::ToEnum(type);
+    const auto id = glCreateShader(t);
     if (id == 0) {
       pro.Throw<nf7::Exception>("failed to allocate new shader");
       return;
@@ -146,7 +147,7 @@ try {
         // check all buffers
         assert(attrs.size() == bufs.size());
         for (auto& buf : bufs) {
-          if ((*buf.value()).meta().type != GL_ARRAY_BUFFER) {
+          if ((*buf.value()).meta().target != gl::BufferTarget::Array) {
             throw nf7::Exception {"buffer is not Array"};
           }
         }
@@ -164,7 +165,7 @@ try {
           glVertexAttribPointer(
               attr.index,
               attr.size,
-              attr.type,
+              gl::ToEnum(attr.type),
               attr.normalize,
               attr.stride,
               reinterpret_cast<GLvoid*>(static_cast<GLintptr>(attr.offset)));
@@ -194,28 +195,7 @@ try {
     // calculate size required to the buffer
     size_t required = 0;
     if (attr.divisor == 0 && vcnt > 0) {
-      required = static_cast<size_t>(attr.size)*vcnt;
-      switch (attr.type) {
-      case GL_UNSIGNED_BYTE:
-      case GL_BYTE:
-        required *= 1;
-        break;
-      case GL_UNSIGNED_SHORT:
-      case GL_SHORT:
-      case GL_HALF_FLOAT:
-        required *= 2;
-        break;
-      case GL_UNSIGNED_INT:
-      case GL_INT:
-      case GL_FLOAT:
-        required *= 4;
-        break;
-      case GL_DOUBLE:
-        required *= 8;
-        break;
-      default:
-        throw nf7::Exception {"unknown attribute type"};
-      }
+      required = static_cast<size_t>(attr.size)*vcnt*gl::GetByteSize(attr.type);
     } else if (attr.divisor > 0 && icnt > 0) {
       required = static_cast<size_t>(attr.stride)*(icnt-1) + attr.offset;
     }
@@ -230,7 +210,7 @@ try {
           return v;
         });
 
-    // register a future of the validation
+    // register the validation future
     apro.Add(pro.future());
     fus.emplace_back(pro.future());
   }
@@ -264,7 +244,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Obj_FramebufferMeta::Crea
         const char* err = nullptr;
         glBindFramebuffer(GL_FRAMEBUFFER, id);
         for (size_t i = 0; i < atts.size() && !err; ++i) {
-          glFramebufferTexture(GL_FRAMEBUFFER, atts[i].slot, (*texs[i])->id(), 0);
+          glFramebufferTexture(GL_FRAMEBUFFER, gl::ToEnum(atts[i].slot), (*texs[i])->id(), 0);
           if (0 != glGetError()) {
             err = "failed to attach texture";
           }
@@ -296,7 +276,7 @@ try {
     auto fu = ctx->env().GetFileOrThrow(attachment.tex).
         interfaceOrThrow<nf7::gl::TextureFactory>().Create().
         Chain(nf7::Env::kGL, ctx, pro, [](auto& tex) {
-          if ((*tex)->meta().type != GL_TEXTURE_2D) {
+          if ((*tex)->meta().target != gl::TextureTarget::Tex2D) {
             throw nf7::Exception {"only 2D texture is allowed"};
           }
           return tex;

@@ -12,6 +12,7 @@
 
 #include "common/factory.hh"
 #include "common/future.hh"
+#include "common/gl_enum.hh"
 #include "common/mutex.hh"
 
 
@@ -57,17 +58,17 @@ struct Obj_BufferMeta final {
  public:
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, GLenum type) noexcept;
+      const std::shared_ptr<nf7::Context>& ctx, gl::BufferTarget target) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteBuffers(1, &id);
   }
 
   Obj_BufferMeta() = delete;
-  Obj_BufferMeta(GLenum t) noexcept : type(t) {
+  Obj_BufferMeta(gl::BufferTarget t) noexcept : target(t) {
   }
 
-  const GLenum type;
+  const gl::BufferTarget target;
 
   size_t size = 0;
 };
@@ -80,18 +81,18 @@ struct Obj_TextureMeta final {
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
-      GLenum type, GLint fmt, std::array<GLsizei, 3> size) noexcept;
+      gl::TextureTarget target, GLint fmt, std::array<GLsizei, 3> size) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteTextures(1, &id);
   }
 
   Obj_TextureMeta() = delete;
-  Obj_TextureMeta(GLenum t, GLint f, std::array<GLsizei, 3> s) noexcept :
-      type(t), format(f), size(s) {
+  Obj_TextureMeta(gl::TextureTarget t, GLint f, std::array<GLsizei, 3> s) noexcept :
+      target(t), format(f), size(s) {
   }
 
-  const GLenum                 type;
+  const gl::TextureTarget      target;
   const GLint                  format;
   const std::array<GLsizei, 3> size;
 };
@@ -104,7 +105,7 @@ struct Obj_ShaderMeta final {
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
-      GLenum                               type,
+      gl::ShaderType                       type,
       const std::string&                   src) noexcept;
 
   static void Delete(GLuint id) noexcept {
@@ -112,10 +113,10 @@ struct Obj_ShaderMeta final {
   }
 
   Obj_ShaderMeta() = delete;
-  Obj_ShaderMeta(GLenum t) noexcept : type(t) {
+  Obj_ShaderMeta(gl::ShaderType t) noexcept : type(t) {
   }
 
-  const GLenum type;
+  const gl::ShaderType type;
 };
 using Shader = Obj<Obj_ShaderMeta>;
 using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>>;
@@ -144,14 +145,14 @@ struct Obj_VertexArrayMeta final {
       nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>;
 
   struct Attr {
-    nf7::File::Id buffer;
-    GLuint        index;
-    GLint         size;
-    GLenum        type;
-    bool          normalize;
-    GLsizei       stride;
-    uint64_t      offset;
-    GLuint        divisor;
+    nf7::File::Id   buffer;
+    GLuint          index;
+    GLint           size;
+    gl::NumericType type;
+    bool            normalize;
+    GLsizei         stride;
+    uint64_t        offset;
+    GLuint          divisor;
   };
 
   // must be called from main or sub task
@@ -189,8 +190,8 @@ struct Obj_FramebufferMeta final {
       nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>;
 
   struct Attachment {
-    nf7::File::Id tex;
-    GLenum        slot;
+    nf7::File::Id       tex;
+    gl::FramebufferSlot slot;
   };
 
   // must be called from main or sub task

@@ -273,7 +273,7 @@ struct Buffer {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return Product::Create(ctx, gl::ToEnum(target_));
+    return Product::Create(ctx, target_);
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
@@ -289,16 +289,17 @@ struct Buffer {
 
         auto& buf = **res;
         auto& m   = buf.meta();
-        glBindBuffer(m.type, buf.id());
+        const auto t = gl::ToEnum(m.target);
+        glBindBuffer(t, buf.id());
         {
           if (m.size != vec->size()) {
             m.size = vec->size();
-            glBufferData(m.type, n, vec->data(), usage);
+            glBufferData(t, n, vec->data(), usage);
           } else {
-            glBufferSubData(m.type, 0, n, vec->data());
+            glBufferSubData(t, 0, n, vec->data());
           }
         }
-        glBindBuffer(m.type, 0);
+        glBindBuffer(t, 0);
         assert(0 == glGetError());
       });
       return true;
@@ -409,7 +410,7 @@ struct Texture {
                    [](auto x) { return static_cast<GLsizei>(x); });
     // FIXME cast is unnecessary
     return Product::Create(
-        ctx, gl::ToEnum(target_), static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
+        ctx, target_, static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
@@ -449,12 +450,12 @@ struct Texture {
       const auto fmt  = gl::ToEnum(comp_);
       const auto type = gl::ToEnum(numtype_);
       handler->env().ExecGL(handler, [=, &tex]() {
-        const auto target = tex.meta().type;
-        glBindTexture(target, tex.id());
-        switch (target) {
+        const auto t = gl::ToEnum(tex.meta().target);
+        glBindTexture(t, tex.id());
+        switch (t) {
         case GL_TEXTURE_2D:
         case GL_TEXTURE_RECTANGLE:
-          glTexSubImage2D(target, 0,
+          glTexSubImage2D(t, 0,
                           static_cast<GLint>(offset[0]),
                           static_cast<GLint>(offset[1]),
                           static_cast<GLsizei>(size[0]),
@@ -465,7 +466,7 @@ struct Texture {
           assert(false);
           break;
         }
-        glBindTexture(target, 0);
+        glBindTexture(t, 0);
         assert(0 == glGetError());
       });
       return true;
@@ -486,10 +487,10 @@ struct Texture {
         const auto  bsize = static_cast<size_t>(texel)*GetCompCount(comp)*GetByteSize(numtype);
         glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_DYNAMIC_READ);
 
-        const auto  target = tex.meta().type;
-        glBindTexture(target, tex.id());
-        glGetTexImage(target, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
-        glBindTexture(target, 0);
+        const auto t = gl::ToEnum(tex.meta().target);
+        glBindTexture(t, tex.id());
+        glGetTexImage(t, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
+        glBindTexture(t, 0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         assert(0 == glGetError());
 
@@ -543,7 +544,7 @@ struct Texture {
       const auto& m  = prod->meta();
       ImGui::Text("id: %" PRIiPTR, id);
 
-      if (m.type == GL_TEXTURE_2D) {
+      if (m.target == gl::TextureTarget::Tex2D) {
         ImGui::Spacing();
         ImGui::TextUnformatted("preview:");
         ImGui::Image(reinterpret_cast<void*>(id),
@@ -615,7 +616,7 @@ struct Shader {
   nf7::Future<std::shared_ptr<Product>> Create(
       const std::shared_ptr<nf7::Context>& ctx) noexcept {
     // TODO: preprocessing GLSL source
-    return Product::Create(ctx, gl::ToEnum(type_), src_);
+    return Product::Create(ctx, type_, src_);
   }
 
   bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
@@ -1012,7 +1013,7 @@ struct VertexArray {
         .buffer    = base.ResolveOrThrow(attr.buffer).id(),
         .index     = attr.index,
         .size      = attr.size,
-        .type      = gl::ToEnum(attr.type),
+        .type      = attr.type,
         .normalize = attr.normalize,
         .stride    = attr.stride,
         .offset    = attr.offset,
@@ -1123,7 +1124,7 @@ struct Framebuffer {
       }
       attachments.push_back({
         .tex  = fid,
-        .slot = gl::ToEnum(attachment.slot),
+        .slot = attachment.slot,
       });
     }
     return Product::Create(ctx, std::move(attachments));
