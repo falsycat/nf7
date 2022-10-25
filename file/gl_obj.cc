@@ -733,8 +733,12 @@ struct Program {
       const auto mode  = gl::ToEnum<gl::DrawMode>(msg.value.tuple("mode").string());
       const auto count = v.tuple("count").integer<GLsizei>();
       const auto inst  = v.tupleOr("instance",        nf7::Value::Integer{1}).integer<GLsizei>();
-      const auto uni   = msg.value.tupleOr("uniform", nf7::Value::Tuple {});
-      uni.tuple();
+
+      const auto uni = msg.value.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
+      const auto tex = msg.value.tupleOr("texture", nf7::Value::Tuple {}).tuple();
+      if (tex->size() > GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS) {
+        throw nf7::Exception {"too many textures specified"};
+      }
 
       const auto& vp = msg.value.tuple("viewport");
       const auto vp_x = vp.tuple(0).integerOrScalar<GLint>();
@@ -786,10 +790,20 @@ struct Program {
         apro.Add(*vao_lock_fu);
       }
 
-      // TODO: find, fetch and lock textures
+      // find, fetch and lock textures
+      std::vector<std::pair<std::string, nf7::gl::TextureFactory::Product>> tex_fu;
+      tex_fu.reserve(tex->size());
+      for (auto& p : *tex) {
+        auto fu = base.
+            ResolveOrThrow(p.second.string()).
+            interfaceOrThrow<nf7::gl::TextureFactory>().
+            Create();
+        tex_fu.emplace_back(p.first, fu);
+        apro.Add(fu);
+      }
 
       // execute drawing after successful locking
-      apro.future().Then(nf7::Env::kGL, la, [=](auto&) {
+      apro.future().Then(nf7::Env::kGL, la, [=, tex_fu = std::move(tex_fu)](auto&) {
         assert(fbo_lock_fu);
         assert(vao_lock_fu);
         if (!fbo_lock_fu->done() || !vao_lock_fu->done()) {
@@ -807,9 +821,26 @@ struct Program {
         glViewport(vp_x, vp_y, vp_w, vp_h);
 
         // setup uniforms
-        for (const auto& p : *uni.tuple()) {
+        for (const auto& p : *uni) {
           if (!SetUniform((*prog)->id(), p.first.c_str(), p.second)) {
             // TODO: warn user that the value is ignored
+          }
+        }
+
+        // bind textures
+        for (size_t i = 0; i < tex_fu.size(); ++i) {
+          const auto& p = tex_fu[i];
+          try {
+            const GLint loc = glGetUniformLocation((*prog)->id(), p.first.c_str());
+            if (loc < 0) {
+              throw nf7::Exception {"missing uniform to bind texture"};
+            }
+            const auto& tex = *p.second.value();
+            glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + i));
+            glBindTexture(gl::ToEnum(tex->meta().target), tex->id());
+            glUniform1i(loc, static_cast<GLint>(i));
+          } catch (nf7::Exception&) {
+            // TODO
           }
         }
 
