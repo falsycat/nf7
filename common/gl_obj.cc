@@ -3,15 +3,56 @@
 #include <algorithm>
 #include <array>
 #include <exception>
+#include <functional>
 #include <memory>
+#include <sstream>
 #include <vector>
 
 #include "common/aggregate_promise.hh"
+#include "common/factory.hh"
 #include "common/future.hh"
+#include "common/gl_enum.hh"
 #include "common/mutex.hh"
 
 
 namespace nf7::gl {
+
+template <typename T>
+auto LockAndValidate(const std::shared_ptr<nf7::Context>&                         ctx,
+                     nf7::AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<T>>>& factory,
+                     std::function<void(const typename T::Meta&)>&&               validator) noexcept {
+  typename nf7::Future<nf7::Mutex::Resource<std::shared_ptr<T>>>::Promise pro {ctx};
+  factory.Create().Chain(pro, [validator](auto& v) {
+        validator((*v)->meta());
+        return v;
+      });
+  return pro.future();
+}
+static auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
+                            nf7::gl::BufferFactory&              factory,
+                            nf7::gl::BufferTarget                target,
+                            size_t                               required) noexcept {
+  return LockAndValidate<gl::Buffer>(ctx, factory, [target, required](auto& m) {
+    if (m.target != target) {
+      throw nf7::Exception {"incompatible buffer target"};
+    }
+    if (m.size < required) {
+      std::stringstream st;
+      st << "buffer shortage (" << m.size << "/" << required << ")";
+      throw nf7::Exception {st.str()};
+    }
+  });
+}
+static auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
+                            nf7::gl::TextureFactory&             factory,
+                            nf7::gl::TextureTarget               target) noexcept {
+  return LockAndValidate<gl::Texture>(ctx, factory, [target](auto& m) {
+    if (m.target != target) {
+      throw nf7::Exception {"incompatible texture target"};
+    }
+  });
+}
+
 
 nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx, gl::BufferTarget target) noexcept {
@@ -160,10 +201,10 @@ try {
           const auto& buf  = *bufs[i].value();
 
           glBindBuffer(GL_ARRAY_BUFFER, buf.id());
-          glEnableVertexAttribArray(attr.index);
-          glVertexAttribDivisor(attr.index, attr.divisor);
+          glEnableVertexAttribArray(attr.location);
+          glVertexAttribDivisor(attr.location, attr.divisor);
           glVertexAttribPointer(
-              attr.index,
+              attr.location,
               attr.size,
               gl::ToEnum(attr.type),
               attr.normalize,
@@ -181,18 +222,19 @@ try {
   return {std::current_exception()};
 }
 
-nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>> Obj_VertexArrayMeta::LockBuffers(
-    const std::shared_ptr<nf7::Context>& ctx,
-    const std::vector<Attr>&             attrs,
-    size_t vcnt, size_t icnt) noexcept
+nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
+    Obj_VertexArrayMeta::LockBuffers(
+        const std::shared_ptr<nf7::Context>& ctx,
+        const std::vector<Attr>&             attrs,
+        size_t vcnt, size_t icnt) noexcept
 try {
-  std::vector<nf7::gl::BufferFactory::Product> fus;
-
   nf7::AggregatePromise apro {ctx};
-  for (const auto& attr : attrs) {
-    nf7::File& f = ctx->env().GetFileOrThrow(attr.buffer);
 
-    // calculate size required to the buffer
+  std::vector<nf7::gl::BufferFactory::Product> fus;
+  fus.reserve(1+attrs.size());
+
+  // lock array buffers
+  for (const auto& attr : attrs) {
     size_t required = 0;
     if (attr.divisor == 0 && vcnt > 0) {
       required = static_cast<size_t>(attr.size)*vcnt*gl::GetByteSize(attr.type);
@@ -200,25 +242,19 @@ try {
       required = static_cast<size_t>(attr.stride)*(icnt-1) + attr.offset;
     }
 
-    // validation after the lock
-    nf7::Future<nf7::Mutex::Resource<std::shared_ptr<nf7::gl::Buffer>>>::Promise pro {ctx};
-    f.interfaceOrThrow<nf7::gl::BufferFactory>().Create().
-        Chain(pro, [pro, required](auto& v) mutable {
-          if ((*v)->meta().size < required) {
-            throw nf7::Exception {"buffer shortage"};
-          }
-          return v;
-        });
-
-    // register the validation future
-    apro.Add(pro.future());
-    fus.emplace_back(pro.future());
+    auto& factory = ctx->env().
+        GetFileOrThrow(attr.buffer).
+        interfaceOrThrow<gl::BufferFactory>();
+    auto fu = LockAndValidate(ctx, factory, gl::BufferTarget::Array, required);
+    apro.Add(fu);
+    fus.emplace_back(fu);
   }
 
   // wait for all registered futures
   nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>::Promise pro {ctx};
   apro.future().Chain(pro, [fus = std::move(fus)](auto&) {
     std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>> ret;
+    ret.reserve(fus.size());
     for (auto& fu : fus) {
       ret.emplace_back(fu.value());
     }
@@ -270,25 +306,21 @@ nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>
 try {
   nf7::AggregatePromise apro {ctx};
   std::vector<nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> fus;
+  fus.reserve(attachments.size());
 
   for (const auto& attachment : attachments) {
-    nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>::Promise pro {ctx};
-    auto fu = ctx->env().GetFileOrThrow(attachment.tex).
-        interfaceOrThrow<nf7::gl::TextureFactory>().Create().
-        Chain(nf7::Env::kGL, ctx, pro, [](auto& tex) {
-          if ((*tex)->meta().target != gl::TextureTarget::Tex2D) {
-            throw nf7::Exception {"only 2D texture is allowed"};
-          }
-          return tex;
-        });
-
-    fus.push_back(fu);
+    auto& factory = ctx->env().
+        GetFileOrThrow(attachment.tex).
+        interfaceOrThrow<nf7::gl::TextureFactory>();
+    auto fu = LockAndValidate(ctx, factory, gl::TextureTarget::Tex2D);
     apro.Add(fu);
+    fus.push_back(fu);
   }
 
   nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>::Promise pro {ctx};
   apro.future().Chain(pro, [fus = std::move(fus)](auto&) {
     std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>> ret;
+    ret.reserve(fus.size());
     for (auto& fu : fus) {
       ret.emplace_back(fu.value());
     }

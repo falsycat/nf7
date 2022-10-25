@@ -146,7 +146,7 @@ struct Obj_VertexArrayMeta final {
 
   struct Attr {
     nf7::File::Id   buffer;
-    GLuint          index;
+    GLuint          location;
     GLint           size;
     gl::NumericType type;
     bool            normalize;
@@ -157,7 +157,7 @@ struct Obj_VertexArrayMeta final {
 
   // must be called from main or sub task
   static nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, std::vector<Attr>&& attrs) noexcept;
+      const std::shared_ptr<nf7::Context>& ctx,std::vector<Attr>&& attrs) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteVertexArrays(1, &id);
@@ -168,7 +168,8 @@ struct Obj_VertexArrayMeta final {
       LockBuffers(
           const std::shared_ptr<nf7::Context>& ctx,
           const std::vector<Attr>&             attrs,
-          size_t vcnt = 0, size_t icnt = 0) noexcept;
+          size_t                               vcnt = 0,
+          size_t                               icnt = 0) noexcept;
 
   Obj_VertexArrayMeta(std::vector<Attr>&& a) noexcept : attrs(std::move(a)) {
   }
