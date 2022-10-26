@@ -754,7 +754,9 @@ struct Program {
 
     std::vector<nf7::File::Id> shaders;
     for (const auto& path : shaders_) {
-      shaders.push_back(base.ResolveOrThrow(path).id());
+      const auto fid = base.ResolveOrThrow(path).id();
+      p.watch->Watch(fid);
+      shaders.push_back(fid);
     }
     return Product::Create(p.ctx, shaders);
   } catch (nf7::Exception&) {
@@ -1117,16 +1119,21 @@ struct VertexArray {
 
     std::optional<nf7::gl::VertexArray::Meta::Index> index;
     if (index_.terms().size() > 0) {
+      const auto fid = base.ResolveOrThrow(index_).id();
+      p.watch->Watch(fid);
+
       index.emplace();
-      index->buffer  = base.ResolveOrThrow(index_).id();
+      index->buffer  = fid;
       index->numtype = index_numtype_;
     }
 
     std::vector<Product::Meta::Attr> attrs;
     attrs.reserve(attrs_.size());
     for (auto& attr : attrs_) {
+      const auto fid = base.ResolveOrThrow(attr.buffer).id();
+      p.watch->Watch(fid);
       attrs.push_back({
-        .buffer    = base.ResolveOrThrow(attr.buffer).id(),
+        .buffer    = fid,
         .location  = attr.location,
         .size      = attr.size,
         .type      = attr.type,
@@ -1237,6 +1244,7 @@ struct Framebuffer {
       nf7::File::Id fid = 0;
       if (attachment.path.terms().size() > 0) {
         fid = base.ResolveOrThrow(attachment.path).id();
+        p.watch->Watch(fid);
       }
       attachments.push_back({
         .tex  = fid,
