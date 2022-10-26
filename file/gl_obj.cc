@@ -38,6 +38,7 @@
 #include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
+#include "common/nfile_watcher.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_enum.hh"
@@ -48,14 +49,32 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
+struct CreateParam {
+  nf7::File*                      file;
+  std::shared_ptr<nf7::LoggerRef> log;
+
+  std::shared_ptr<nf7::Context>      ctx;
+  std::shared_ptr<nf7::NFileWatcher> nwatch;
+  std::shared_ptr<nf7::Env::Watcher> watch;
+};
+template <typename T>
+struct HandleParam {
+  nf7::File*                      file;
+  std::shared_ptr<nf7::LoggerRef> log;
+
+  std::shared_ptr<nf7::Node::Lambda>       la;
+  nf7::Node::Lambda::Msg                   in;
+  nf7::Mutex::Resource<std::shared_ptr<T>> obj;
+};
+
 template <typename T>
 class ObjBase : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node,
     public nf7::AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<typename T::Product>>> {
  public:
   using ThisObjBase     = ObjBase<T>;
-  using Product         = std::shared_ptr<typename T::Product>;
-  using Resource        = nf7::Mutex::Resource<Product>;
+  using Product         = typename T::Product;
+  using Resource        = nf7::Mutex::Resource<std::shared_ptr<Product>>;
   using ResourceFuture  = nf7::Future<Resource>;
   using ResourcePromise = typename ResourceFuture::Promise;
   using ThisFactory     = nf7::AsyncFactory<Resource>;
@@ -67,12 +86,18 @@ class ObjBase : public nf7::FileBase,
   }
 
   ObjBase(nf7::Env& env, T&& data = {}) noexcept :
-      nf7::FileBase(TypeInfo::kType, env, {&log_}),
+      nf7::FileBase(TypeInfo::kType, env, {}),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
-      nf7::Node(nf7::Node::kNone), life_(*this), log_(*this),
+      nf7::Node(nf7::Node::kNone),
+      life_(*this),
+      log_(std::make_shared<nf7::LoggerRef>(*this)),
+      nwatch_(std::make_shared<nf7::NFileWatcher>()),
       mem_(std::move(data), *this) {
-    mem_.onRestore = mem_.onCommit = [this]() {
+    nf7::FileBase::Install(*log_);
+    nf7::FileBase::Install(*nwatch_);
+
+    nwatch_->onMod = mem_.onRestore = mem_.onCommit = [this]() {
       Drop();
     };
   }
@@ -107,15 +132,26 @@ class ObjBase : public nf7::FileBase,
     ResourcePromise pro {ctx};
     mtx_.AcquireLock(ctx, ex).ThenIf([this, ctx, pro](auto& k) mutable {
       if (!fu_) {
-        watcher_.emplace(env());
-        fu_ = mem_->Create(ctx);
-        watcher_->AddHandler(nf7::File::Event::kUpdate, [this](auto&) { Drop(); });
+        watch_ = std::make_shared<nf7::GenericWatcher>(env());
+        watch_->AddHandler(nf7::File::Event::kUpdate, [self = life_.ref()](auto&) {
+          if (self) self->Drop();
+        });
+
+        // TODO: clear nwatch
+
+        fu_ = mem_->Create(CreateParam {
+          .file   = this,
+          .log    = log_,
+          .ctx    = ctx,
+          .nwatch = nwatch_,
+          .watch  = watch_,
+        });
       }
       fu_->Chain(pro, [k](auto& obj) { return Resource {k, obj}; });
     });
     return pro.future().
         template Catch<nf7::Exception>(ctx, [this](auto& e) {
-          log_.Error(e);
+          log_->Error(e);
         });
   }
 
@@ -169,13 +205,15 @@ class ObjBase : public nf7::FileBase,
   }
 
  private:
-  nf7::Life<ThisObjBase>             life_;
-  nf7::LoggerRef                     log_;
-  std::optional<nf7::GenericWatcher> watcher_;
+  nf7::Life<ThisObjBase>          life_;
+  std::shared_ptr<nf7::LoggerRef> log_;
+
+  std::shared_ptr<nf7::GenericWatcher> watch_;
+  std::shared_ptr<nf7::NFileWatcher>   nwatch_;
 
   nf7::Mutex mtx_;
 
-  std::optional<nf7::Future<Product>> fu_;
+  std::optional<nf7::Future<std::shared_ptr<Product>>> fu_;
 
   nf7::GenericMemento<T> mem_;
 
@@ -203,11 +241,17 @@ class ObjBase : public nf7::FileBase,
       f_->Create(true  /* = exclusive */).
           ThenIf(shared_from_this(), [this, in](auto& obj) {
             try {
-              if (f_ && f_->mem_->Handle(shared_from_this(), obj, in)) {
-                f_->Touch();
-              }
+              f_.EnforceAlive();
+              const auto mod = f_->mem_->Handle(HandleParam<Product> {
+                .file = &*f_,
+                .log  = f_->log_,
+                .la   = shared_from_this(),
+                .in   = in,
+                .obj  = obj,
+              });
+              if (mod) f_->Touch();
             } catch (nf7::Exception& e) {
-              f_->log_.Error(e);
+              f_->log_->Error(e);
             }
           });
     }
@@ -272,22 +316,21 @@ struct Buffer {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return Product::Create(ctx, target_);
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept {
+    return Product::Create(p.ctx, target_);
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>& res,
-              const nf7::Node::Lambda::Msg&                         in) {
-    if (in.name == "upload") {
-      const auto& vec = in.value.vector();
+  bool Handle(const HandleParam<Product>& p) {
+    if (p.in.name == "upload") {
+      const auto& vec   = p.in.value.vector();
+      const auto  usage = gl::ToEnum(usage_);
+
       if (vec->size() == 0) return false;
 
-      const auto usage = gl::ToEnum(usage_);
-      handler->env().ExecGL(handler, [res, vec, usage]() {
+      p.la->env().ExecGL(p.la, [=]() {
         const auto n = static_cast<GLsizeiptr>(vec->size());
 
-        auto& buf = **res;
+        auto& buf = **p.obj;
         auto& m   = buf.meta();
         const auto t = gl::ToEnum(m.target);
         glBindBuffer(t, buf.id());
@@ -304,7 +347,7 @@ struct Buffer {
       });
       return true;
     } else {
-      throw nf7::Exception {"unknown input: "+in.name};
+      throw nf7::Exception {"unknown input: "+p.in.name};
     }
   }
 
@@ -403,26 +446,24 @@ struct Texture {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
     std::array<GLsizei, 3> size;
     std::transform(size_.begin(), size_.end(), size.begin(),
                    [](auto x) { return static_cast<GLsizei>(x); });
     // FIXME cast is unnecessary
     return Product::Create(
-        ctx, target_, static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
+        p.ctx, target_, static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             handler,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>& res,
-              const nf7::Node::Lambda::Msg&                         in) {
-    if (in.name == "upload") {
-      const auto& v = in.value;
+  bool Handle(const HandleParam<Product>& p) {
+    if (p.in.name == "upload") {
+      const auto& v = p.in.value;
 
       const auto vec = v.tuple("vec").vector();
-      auto& tex = **res;
+      auto& tex = **p.obj;
 
       static const char* kOffsetNames[] = {"x", "y", "z"};
       static const char* kSizeNames[]   = {"w", "h", "d"};
@@ -449,7 +490,7 @@ struct Texture {
 
       const auto fmt  = gl::ToEnum(comp_);
       const auto type = gl::ToEnum(numtype_);
-      handler->env().ExecGL(handler, [=, &tex]() {
+      p.la->env().ExecGL(p.la, [=, &tex]() {
         const auto t = gl::ToEnum(tex.meta().target);
         glBindTexture(t, tex.id());
         switch (t) {
@@ -470,30 +511,30 @@ struct Texture {
         assert(0 == glGetError());
       });
       return true;
-    } else if (in.name == "download") {
+    } else if (p.in.name == "download") {
       auto numtype = numtype_;
       auto comp    = comp_;
       try {
         try {
           numtype = magic_enum::enum_cast<
-              gl::NumericType>(in.value.tuple("numtype").string()).value();
+              gl::NumericType>(p.in.value.tuple("numtype").string()).value();
         } catch (nf7::Exception&) {
         }
         try {
           comp = magic_enum::enum_cast<
-              gl::ColorComp>(in.value.tuple("comp").string()).value();
+              gl::ColorComp>(p.in.value.tuple("comp").string()).value();
         } catch (nf7::Exception&) {
         }
       } catch (std::bad_optional_access&) {
         throw nf7::Exception {"unknown enum"};
       }
 
-      handler->env().ExecGL(handler, [=]() {
+      p.la->env().ExecGL(p.la, [=]() {
         GLuint pbo;
         glGenBuffers(1, &pbo);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
-        const auto& tex   = **res;
+        const auto& tex   = **p.obj;
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
         const auto  bsize = static_cast<size_t>(texel)*GetCompCount(comp)*GetByteSize(numtype);
@@ -506,7 +547,7 @@ struct Texture {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         assert(0 == glGetError());
 
-        nf7::gl::ExecFenceSync(handler).ThenIf([=, &tex](auto&) {
+        nf7::gl::ExecFenceSync(p.la).ThenIf([=, &tex](auto&) {
           glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
           auto buf = std::make_shared<std::vector<uint8_t>>(bsize);
@@ -519,20 +560,20 @@ struct Texture {
           glDeleteBuffers(1, &pbo);
           assert(0 == glGetError());
 
-          handler->env().ExecSub(handler, [=, &tex]() {
+          p.la->env().ExecSub(p.la, [=, &tex]() {
             auto v = nf7::Value {std::vector<nf7::Value::TuplePair> {
               {"w",      static_cast<nf7::Value::Integer>(size[0])},
               {"h",      static_cast<nf7::Value::Integer>(size[1])},
               {"d",      static_cast<nf7::Value::Integer>(size[2])},
               {"vector", buf},
             }};
-            in.sender->Handle("buffer", std::move(v), handler);
+            p.in.sender->Handle("buffer", std::move(v), p.la);
           });
         });
       });
       return false;
     } else {
-      throw nf7::Exception {"unknown input: "+in.name};
+      throw nf7::Exception {"unknown input: "+p.in.name};
     }
   }
 
@@ -625,15 +666,12 @@ struct Shader {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(
-      const std::shared_ptr<nf7::Context>& ctx) noexcept {
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept {
     // TODO: preprocessing GLSL source
-    return Product::Create(ctx, type_, src_);
+    return Product::Create(p.ctx, type_, src_);
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
-              const nf7::Node::Lambda::Msg&) {
+  bool Handle(const HandleParam<Product>&) {
     return false;
   }
 
@@ -710,37 +748,35 @@ struct Program {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
-    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
+    auto& base = *p.file;
 
     std::vector<nf7::File::Id> shaders;
     for (const auto& path : shaders_) {
       shaders.push_back(base.ResolveOrThrow(path).id());
     }
-    return Product::Create(ctx, shaders);
+    return Product::Create(p.ctx, shaders);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>& la,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>& prog,
-              const nf7::Node::Lambda::Msg& msg) {
-    const auto& base = la->env().GetFileOrThrow(la->initiator());
-    const auto& v    = msg.value;
+  bool Handle(const HandleParam<Product>& p) {
+    const auto& base = *p.file;
+    const auto& v    = p.in.value;
 
-    if (msg.name == "draw") {
-      const auto mode  = gl::ToEnum<gl::DrawMode>(msg.value.tuple("mode").string());
+    if (p.in.name == "draw") {
+      const auto mode  = gl::ToEnum<gl::DrawMode>(v.tuple("mode").string());
       const auto count = v.tuple("count").integer<GLsizei>();
-      const auto inst  = v.tupleOr("instance",        nf7::Value::Integer{1}).integer<GLsizei>();
+      const auto inst  = v.tupleOr("instance", nf7::Value::Integer{1}).integer<GLsizei>();
 
-      const auto uni = msg.value.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
-      const auto tex = msg.value.tupleOr("texture", nf7::Value::Tuple {}).tuple();
+      const auto uni = v.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
+      const auto tex = v.tupleOr("texture", nf7::Value::Tuple {}).tuple();
       if (tex->size() > GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS) {
         throw nf7::Exception {"too many textures specified"};
       }
 
-      const auto& vp = msg.value.tuple("viewport");
+      const auto& vp = v.tuple("viewport");
       const auto vp_x = vp.tuple(0).integerOrScalar<GLint>();
       const auto vp_y = vp.tuple(1).integerOrScalar<GLint>();
       const auto vp_w = vp.tuple(2).integerOrScalar<GLsizei>();
@@ -750,7 +786,7 @@ struct Program {
       }
 
       // this will be triggered when all preparation done
-      nf7::AggregatePromise apro {la};
+      nf7::AggregatePromise apro {p.la};
 
       // find, fetch and lock FBO
       std::optional<nf7::gl::FramebufferFactory::Product>                fbo_fu;
@@ -761,7 +797,7 @@ struct Program {
             interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
 
         nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
-        fbo_fu->ThenIf([la, fbo_lock_pro](auto& fbo) mutable {
+        fbo_fu->ThenIf([la = p.la, fbo_lock_pro](auto& fbo) mutable {
           (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
         });
 
@@ -782,7 +818,7 @@ struct Program {
         vhint.instances = static_cast<size_t>(inst);
 
         nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise vao_lock_pro;
-        vao_fu->ThenIf([la, vao_lock_pro, vhint](auto& vao) mutable {
+        vao_fu->ThenIf([la = p.la, vao_lock_pro, vhint](auto& vao) mutable {
           (**vao).meta().LockBuffers(la, vhint).Chain(vao_lock_pro);
         });
 
@@ -793,54 +829,59 @@ struct Program {
       // find, fetch and lock textures
       std::vector<std::pair<std::string, nf7::gl::TextureFactory::Product>> tex_fu;
       tex_fu.reserve(tex->size());
-      for (auto& p : *tex) {
+      for (auto& pa : *tex) {
         auto fu = base.
-            ResolveOrThrow(p.second.string()).
+            ResolveOrThrow(pa.second.string()).
             interfaceOrThrow<nf7::gl::TextureFactory>().
             Create();
-        tex_fu.emplace_back(p.first, fu);
+        tex_fu.emplace_back(pa.first, fu);
         apro.Add(fu);
       }
 
       // execute drawing after successful locking
-      apro.future().Then(nf7::Env::kGL, la, [=, tex_fu = std::move(tex_fu)](auto&) {
+      apro.future().Then(nf7::Env::kGL, p.la, [=, tex_fu = std::move(tex_fu)](auto&) {
         assert(fbo_lock_fu);
         assert(vao_lock_fu);
-        if (!fbo_lock_fu->done() || !vao_lock_fu->done()) {
-          // TODO
-          std::cout << "err" << std::endl;
+        try {
+          fbo_lock_fu->value();
+          vao_lock_fu->value();
+        } catch (nf7::Exception&) {
+          p.log->Error("failed to acquire lock of VAO or FBO");
           return;
         }
-        const auto& fbo = *fbo_fu->value();
-        const auto& vao = *vao_fu->value();
+        const auto& fbo  = *fbo_fu->value();
+        const auto& vao  = *vao_fu->value();
+        const auto& prog = *p.obj;
 
         // bind objects
-        glUseProgram((*prog)->id());
+        glUseProgram(prog->id());
         glBindFramebuffer(GL_FRAMEBUFFER, fbo->id());
         glBindVertexArray(vao->id());
         glViewport(vp_x, vp_y, vp_w, vp_h);
 
         // setup uniforms
-        for (const auto& p : *uni) {
-          if (!SetUniform((*prog)->id(), p.first.c_str(), p.second)) {
-            // TODO: warn user that the value is ignored
+        for (const auto& pa : *uni) {
+          try {
+            SetUniform(prog->id(), pa.first.c_str(), pa.second);
+          } catch (nf7::Exception& e) {
+            p.log->Warn("uniform '"+pa.first+"' is ignored");
           }
         }
 
         // bind textures
         for (size_t i = 0; i < tex_fu.size(); ++i) {
-          const auto& p = tex_fu[i];
+          const auto& pa = tex_fu[i];
           try {
-            const GLint loc = glGetUniformLocation((*prog)->id(), p.first.c_str());
+            const GLint loc = glGetUniformLocation(prog->id(), pa.first.c_str());
             if (loc < 0) {
               throw nf7::Exception {"missing uniform to bind texture"};
             }
-            const auto& tex = *p.second.value();
+            const auto& tex = *pa.second.value();
             glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + i));
             glBindTexture(gl::ToEnum(tex->meta().target), tex->id());
             glUniform1i(loc, static_cast<GLint>(i));
           } catch (nf7::Exception&) {
-            // TODO
+            p.log->Warn("texture '"+pa.first+"' is ignored");
           }
         }
 
@@ -862,12 +903,12 @@ struct Program {
         try {
           nf7::gl::Framebuffer::Meta::ThrowStatus(status);
         } catch (nf7::Exception& e) {
-          std::cout << e.msg() << std::endl;
+          p.log->Warn("framebuffer is broken");
         }
       });
       return false;
     } else {
-      throw nf7::Exception {"unknown input: "+msg.name};
+      throw nf7::Exception {"unknown input: "+p.in.name};
     }
   }
 
@@ -881,23 +922,24 @@ struct Program {
   std::vector<nf7::File::Path> shaders_;
 
 
-  static bool SetUniform(GLuint prog, const char* name, const nf7::Value& v) noexcept {
+  static void SetUniform(GLuint prog, const char* name, const nf7::Value& v) {
+    assert(0 == glGetError());
     const GLint loc = glGetUniformLocation(prog, name);
     if (loc < 0) {
-      return false;
+      throw nf7::Exception {"unknown uniform identifier"};
     }
 
     // single integer
     try {
       glUniform1i(loc, v.integer<GLint>());
-      return true;
+      return;
     } catch (nf7::Exception&) {
     }
 
     // single float
     try {
       glUniform1f(loc, v.scalar<GLfloat>());
-      return true;
+      return;
     } catch (nf7::Exception&) {
     }
   
@@ -917,10 +959,11 @@ struct Program {
                                tup[3].second.scalar<GLfloat>()); break;
       default: throw nf7::Exception {"invalid tuple size (must be 1~4)"};
       }
-      return true;
+      return;
     } catch (nf7::Exception&) {
     }
-    return false;
+
+    throw nf7::Exception {"the value is not compatible with any uniform type"};
   }
 };
 template <>
@@ -1068,9 +1111,9 @@ struct VertexArray {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
-    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
+    auto& base = *p.file;
 
     std::optional<nf7::gl::VertexArray::Meta::Index> index;
     if (index_.terms().size() > 0) {
@@ -1093,14 +1136,12 @@ struct VertexArray {
         .divisor   = attr.divisor,
       });
     }
-    return Product::Create(ctx, index, std::move(attrs));
+    return Product::Create(p.ctx, index, std::move(attrs));
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>&,
-              const nf7::Node::Lambda::Msg&) {
+  bool Handle(const HandleParam<Product>&) {
     return false;
   }
 
@@ -1187,9 +1228,9 @@ struct Framebuffer {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
 
-  nf7::Future<std::shared_ptr<Product>> Create(const std::shared_ptr<nf7::Context>& ctx) noexcept
+  nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
-    auto& base = ctx->env().GetFileOrThrow(ctx->initiator());
+    auto& base = *p.file;
 
     std::vector<nf7::gl::Framebuffer::Meta::Attachment> attachments;
     for (auto& attachment : attachments_) {
@@ -1202,23 +1243,21 @@ struct Framebuffer {
         .slot = attachment.slot,
       });
     }
-    return Product::Create(ctx, std::move(attachments));
+    return Product::Create(p.ctx, std::move(attachments));
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
 
-  bool Handle(const std::shared_ptr<nf7::Node::Lambda>&             la,
-              const nf7::Mutex::Resource<std::shared_ptr<Product>>& fb,
-              const nf7::Node::Lambda::Msg&                         msg) {
-    if (msg.name == "clear") {
-      (**fb).meta().LockAttachments(la).ThenIf(nf7::Env::kGL, la, [fb](auto&) {
-        glBindFramebuffer(GL_FRAMEBUFFER, (**fb).id());
+  bool Handle(const HandleParam<Product>& p) {
+    if (p.in.name == "clear") {
+      (**p.obj).meta().LockAttachments(p.la).ThenIf(nf7::Env::kGL, p.la, [=](auto&) {
+        glBindFramebuffer(GL_FRAMEBUFFER, (**p.obj).id());
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
       });
       return false;
     } else {
-      throw nf7::Exception {"unknown command: "+msg.name};
+      throw nf7::Exception {"unknown command: "+p.in.name};
     }
   }
 
