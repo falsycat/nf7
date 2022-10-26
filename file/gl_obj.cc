@@ -497,7 +497,7 @@ struct Texture {
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
         const auto  bsize = static_cast<size_t>(texel)*GetCompCount(comp)*GetByteSize(numtype);
-        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_DYNAMIC_READ);
+        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_STREAM_READ);
 
         const auto t = gl::ToEnum(tex.meta().target);
         glBindTexture(t, tex.id());

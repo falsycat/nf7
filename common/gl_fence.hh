@@ -15,12 +15,10 @@ namespace nf7::gl {
 inline void Await(const std::shared_ptr<nf7::Context>&  ctx,
                   nf7::Future<std::monostate>::Promise& pro,
                   GLsync                                sync) noexcept {
-  GLsizei len;
-  GLint   v;
-  glGetSynciv(sync, GL_SYNC_STATUS, sizeof(v), &len, &v);
+  const auto state = glClientWaitSync(sync, 0, 0);
   assert(0 == glGetError());
 
-  if (v == GL_SIGNALED) {
+  if (state == GL_ALREADY_SIGNALED || state == GL_CONDITION_SATISFIED) {
     glDeleteSync(sync);
     pro.Return({});
   } else {
