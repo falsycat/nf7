@@ -3,6 +3,7 @@
 #include <functional>
 #include <filesystem>
 #include <optional>
+#include <vector>
 
 #include "common/file_base.hh"
 
@@ -18,29 +19,39 @@ class NFileWatcher final : public nf7::FileBase::Feature {
   NFileWatcher& operator=(NFileWatcher&&) = delete;
 
   void Watch(const std::filesystem::path& npath) noexcept {
-    npath_   = npath;
+    npaths_.push_back(npath);
+    lastmod_ = std::nullopt;
+  }
+  void Clear() noexcept {
+    npaths_.clear();
     lastmod_ = std::nullopt;
   }
 
   std::function<void()> onMod;
 
  protected:
-  void Update() noexcept override
-  try {
-    if (npath_) {
-      const auto lastmod = std::filesystem::last_write_time(*npath_);
-      if (lastmod_ && lastmod > *lastmod_) {
-        onMod();
+  void Update() noexcept override {
+    auto latest = std::filesystem::file_time_type::duration::min();
+    for (const auto& npath : npaths_) {
+      try {
+        const auto lastmod = std::filesystem::last_write_time(npath).time_since_epoch();
+        latest = std::max(latest, lastmod);
+      } catch (std::filesystem::filesystem_error&) {
       }
-      lastmod_ = lastmod;
     }
-  } catch (std::filesystem::filesystem_error&) {
-    lastmod_.emplace();
+    if (!lastmod_) {
+      lastmod_ = latest;
+    }
+    if (*lastmod_ < latest) {
+      onMod();
+      lastmod_ = latest;
+    }
   }
 
  private:
-  std::optional<std::filesystem::path> npath_;
-  std::optional<std::filesystem::file_time_type> lastmod_;
+  std::vector<std::filesystem::path> npaths_;
+
+  std::optional<std::filesystem::file_time_type::duration> lastmod_;
 };
 
 }  // namespace nf7

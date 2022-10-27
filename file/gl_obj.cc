@@ -137,8 +137,7 @@ class ObjBase : public nf7::FileBase,
         watch_->AddHandler(nf7::File::Event::kUpdate, [self = life_.ref()](auto&) {
           if (self) self->Drop();
         });
-
-        // TODO: clear nwatch
+        nwatch_->Clear();
 
         fu_ = mem_->Create(CreateParam {
           .file   = this,
