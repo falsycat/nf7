@@ -35,6 +35,7 @@
 #include "common/gl_enum.hh"
 #include "common/gl_fence.hh"
 #include "common/gl_obj.hh"
+#include "common/gl_shader_preproc.hh"
 #include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
@@ -667,8 +668,23 @@ struct Shader {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept {
-    // TODO: preprocessing GLSL source
-    return Product::Create(p.ctx, type_, src_);
+    nf7::Future<std::shared_ptr<Product>>::Promise pro {p.ctx};
+
+    auto ost  = std::make_shared<std::ostringstream>();
+    auto ist  = std::make_shared<std::istringstream>(src_);
+    auto path = p.ctx->env().npath() / "INLINE_TEXT";
+
+    auto preproc = std::make_shared<gl::ShaderPreproc>(p.ctx, ost, ist, std::move(path));
+    preproc->ExecProcess();
+    preproc->future().Chain(p.ctx, pro, [=, type = type_](auto&) mutable {
+      Product::Create(p.ctx, type, ost->str()).Chain(pro);
+    });
+    return pro.future().
+        ThenIf(p.ctx, [=](auto&) mutable {
+          for (const auto& npath : preproc->nfiles()) {
+            p.nwatch->Watch(npath);
+          }
+        });
   }
 
   bool Handle(const HandleParam<Product>&) {
