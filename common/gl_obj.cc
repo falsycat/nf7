@@ -110,8 +110,12 @@ nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Obj_ShaderMeta::Create(
       return;
     }
 
-    const GLchar* str = src.c_str();
-    glShaderSource(id, 1, &str, nullptr);
+    static const char* kHeader =
+        "#version 330\n"
+        "#extension GL_ARB_shading_language_include: require\n";
+
+    const GLchar* str[] = {kHeader, src.c_str()};
+    glShaderSource(id, 2, str, nullptr);
     glCompileShader(id);
     assert(0 == glGetError());
 
