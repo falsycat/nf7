@@ -313,7 +313,11 @@ class Future final {
                     auto& pro, auto&& func) noexcept {
     return Then(exec, ctx, [pro, func = std::move(func)](auto& fu) mutable {
       try {
-        pro.Return(func(fu.value()));
+        if constexpr (std::is_void<decltype(func(fu.value()))>::value) {
+          func(fu.value());
+        } else {
+          pro.Return(func(fu.value()));
+        }
       } catch (...) {
         pro.Throw(std::current_exception());
       }
