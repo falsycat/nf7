@@ -39,7 +39,8 @@ class ShaderPreproc final : public nf7::Context,
     return pro_.future();
   }
   const std::vector<std::filesystem::path>& nfiles() const noexcept {
-    return *nfiles_;
+    static const std::vector<std::filesystem::path> kEmpty = {};
+    return nfiles_? *nfiles_: kEmpty;
   }
 
  private:
