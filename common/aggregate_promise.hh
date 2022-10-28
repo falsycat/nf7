@@ -28,7 +28,14 @@ class AggregatePromise final :
 
   AggregatePromise& Add(auto fu) noexcept {
     data_->Ref();
-    fu.Then([data = data_](auto&) { data->Unref(); });
+    fu.Then([data = data_](auto& fu) {
+      try {
+        fu.value();
+        data->Unref();
+      } catch (nf7::Exception&) {
+        data->Abort(std::current_exception());
+      }
+    });
     return *this;
   }
 
@@ -51,6 +58,9 @@ class AggregatePromise final :
       if (0 == --refcnt_) {
         pro_.Return({});
       }
+    }
+    void Abort(std::exception_ptr e) noexcept {
+      pro_.Throw(e);
     }
 
     nf7::Future<std::monostate> future() const noexcept {
