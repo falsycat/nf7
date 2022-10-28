@@ -317,7 +317,10 @@ struct Buffer {
   }
 
   nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept {
-    return Product::Create(p.ctx, target_);
+    const Product::Meta meta {
+      .target = target_,
+    };
+    return meta.Create(p.ctx);
   }
 
   bool Handle(const HandleParam<Product>& p) {
@@ -331,12 +334,12 @@ struct Buffer {
         const auto n = static_cast<GLsizeiptr>(vec->size());
 
         auto& buf = **p.obj;
-        auto& m   = buf.meta();
-        const auto t = gl::ToEnum(m.target);
+        const auto t = gl::ToEnum(buf.meta().target);
         glBindBuffer(t, buf.id());
         {
-          if (m.size != vec->size()) {
-            m.size = vec->size();
+          auto& size = buf.param().size;
+          if (size != vec->size()) {
+            size = vec->size();
             glBufferData(t, n, vec->data(), usage);
           } else {
             glBufferSubData(t, 0, n, vec->data());
@@ -357,7 +360,7 @@ struct Buffer {
     if (prod) {
       ImGui::Spacing();
       ImGui::Text("  id: %zu", static_cast<size_t>(prod->id()));
-      ImGui::Text("size: %zu bytes", prod->meta().size);
+      ImGui::Text("size: %zu bytes", prod->param().size);
     }
   }
 
@@ -448,12 +451,14 @@ struct Texture {
 
   nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
-    std::array<GLsizei, 3> size;
-    std::transform(size_.begin(), size_.end(), size.begin(),
+    Product::Meta meta {
+      .target = target_,
+      .format = static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)),
+      .size   = {},
+    };
+    std::transform(size_.begin(), size_.end(), meta.size.begin(),
                    [](auto x) { return static_cast<GLsizei>(x); });
-    // FIXME cast is unnecessary
-    return Product::Create(
-        p.ctx, target_, static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)), size);
+    return meta.Create(p.ctx);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
@@ -676,7 +681,10 @@ struct Shader {
     auto preproc = std::make_shared<gl::ShaderPreproc>(p.ctx, ost, ist, std::move(path));
     preproc->ExecProcess();
     preproc->future().Chain(p.ctx, pro, [=, type = type_](auto&) mutable {
-      Product::Create(p.ctx, type, ost->str()).Chain(pro);
+      const Product::Meta meta {
+        .type = type,
+      };
+      meta.Create(p.ctx, ost->str()).Chain(pro);
     });
     return pro.future().
         ThenIf(p.ctx, [=](auto&) mutable {
@@ -773,7 +781,7 @@ struct Program {
       p.watch->Watch(fid);
       shaders.push_back(fid);
     }
-    return Product::Create(p.ctx, shaders);
+    return Product::Meta().Create(p.ctx, shaders);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
@@ -917,9 +925,7 @@ struct Program {
         glUseProgram(0);
         assert(0 == glGetError());
 
-        try {
-          nf7::gl::Framebuffer::Meta::ThrowStatus(status);
-        } catch (nf7::Exception& e) {
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
           p.log->Warn("framebuffer is broken");
         }
       });
@@ -1131,23 +1137,22 @@ struct VertexArray {
   nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
     auto& base = *p.file;
+    Product::Meta meta;
 
-    std::optional<nf7::gl::VertexArray::Meta::Index> index;
     if (index_.terms().size() > 0) {
       const auto fid = base.ResolveOrThrow(index_).id();
       p.watch->Watch(fid);
 
-      index.emplace();
-      index->buffer  = fid;
-      index->numtype = index_numtype_;
+      meta.index.emplace();
+      meta.index->buffer  = fid;
+      meta.index->numtype = index_numtype_;
     }
 
-    std::vector<Product::Meta::Attr> attrs;
-    attrs.reserve(attrs_.size());
+    meta.attrs.reserve(attrs_.size());
     for (auto& attr : attrs_) {
       const auto fid = base.ResolveOrThrow(attr.buffer).id();
       p.watch->Watch(fid);
-      attrs.push_back({
+      meta.attrs.push_back({
         .buffer    = fid,
         .location  = attr.location,
         .size      = attr.size,
@@ -1158,7 +1163,7 @@ struct VertexArray {
         .divisor   = attr.divisor,
       });
     }
-    return Product::Create(p.ctx, index, std::move(attrs));
+    return meta.Create(p.ctx);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }
@@ -1253,20 +1258,20 @@ struct Framebuffer {
   nf7::Future<std::shared_ptr<Product>> Create(const CreateParam& p) noexcept
   try {
     auto& base = *p.file;
+    Product::Meta meta;
 
-    std::vector<nf7::gl::Framebuffer::Meta::Attachment> attachments;
     for (auto& attachment : attachments_) {
       nf7::File::Id fid = 0;
       if (attachment.path.terms().size() > 0) {
         fid = base.ResolveOrThrow(attachment.path).id();
         p.watch->Watch(fid);
       }
-      attachments.push_back({
+      meta.attachments.push_back({
         .tex  = fid,
         .slot = attachment.slot,
       });
     }
-    return Product::Create(p.ctx, std::move(attachments));
+    return meta.Create(p.ctx);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }

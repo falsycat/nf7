@@ -22,17 +22,11 @@ namespace nf7::gl {
 template <typename T>
 class Obj final {
  public:
-  using Meta = T;
+  using Meta  = T;
+  using Param = typename Meta::Param;
 
-  // must be called from main or sub task
-  template <typename... Args>
-  static nf7::Future<std::shared_ptr<Obj<T>>> Create(Args&&... args) noexcept {
-    return Meta::Create(std::forward<Args>(args)...);
-  }
-
-  template <typename... Args>
-  Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, Args&&... args) noexcept :
-      ctx_(ctx), meta_(std::forward<Args>(args)...), id_(id) {
+  Obj(const std::shared_ptr<nf7::Context>& ctx, GLuint id, const Meta& meta) noexcept :
+      ctx_(ctx), id_(id), meta_(meta) {
   }
   ~Obj() noexcept {
     ctx_->env().ExecGL(ctx_, [id = id_]() { T::Delete(id); });
@@ -43,35 +37,34 @@ class Obj final {
   Obj& operator=(Obj&&) = delete;
 
   GLuint id() const noexcept { return id_; }
+  const Meta& meta() const noexcept { return meta_; }
 
-  T& meta() noexcept { return meta_; }
-  const T& meta() const noexcept { return meta_; }
+  Param& param() noexcept { return param_; }
+  const Param& param() const noexcept { return param_; }
 
  private:
   std::shared_ptr<nf7::Context> ctx_;
 
-  T meta_;
   const GLuint id_;
+  const Meta   meta_;
+
+  Param param_;
 };
 
 
 struct Obj_BufferMeta final {
  public:
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx, gl::BufferTarget target) noexcept;
+  struct Param { size_t size = 0; };
 
   static void Delete(GLuint id) noexcept {
     glDeleteBuffers(1, &id);
   }
 
-  Obj_BufferMeta() = delete;
-  Obj_BufferMeta(gl::BufferTarget t) noexcept : target(t) {
-  }
+  // must be called from main or sub task
+  nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  const gl::BufferTarget target;
-
-  size_t size = 0;
+  gl::BufferTarget target;
 };
 using Buffer        = Obj<Obj_BufferMeta>;
 using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>>;
@@ -79,23 +72,19 @@ using BufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Buffer>>
 
 struct Obj_TextureMeta final {
  public:
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,
-      gl::TextureTarget target, GLint fmt, std::array<GLsizei, 3> size) noexcept;
+  struct Param { };
 
   static void Delete(GLuint id) noexcept {
     glDeleteTextures(1, &id);
   }
 
-  Obj_TextureMeta() = delete;
-  Obj_TextureMeta(gl::TextureTarget t, GLint f, std::array<GLsizei, 3> s) noexcept :
-      target(t), format(f), size(s) {
-  }
+  // must be called from main or sub task
+  nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  const gl::TextureTarget      target;
-  const GLint                  format;
-  const std::array<GLsizei, 3> size;
+  gl::TextureTarget      target;
+  GLint                  format;
+  std::array<GLsizei, 3> size;
 };
 using Texture        = Obj<Obj_TextureMeta>;
 using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture>>>;
@@ -103,21 +92,18 @@ using TextureFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Texture
 
 struct Obj_ShaderMeta final {
  public:
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,
-      gl::ShaderType                       type,
-      const std::string&                   src) noexcept;
+  struct Param { };
 
   static void Delete(GLuint id) noexcept {
     glDeleteShader(id);
   }
 
-  Obj_ShaderMeta() = delete;
-  Obj_ShaderMeta(gl::ShaderType t) noexcept : type(t) {
-  }
+  // must be called from main or sub task
+  nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::string&                   src) const noexcept;
 
-  const gl::ShaderType type;
+  gl::ShaderType type;
 };
 using Shader = Obj<Obj_ShaderMeta>;
 using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>>;
@@ -125,16 +111,16 @@ using ShaderFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Shader>>
 
 struct Obj_ProgramMeta final {
  public:
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,
-      const std::vector<nf7::File::Id>&    shaders) noexcept;
+  struct Param { };
 
   static void Delete(GLuint id) noexcept {
     glDeleteProgram(id);
   }
 
-  Obj_ProgramMeta() = default;
+  // must be called from main or sub task
+  nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx,
+      const std::vector<nf7::File::Id>&    shaders) noexcept;
 };
 using Program = Obj<Obj_ProgramMeta>;
 using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program>>>;
@@ -142,6 +128,8 @@ using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program
 
 struct Obj_VertexArrayMeta final {
  public:
+  struct Param { };
+
   using LockedBuffersFuture =
       nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>;
 
@@ -159,6 +147,7 @@ struct Obj_VertexArrayMeta final {
     uint64_t        offset;
     GLuint          divisor;
   };
+
   struct ValidationHint {
     ValidationHint() noexcept { }
 
@@ -166,40 +155,22 @@ struct Obj_VertexArrayMeta final {
     size_t instances = 0;
   };
 
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,
-      const std::optional<Index>&          index,
-      std::vector<Attr>&&                  attrs) noexcept;
-
   static void Delete(GLuint id) noexcept {
     glDeleteVertexArrays(1, &id);
   }
 
   // must be called from main or sub task
-  // it's guaranteed that the last element of the returned vector is an index buffer if index != std::nullopt
-  static LockedBuffersFuture
-      LockBuffers(
-          const std::shared_ptr<nf7::Context>& ctx,
-          const std::optional<Index>&          index,
-          const std::vector<Attr>&             attrs,
-          const ValidationHint&                vhint = {}) noexcept;
-
-  Obj_VertexArrayMeta(const std::optional<Index>& idx,
-                      std::vector<Attr>&&         a) noexcept :
-      index(idx), attrs(std::move(a)) {
-  }
+  nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
   // must be called from main or sub task
   // it's guaranteed that the last element of the returned vector is an index buffer if index != std::nullopt
   nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>> LockBuffers(
       const std::shared_ptr<nf7::Context>& ctx,
-      const ValidationHint&                vhint = {}) const noexcept {
-    return LockBuffers(ctx, index, attrs, vhint);
-  }
+      const ValidationHint&                vhint = {}) const noexcept;
 
-  const std::optional<Index> index;
-  const std::vector<Attr>    attrs;
+  std::optional<Index> index;
+  std::vector<Attr>    attrs;
 };
 using VertexArray = Obj<Obj_VertexArrayMeta>;
 using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<VertexArray>>>;
@@ -210,37 +181,26 @@ struct Obj_FramebufferMeta final {
   using LockedAttachmentsFuture =
       nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>;
 
+  struct Param { };
+
   struct Attachment {
     nf7::File::Id       tex;
     gl::FramebufferSlot slot;
   };
-
-  // must be called from main or sub task
-  static nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Create(
-      const std::shared_ptr<nf7::Context>& ctx,
-      std::vector<Attachment>&&            attachments) noexcept;
 
   static void Delete(GLuint id) noexcept {
     glDeleteFramebuffers(1, &id);
   }
 
   // must be called from main or sub task
-  static LockedAttachmentsFuture LockAttachments(
-      const std::shared_ptr<nf7::Context>& ctx,
-      std::span<const Attachment>          attachments) noexcept;
+  nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Create(
+      const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  // must be called on GL thread
-  static void ThrowStatus(GLenum status);
+  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>
+      LockAttachments(
+          const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  Obj_FramebufferMeta(std::vector<Attachment>&& a) noexcept : attachments(std::move(a)) {
-  }
-
-  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> LockAttachments(
-      const std::shared_ptr<nf7::Context>& ctx) noexcept {
-    return LockAttachments(ctx, attachments);
-  }
-
-  const std::vector<Attachment> attachments;
+  std::vector<Attachment> attachments;
 };
 using Framebuffer = Obj<Obj_FramebufferMeta>;
 using FramebufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Framebuffer>>>;
