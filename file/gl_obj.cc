@@ -18,6 +18,7 @@
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/array.hpp>
+#include <yas/types/std/optional.hpp>
 #include <yas/types/std/string.hpp>
 #include <yas/types/std/vector.hpp>
 #include <yas/types/utility/usertype.hpp>
@@ -1204,11 +1205,10 @@ struct Framebuffer {
   using Product = nf7::gl::Framebuffer;
 
   struct Attachment {
-    gl::FramebufferSlot slot;
-    nf7::File::Path     path;
+    nf7::File::Path path;
 
     void serialize(auto& ar) {
-      ar(slot, path);
+      ar(path);
     }
   };
 
@@ -1219,17 +1219,19 @@ struct Framebuffer {
   Framebuffer& operator=(Framebuffer&&) = default;
 
   void serialize(auto& ar) {
-    ar(attachments_);
+    ar(colors_);
   }
 
   std::string Stringify() noexcept {
     YAML::Emitter st;
     st << YAML::BeginMap;
-    st << YAML::Key   << "attachments";
+    st << YAML::Key   << "colors";
     st << YAML::Value << YAML::BeginMap;
-    for (const auto& attachment : attachments_) {
-      st << YAML::Key   << std::string {magic_enum::enum_name(attachment.slot)};
-      st << YAML::Value << attachment.path.Stringify();
+    for (size_t i = 0; i < Product::Meta::kColorSlotCount; ++i) {
+      if (colors_[i]) {
+        st << YAML::Key   << i;
+        st << YAML::Value << colors_[i]->path.Stringify();
+      }
     }
     st << YAML::EndMap;
     st << YAML::EndMap;
@@ -1237,18 +1239,19 @@ struct Framebuffer {
   }
   void Parse(const std::string& v)
   try {
-    const auto  yaml             = YAML::Load(v);
-    const auto& yaml_attachments = yaml["attachments"];
-    std::vector<Attachment> attachments;
-    for (auto [slot, name] : magic_enum::enum_entries<gl::FramebufferSlot>()) {
-      if (const auto& yaml_attachment = yaml_attachments[std::string {name}]) {
-        attachments.push_back({
-          .slot = slot,
-          .path = nf7::File::Path::Parse(yaml_attachment.as<std::string>()),
+    const auto  yaml        = YAML::Load(v);
+    const auto& yaml_colors = yaml["colors"];
+
+    std::array<std::optional<Attachment>, Product::Meta::kColorSlotCount> colors;
+    for (size_t i = 0; i < Product::Meta::kColorSlotCount; ++i) {
+      if (auto& yaml_color = yaml_colors[std::to_string(i)]) {
+        colors[i].emplace(Attachment {
+          .path = nf7::File::Path::Parse(yaml_color.as<std::string>()),
         });
       }
     }
-    attachments_ = std::move(attachments);
+
+    colors_ = std::move(colors);
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {std::string {"invalid enum"}};
   } catch (YAML::Exception& e) {
@@ -1260,16 +1263,12 @@ struct Framebuffer {
     auto& base = *p.file;
     Product::Meta meta;
 
-    for (auto& attachment : attachments_) {
-      nf7::File::Id fid = 0;
-      if (attachment.path.terms().size() > 0) {
-        fid = base.ResolveOrThrow(attachment.path).id();
+    for (size_t i = 0; i < Product::Meta::kColorSlotCount; ++i) {
+      if (const auto& color = colors_[i]) {
+        const auto fid = base.ResolveOrThrow(color->path).id();
+        meta.colors[i].emplace(Product::Meta::Attachment { .tex = fid, });
         p.watch->Watch(fid);
       }
-      meta.attachments.push_back({
-        .tex  = fid,
-        .slot = attachment.slot,
-      });
     }
     return meta.Create(p.ctx);
   } catch (nf7::Exception&) {
@@ -1296,7 +1295,7 @@ struct Framebuffer {
   }
 
  private:
-  std::vector<Attachment> attachments_;
+  std::array<std::optional<Attachment>, Product::Meta::kColorSlotCount> colors_;
 };
 template <>
 struct ObjBase<Framebuffer>::TypeInfo final {

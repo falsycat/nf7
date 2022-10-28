@@ -247,10 +247,9 @@ try {
   return {std::current_exception()};
 }
 
-nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>
-    Obj_VertexArrayMeta::LockBuffers(
-        const std::shared_ptr<nf7::Context>& ctx,
-        const ValidationHint&                vhint) const noexcept
+Obj_VertexArrayMeta::LockedBuffersFuture Obj_VertexArrayMeta::LockBuffers(
+    const std::shared_ptr<nf7::Context>& ctx,
+    const ValidationHint&                vhint) const noexcept
 try {
   nf7::AggregatePromise apro {ctx};
 
@@ -308,65 +307,82 @@ nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Obj_FramebufferMeta::Crea
     const std::shared_ptr<nf7::Context>& ctx) const noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>>::Promise pro {ctx};
   LockAttachments(ctx).
-      Chain(nf7::Env::kGL, ctx, pro, [ctx, *this](auto& texs) mutable {
-        assert(attachments.size() == texs.size());
-
+      Chain(nf7::Env::kGL, ctx, pro, [ctx, *this](auto& k) mutable {
         GLuint id;
         glGenFramebuffers(1, &id);
 
-        const char* err = nullptr;
         glBindFramebuffer(GL_FRAMEBUFFER, id);
-        for (size_t i = 0; i < attachments.size() && !err; ++i) {
-          glFramebufferTexture(GL_FRAMEBUFFER,
-                               gl::ToEnum(attachments[i].slot),
-                               (*texs[i])->id(),
-                               0  /* = level */);
-          if (0 != glGetError()) {
-            err = "failed to attach texture";
+        for (size_t i = 0; i < colors.size(); ++i) {
+          if (const auto& tex = k.colors[i]) {
+            glFramebufferTexture(GL_FRAMEBUFFER,
+                                 static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + i),
+                                 (***tex).id(),
+                                 0  /* = level */);
           }
         }
+        if (k.depth) {
+          glFramebufferTexture(GL_FRAMEBUFFER,
+                               GL_DEPTH_ATTACHMENT,
+                               (***k.depth).id(),
+                               0  /* = level */);
+        }
+        if (k.stencil) {
+          glFramebufferTexture(GL_FRAMEBUFFER,
+                               GL_STENCIL_ATTACHMENT,
+                               (***k.stencil).id(),
+                               0  /* = level */);
+        }
+
         const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        assert(0 == glGetError());
 
         const auto ret = std::make_shared<Obj<Obj_FramebufferMeta>>(ctx, id, *this);
+        if (0 != glGetError()) {
+          throw nf7::Exception {"failed to setup framebuffer"};
+        }
         if (status != GL_FRAMEBUFFER_COMPLETE) {
           throw nf7::Exception {"invalid framebuffer status"};
-        }
-        if (err) {
-          throw nf7::Exception {err};
         }
         return ret;
       });
   return pro.future();
 }
 
-nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>
-    Obj_FramebufferMeta::LockAttachments(
-        const std::shared_ptr<nf7::Context>& ctx) const noexcept
+Obj_FramebufferMeta::LockedAttachmentsFuture Obj_FramebufferMeta::LockAttachments(
+    const std::shared_ptr<nf7::Context>& ctx) const noexcept
 try {
-  nf7::AggregatePromise apro {ctx};
-  std::vector<nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>> fus;
-  fus.reserve(attachments.size());
+  auto ret = std::make_shared<LockedAttachments>();
 
-  for (const auto& attachment : attachments) {
+  nf7::AggregatePromise apro {ctx};
+
+  const auto lock = [&](nf7::File::Id id) {
     auto& factory = ctx->env().
-        GetFileOrThrow(attachment.tex).
+        GetFileOrThrow(id).
         interfaceOrThrow<nf7::gl::TextureFactory>();
-    auto fu = LockAndValidate(ctx, factory, gl::TextureTarget::Tex2D);
-    apro.Add(fu);
-    fus.push_back(fu);
+    return LockAndValidate(ctx, factory, gl::TextureTarget::Tex2D);
+  };
+
+  for (size_t i = 0; i < colors.size(); ++i) {
+    const auto& color = colors[i];
+    if (color && color->tex) {
+      apro.Add(lock(color->tex).ThenIf([i, ret](auto& res) {
+        ret->colors[i] = res;
+      }));
+    }
+  }
+  if (depth && depth->tex) {
+    apro.Add(lock(depth->tex).ThenIf([ret](auto& res) {
+      ret->depth = res;
+    }));
+  }
+  if (stencil && stencil->tex) {
+    apro.Add(lock(stencil->tex).ThenIf([ret](auto& res) {
+      ret->stencil = res;
+    }));
   }
 
-  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>::Promise pro {ctx};
-  apro.future().Chain(pro, [fus = std::move(fus)](auto&) {
-    std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>> ret;
-    ret.reserve(fus.size());
-    for (auto& fu : fus) {
-      ret.emplace_back(fu.value());
-    }
-    return ret;
-  });
+  LockedAttachmentsFuture::Promise pro {ctx};
+  apro.future().Chain(pro, [ret](auto&) { return std::move(*ret); });
   return pro.future();
 } catch (nf7::Exception&) {
   return { std::current_exception() };

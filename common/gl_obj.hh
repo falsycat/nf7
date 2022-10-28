@@ -165,7 +165,7 @@ struct Obj_VertexArrayMeta final {
 
   // must be called from main or sub task
   // it's guaranteed that the last element of the returned vector is an index buffer if index != std::nullopt
-  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>> LockBuffers(
+  LockedBuffersFuture LockBuffers(
       const std::shared_ptr<nf7::Context>& ctx,
       const ValidationHint&                vhint = {}) const noexcept;
 
@@ -178,15 +178,23 @@ using VertexArrayFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Ver
 
 struct Obj_FramebufferMeta final {
  public:
-  using LockedAttachmentsFuture =
-      nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>;
+  static constexpr size_t kColorSlotCount = 8;
 
   struct Param { };
 
   struct Attachment {
-    nf7::File::Id       tex;
-    gl::FramebufferSlot slot;
+    nf7::File::Id tex;
   };
+
+  struct LockedAttachments {
+   private:
+    using TexRes = nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>;
+   public:
+    std::array<std::optional<TexRes>, kColorSlotCount> colors;
+    std::optional<TexRes>                              depth;
+    std::optional<TexRes>                              stencil;
+  };
+  using LockedAttachmentsFuture = nf7::Future<LockedAttachments>;
 
   static void Delete(GLuint id) noexcept {
     glDeleteFramebuffers(1, &id);
@@ -196,11 +204,12 @@ struct Obj_FramebufferMeta final {
   nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Texture>>>>
-      LockAttachments(
-          const std::shared_ptr<nf7::Context>& ctx) const noexcept;
+  LockedAttachmentsFuture LockAttachments(
+      const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
-  std::vector<Attachment> attachments;
+  std::array<std::optional<Attachment>, kColorSlotCount> colors;
+  std::optional<Attachment>                              depth;
+  std::optional<Attachment>                              stencil;
 };
 using Framebuffer = Obj<Obj_FramebufferMeta>;
 using FramebufferFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Framebuffer>>>;
