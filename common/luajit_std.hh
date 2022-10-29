@@ -147,6 +147,12 @@ inline void PushStdTable(lua_State* L) noexcept {
     luaL_loadstring(L, "return require(\"bit\")");
     lua_call(L, 0, 1);
     lua_setfield(L, -2, "bit");
+
+    // ---- str manip ----
+    luaL_openlibs(L);
+    luaL_loadstring(L, "return string");
+    lua_call(L, 0, 1);
+    lua_setfield(L, -2, "str");
   }
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);
