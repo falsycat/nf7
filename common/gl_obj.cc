@@ -186,6 +186,19 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
   return pro.future();
 }
 
+void Obj_ProgramMeta::ApplyState() const noexcept {
+  if (depth) {
+    glEnable(GL_DEPTH_TEST);
+    glDepthRange(depth->near, depth->far);
+    glDepthFunc(gl::ToEnum(depth->func));
+  }
+}
+void Obj_ProgramMeta::RevertState() const noexcept {
+  if (depth) {
+    glDisable(GL_DEPTH_TEST);
+  }
+}
+
 
 nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>> Obj_VertexArrayMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx) const noexcept

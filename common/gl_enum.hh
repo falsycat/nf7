@@ -182,6 +182,31 @@ inline bool HasStencil(InternalFormat fmt) noexcept {
 }
 
 
+enum class TestFunc {
+  Never,
+  Always,
+  Equal,
+  NotEqual,
+  Less,
+  LessOrEqual,
+  Greater,
+  GreaterOrEqual,
+};
+template <>
+struct EnumMeta<TestFunc> {
+  static inline const std::unordered_map<TestFunc, GLenum> glmap = {
+    {TestFunc::Never,          GL_NEVER},
+    {TestFunc::Always,         GL_ALWAYS},
+    {TestFunc::Equal,          GL_EQUAL},
+    {TestFunc::NotEqual,       GL_NOTEQUAL},
+    {TestFunc::Less,           GL_LESS},
+    {TestFunc::LessOrEqual,    GL_LEQUAL},
+    {TestFunc::Greater,        GL_GREATER},
+    {TestFunc::GreaterOrEqual, GL_GEQUAL},
+  };
+};
+
+
 enum class BufferTarget {
   Array,
   ElementArray,
@@ -280,31 +305,6 @@ struct EnumMeta<DrawMode> {
   };
 };
 
-
-enum class FramebufferSlot {
-  Color0,
-  Color1,
-  Color2,
-  Color3,
-  Color4,
-  Color5,
-  Color6,
-  Color7,
-};
-template <>
-struct EnumMeta<FramebufferSlot> {
-  static inline const std::unordered_map<FramebufferSlot, GLenum> glmap = {
-    {FramebufferSlot::Color0, GL_COLOR_ATTACHMENT0},
-    {FramebufferSlot::Color1, GL_COLOR_ATTACHMENT0+1},
-    {FramebufferSlot::Color2, GL_COLOR_ATTACHMENT0+2},
-    {FramebufferSlot::Color3, GL_COLOR_ATTACHMENT0+3},
-    {FramebufferSlot::Color4, GL_COLOR_ATTACHMENT0+4},
-    {FramebufferSlot::Color5, GL_COLOR_ATTACHMENT0+5},
-    {FramebufferSlot::Color6, GL_COLOR_ATTACHMENT0+6},
-    {FramebufferSlot::Color7, GL_COLOR_ATTACHMENT0+7},
-  };
-};
-
 }  // namespace nf7::gl
 
 
@@ -312,6 +312,8 @@ namespace yas::detail {
 
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::NumericType);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::ColorComp);
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::InternalFormat);
+NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::TestFunc);
 
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::BufferTarget);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::BufferUsage);
@@ -321,7 +323,5 @@ NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::TextureTarget);
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::ShaderType);
 
 NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::DrawMode);
-
-NF7_YAS_DEFINE_ENUM_SERIALIZER(nf7::gl::FramebufferSlot);
 
 }  // namespace yas::detail

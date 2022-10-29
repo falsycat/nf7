@@ -730,7 +730,7 @@ struct Program {
   Program& operator=(Program&&) = default;
 
   void serialize(auto& ar) {
-    ar(shaders_);
+    ar(shaders_, depth_);
   }
 
   std::string Stringify() noexcept {
@@ -742,6 +742,18 @@ struct Program {
       st << shader.Stringify();
     }
     st << YAML::EndSeq;
+
+    if (depth_) {
+      st << YAML::Key << "depth";
+      st << YAML::BeginMap;
+      st << YAML::Key   << "near";
+      st << YAML::Value << depth_->near;
+      st << YAML::Key   << "far";
+      st << YAML::Value << depth_->far;
+      st << YAML::Key   << "func";
+      st << YAML::Value << std::string {magic_enum::enum_name(depth_->func)};
+      st << YAML::EndMap;
+    }
     st << YAML::EndMap;
     return std::string {st.c_str(), st.size()};
   }
@@ -749,16 +761,25 @@ struct Program {
   try {
     const auto yaml = YAML::Load(v);
 
-    std::vector<nf7::File::Path> shaders;
+    Program ret;
     for (const auto& shader : yaml["shaders"]) {
-      shaders.push_back(
+      ret.shaders_.push_back(
           nf7::File::Path::Parse(shader.as<std::string>()));
     }
-    if (shaders.size() == 0) {
+    if (ret.shaders_.size() == 0) {
       throw nf7::Exception {"no shader is attached"};
     }
 
-    shaders_ = std::move(shaders);
+    if (const auto& yaml_depth = yaml["depth"]) {
+      depth_.emplace(Product::Meta::Depth {
+        .near = yaml_depth["near"].as<float>(),
+        .far  = yaml_depth["far"].as<float>(),
+        .func = magic_enum::enum_cast<gl::TestFunc>(
+            yaml_depth["func"].as<std::string>()).value(),
+      });
+    }
+
+    *this = std::move(ret);
   } catch (YAML::Exception& e) {
     throw nf7::Exception {std::string {"YAML error: "}+e.what()};
   }
@@ -801,6 +822,9 @@ struct Program {
       if (vp_w < 0 || vp_h < 0) {
         throw nf7::Exception {"negative size viewport"};
       }
+
+      gl::Program::Meta config = (**p.obj).meta();
+      // TODO: override configurations
 
       // this will be triggered when all preparation done
       nf7::AggregatePromise apro {p.la};
@@ -903,12 +927,14 @@ struct Program {
         }
 
         // draw
+        config.ApplyState();
         if (vao->meta().index) {
           const auto numtype = gl::ToEnum(vao->meta().index->numtype);
           glDrawElementsInstanced(mode, count, numtype, nullptr, inst);
         } else {
           glDrawArraysInstanced(mode, 0, count, inst);
         }
+        config.RevertState();
         const auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
         // unbind all
@@ -934,7 +960,8 @@ struct Program {
   }
 
  private:
-  std::vector<nf7::File::Path> shaders_;
+  std::vector<nf7::File::Path>        shaders_;
+  std::optional<Product::Meta::Depth> depth_ = {{}};
 
 
   static void SetUniform(GLuint prog, const char* name, const nf7::Value& v) {

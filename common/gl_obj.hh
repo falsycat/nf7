@@ -113,6 +113,13 @@ struct Obj_ProgramMeta final {
  public:
   struct Param { };
 
+  struct Depth {
+    float near = 0, far = 1;
+    gl::TestFunc func = gl::TestFunc::Less;
+
+    void serialize(auto& ar) { ar(near, far, func); }
+  };
+
   static void Delete(GLuint id) noexcept {
     glDeleteProgram(id);
   }
@@ -121,6 +128,11 @@ struct Obj_ProgramMeta final {
   nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Create(
       const std::shared_ptr<nf7::Context>& ctx,
       const std::vector<nf7::File::Id>&    shaders) noexcept;
+
+  void ApplyState() const noexcept;
+  void RevertState() const noexcept;
+
+  std::optional<Depth> depth;
 };
 using Program = Obj<Obj_ProgramMeta>;
 using ProgramFactory = AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<Program>>>;
