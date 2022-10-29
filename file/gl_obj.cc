@@ -884,8 +884,8 @@ struct Program {
         assert(fbo_lock_fu);
         assert(vao_lock_fu);
         try {
-          fbo_lock_fu->value();
-          vao_lock_fu->value();
+          if (fbo_lock_fu->error()) fbo_lock_fu->value();
+          if (fbo_lock_fu->error()) vao_lock_fu->value();
         } catch (nf7::Exception&) {
           p.log->Error("failed to acquire lock of VAO or FBO");
           return;
