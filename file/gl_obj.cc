@@ -397,7 +397,7 @@ struct Texture {
   Texture& operator=(Texture&&) = default;
 
   void serialize(auto& ar) {
-    ar(target_, numtype_, comp_, size_);
+    ar(target_, ifmt_, size_);
   }
 
   std::string Stringify() noexcept {
@@ -405,10 +405,8 @@ struct Texture {
     st << YAML::BeginMap;
     st << YAML::Key   << "target";
     st << YAML::Value << std::string {magic_enum::enum_name(target_)};
-    st << YAML::Key   << "numtype";
-    st << YAML::Value << std::string {magic_enum::enum_name(numtype_)};
-    st << YAML::Key   << "comp";
-    st << YAML::Value << std::string {magic_enum::enum_name(comp_)};
+    st << YAML::Key   << "ifmt";
+    st << YAML::Value << std::string {magic_enum::enum_name(ifmt_)};
     st << YAML::Key   << "size";
     st << YAML::Value << YAML::Flow;
     st << YAML::BeginSeq;
@@ -426,10 +424,8 @@ struct Texture {
 
     const auto target = magic_enum::
         enum_cast<gl::TextureTarget>(yaml["target"].as<std::string>()).value();
-    const auto numtype = magic_enum::
-        enum_cast<gl::NumericType>(yaml["numtype"].as<std::string>()).value();
-    const auto comp = magic_enum::
-        enum_cast<gl::ColorComp>(yaml["comp"].as<std::string>()).value();
+    const auto ifmt = magic_enum::
+        enum_cast<gl::InternalFormat>(yaml["ifmt"].as<std::string>()).value();
     const auto size = yaml["size"].as<std::vector<uint32_t>>();
 
     const auto dim = gl::GetDimension(target);
@@ -439,8 +435,7 @@ struct Texture {
     }
 
     target_  = target;
-    numtype_ = numtype;
-    comp_    = comp;
+    ifmt_    = ifmt;
 
     std::copy(size.begin(), size.begin()+dim, size_.begin());
     std::fill(size_.begin()+dim, size_.end(), 1);
@@ -454,7 +449,7 @@ struct Texture {
   try {
     Product::Meta meta {
       .target = target_,
-      .format = static_cast<GLint>(gl::ToInternalFormat(numtype_, comp_)),
+      .format = ifmt_,
       .size   = {},
     };
     std::transform(size_.begin(), size_.end(), meta.size.begin(),
@@ -489,13 +484,13 @@ struct Texture {
       }
 
       const auto texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-      const auto vecsz = texel*gl::GetCompCount(comp_)*gl::GetByteSize(numtype_);
+      const auto vecsz = texel*gl::GetByteSize(ifmt_);
       if (vec->size() < static_cast<size_t>(vecsz)) {
         throw nf7::Exception {"vector is too small"};
       }
 
-      const auto fmt  = gl::ToEnum(comp_);
-      const auto type = gl::ToEnum(numtype_);
+      const auto fmt  = gl::ToEnum(gl::GetColorComp(ifmt_));
+      const auto type = gl::ToEnum(gl::GetNumericType(ifmt_));
       p.la->env().ExecGL(p.la, [=, &tex]() {
         const auto t = gl::ToEnum(tex.meta().target);
         glBindTexture(t, tex.id());
@@ -517,9 +512,10 @@ struct Texture {
         assert(0 == glGetError());
       });
       return true;
+
     } else if (p.in.name == "download") {
-      auto numtype = numtype_;
-      auto comp    = comp_;
+      auto numtype = gl::GetNumericType(ifmt_);
+      auto comp    = gl::GetColorComp(ifmt_);
       try {
         try {
           numtype = magic_enum::enum_cast<
@@ -543,7 +539,7 @@ struct Texture {
         const auto& tex   = **p.obj;
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-        const auto  bsize = static_cast<size_t>(texel)*GetCompCount(comp)*GetByteSize(numtype);
+        const auto  bsize = texel*gl::GetCompCount(comp)*gl::GetByteSize(numtype);
         glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_STREAM_READ);
 
         const auto t = gl::ToEnum(tex.meta().target);
@@ -559,7 +555,7 @@ struct Texture {
           auto buf = std::make_shared<std::vector<uint8_t>>(bsize);
 
           const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-          std::memcpy(buf->data(), ptr, bsize);
+          std::memcpy(buf->data(), ptr, static_cast<size_t>(bsize));
           glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 
           glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -585,17 +581,13 @@ struct Texture {
 
   void UpdateTooltip(const std::shared_ptr<Product>& prod) noexcept {
     const auto t = magic_enum::enum_name(target_);
-    ImGui::Text("target : %.*s", static_cast<int>(t.size()), t.data());
+    ImGui::Text("target: %.*s", static_cast<int>(t.size()), t.data());
 
-    const auto f = magic_enum::enum_name(numtype_);
-    ImGui::Text("numtype: %.*s", static_cast<int>(f.size()), f.data());
+    const auto c = magic_enum::enum_name(ifmt_);
+    ImGui::Text("ifmt  : %.*s",
+                static_cast<int>(c.size()), c.data());
 
-    const auto c = magic_enum::enum_name(comp_);
-    ImGui::Text("comp   : %.*s (%" PRIu8 " values)",
-                static_cast<int>(c.size()), c.data(),
-                magic_enum::enum_integer(comp_));
-
-    ImGui::Text("size   : %" PRIu32 " x %" PRIu32 " x %" PRIu32, size_[0], size_[1], size_[2]);
+    ImGui::Text("size  : %" PRIu32 " x %" PRIu32 " x %" PRIu32, size_[0], size_[1], size_[2]);
 
     ImGui::Spacing();
     if (prod) {
@@ -613,9 +605,8 @@ struct Texture {
   }
 
  private:
-  gl::TextureTarget target_  = gl::TextureTarget::Rect;
-  gl::NumericType   numtype_ = gl::NumericType::U8;
-  gl::ColorComp     comp_    = gl::ColorComp::RGBA;
+  gl::TextureTarget target_ = gl::TextureTarget::Rect;
+  gl::InternalFormat ifmt_  = gl::InternalFormat::RGBA8;
 
   std::array<uint32_t, 3> size_ = {256, 256, 1};
 };
@@ -1219,7 +1210,7 @@ struct Framebuffer {
   Framebuffer& operator=(Framebuffer&&) = default;
 
   void serialize(auto& ar) {
-    ar(colors_);
+    ar(colors_, depth_, stencil_);
   }
 
   std::string Stringify() noexcept {
@@ -1234,6 +1225,14 @@ struct Framebuffer {
       }
     }
     st << YAML::EndMap;
+    if (depth_) {
+      st << YAML::Key << "depth";
+      st << YAML::Value << depth_->path.Stringify();
+    }
+    if (stencil_) {
+      st << YAML::Key << "stencil";
+      st << YAML::Value << stencil_->path.Stringify();
+    }
     st << YAML::EndMap;
     return std::string {st.c_str(), st.size()};
   }
@@ -1242,16 +1241,26 @@ struct Framebuffer {
     const auto  yaml        = YAML::Load(v);
     const auto& yaml_colors = yaml["colors"];
 
-    std::array<std::optional<Attachment>, Product::Meta::kColorSlotCount> colors;
+    Framebuffer ret;
     for (size_t i = 0; i < Product::Meta::kColorSlotCount; ++i) {
       if (auto& yaml_color = yaml_colors[std::to_string(i)]) {
-        colors[i].emplace(Attachment {
+        ret.colors_[i].emplace(Attachment {
           .path = nf7::File::Path::Parse(yaml_color.as<std::string>()),
         });
       }
     }
+    if (const auto& yaml_depth = yaml["depth"]) {
+      ret.depth_.emplace(Attachment {
+        .path = nf7::File::Path::Parse(yaml_depth.as<std::string>()),
+      });
+    }
+    if (const auto& yaml_stencil = yaml["stencil"]) {
+      ret.stencil_.emplace(Attachment {
+        .path = nf7::File::Path::Parse(yaml_stencil.as<std::string>()),
+      });
+    }
 
-    colors_ = std::move(colors);
+    *this = std::move(ret);
   } catch (std::bad_optional_access&) {
     throw nf7::Exception {std::string {"invalid enum"}};
   } catch (YAML::Exception& e) {
@@ -1263,12 +1272,28 @@ struct Framebuffer {
     auto& base = *p.file;
     Product::Meta meta;
 
+    const auto resolveAndWatch = [&](const auto& path) {
+      const auto fid = base.ResolveOrThrow(path).id();
+      p.watch->Watch(fid);
+      return fid;
+    };
+
     for (size_t i = 0; i < Product::Meta::kColorSlotCount; ++i) {
       if (const auto& color = colors_[i]) {
-        const auto fid = base.ResolveOrThrow(color->path).id();
-        meta.colors[i].emplace(Product::Meta::Attachment { .tex = fid, });
-        p.watch->Watch(fid);
+        meta.colors[i].emplace(Product::Meta::Attachment {
+          .tex = resolveAndWatch(color->path),
+        });
       }
+    }
+    if (depth_) {
+      meta.depth.emplace(Product::Meta::Attachment {
+        .tex = resolveAndWatch(depth_->path),
+      });
+    }
+    if (stencil_) {
+      meta.stencil.emplace(Product::Meta::Attachment {
+        .tex = resolveAndWatch(stencil_->path),
+      });
     }
     return meta.Create(p.ctx);
   } catch (nf7::Exception&) {
@@ -1296,6 +1321,8 @@ struct Framebuffer {
 
  private:
   std::array<std::optional<Attachment>, Product::Meta::kColorSlotCount> colors_;
+  std::optional<Attachment> depth_;
+  std::optional<Attachment> stencil_;
 };
 template <>
 struct ObjBase<Framebuffer>::TypeInfo final {

@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <unordered_map>
 
 #include <GL/glew.h>
@@ -85,6 +86,102 @@ inline uint8_t GetCompCount(ColorComp c) noexcept {
 }
 
 
+enum class InternalFormat : uint8_t {
+  R8    = 0x01,
+  RG8   = 0x02,
+  RGB8  = 0x03,
+  RGBA8 = 0x04,
+
+  RF32    = 0x11,
+  RGF32   = 0x12,
+  RGBF32  = 0x13,
+  RGBAF32 = 0x14,
+
+  Depth16  = 0x21,
+  Depth24  = 0x31,
+  DepthF32 = 0x41,
+
+  Depth24_Stencil8  = 0x22,
+  DepthF32_Stencil8 = 0x32,
+};
+template <>
+struct EnumMeta<InternalFormat> {
+  static inline const std::unordered_map<InternalFormat, GLenum> glmap = {
+    {InternalFormat::R8,                 GL_R8},
+    {InternalFormat::RG8,                GL_RG8},
+    {InternalFormat::RGB8,               GL_RGB8},
+    {InternalFormat::RGBA8,              GL_RGBA8},
+    {InternalFormat::RF32,               GL_R32F},
+    {InternalFormat::RGF32,              GL_RG32F},
+    {InternalFormat::RGBF32,             GL_RGB32F},
+    {InternalFormat::RGBAF32,            GL_RGBA32F},
+    {InternalFormat::Depth16,            GL_DEPTH_COMPONENT16},
+    {InternalFormat::Depth24,            GL_DEPTH_COMPONENT24},
+    {InternalFormat::DepthF32,           GL_DEPTH_COMPONENT32F},
+    {InternalFormat::Depth24_Stencil8,  GL_DEPTH24_STENCIL8},
+    {InternalFormat::DepthF32_Stencil8, GL_DEPTH32F_STENCIL8},
+  };
+};
+inline uint8_t GetByteSize(InternalFormat fmt) noexcept {
+  switch (fmt) {
+  case InternalFormat::R8:                return 1;
+  case InternalFormat::RG8:               return 2;
+  case InternalFormat::RGB8:              return 3;
+  case InternalFormat::RGBA8:             return 4;
+  case InternalFormat::RF32:              return 4;
+  case InternalFormat::RGF32:             return 8;
+  case InternalFormat::RGBF32:            return 12;
+  case InternalFormat::RGBAF32:           return 16;
+  case InternalFormat::Depth16:           return 2;
+  case InternalFormat::Depth24:           return 3;
+  case InternalFormat::DepthF32:          return 4;
+  case InternalFormat::Depth24_Stencil8:  return 4;
+  case InternalFormat::DepthF32_Stencil8: return 5;
+  }
+  std::abort();
+}
+inline ColorComp GetColorComp(InternalFormat fmt) {
+  switch (fmt) {
+  case InternalFormat::R8:      return ColorComp::R;
+  case InternalFormat::RG8:     return ColorComp::RG;
+  case InternalFormat::RGB8:    return ColorComp::RGB;
+  case InternalFormat::RGBA8:   return ColorComp::RGBA;
+  case InternalFormat::RF32:    return ColorComp::R;
+  case InternalFormat::RGF32:   return ColorComp::RG;
+  case InternalFormat::RGBF32:  return ColorComp::RGB;
+  case InternalFormat::RGBAF32: return ColorComp::RGBA;
+  default: throw nf7::Exception {"does not have color component"};
+  }
+}
+inline NumericType GetNumericType(InternalFormat fmt) {
+  switch (fmt) {
+  case InternalFormat::R8:
+  case InternalFormat::RG8:
+  case InternalFormat::RGB8:
+  case InternalFormat::RGBA8:
+    return NumericType::U8;
+  case InternalFormat::RF32:
+  case InternalFormat::RGF32:
+  case InternalFormat::RGBF32:
+  case InternalFormat::RGBAF32:
+    return NumericType::F32;
+  default:
+    throw nf7::Exception {"does not have color component"};
+  }
+}
+inline bool IsColor(InternalFormat fmt) noexcept {
+  return (magic_enum::enum_integer(fmt) & 0xF0) <= 1;
+}
+inline bool HasDepth(InternalFormat fmt) noexcept {
+  return !IsColor(fmt);
+}
+inline bool HasStencil(InternalFormat fmt) noexcept {
+  return
+      fmt == InternalFormat::Depth24_Stencil8 ||
+      fmt == InternalFormat::DepthF32_Stencil8;
+}
+
+
 enum class BufferTarget {
   Array,
   ElementArray,
@@ -137,31 +234,6 @@ struct EnumMeta<TextureTarget> {
 };
 inline uint8_t GetDimension(TextureTarget t) noexcept {
   return magic_enum::enum_integer(t) & 0xF;
-}
-inline GLenum ToInternalFormat(NumericType n, ColorComp c) {
-  GLenum ret = 0;
-  switch (n) {
-  case NumericType::U8:
-    ret = 
-        c == ColorComp::R?    GL_R8:
-        c == ColorComp::RG?   GL_RG8:
-        c == ColorComp::RGB?  GL_RGB8:
-        c == ColorComp::RGBA? GL_RGBA8: 0;
-    break;
-  case NumericType::F32:
-    ret =
-        c == ColorComp::R?    GL_R32F:
-        c == ColorComp::RG?   GL_RG32F:
-        c == ColorComp::RGB?  GL_RGB32F:
-        c == ColorComp::RGBA? GL_RGBA32F: 0;
-    break;
-  default:
-    break;
-  }
-  if (ret == 0) {
-    throw nf7::Exception {"invalid numtype and comp pair"};
-  }
-  return ret;
 }
 
 

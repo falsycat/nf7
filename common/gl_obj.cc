@@ -81,16 +81,20 @@ nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
     glTexParameteri(t, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(t, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(t, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+    const auto   ifmt = static_cast<GLint>(gl::ToEnum(format));
+    const GLenum fmt  = gl::IsColor(format)? GL_RED: GL_DEPTH_COMPONENT;
     switch (gl::GetDimension(target)) {
     case 2:
-      glTexImage2D(t, 0, format, size[0], size[1], 0,
-                   GL_RED, GL_UNSIGNED_BYTE, nullptr);
+      glTexImage2D(t, 0, ifmt, size[0], size[1], 0,
+                   fmt, GL_UNSIGNED_BYTE, nullptr);
       break;
     default:
       assert(false && "unknown texture target");
       break;
     }
     glBindTexture(t, 0);
+    assert(0 == glGetError());
 
     pro.Return(std::make_shared<Obj<Obj_TextureMeta>>(ctx, id, *this));
   });

@@ -83,7 +83,7 @@ struct Obj_TextureMeta final {
       const std::shared_ptr<nf7::Context>& ctx) const noexcept;
 
   gl::TextureTarget      target;
-  GLint                  format;
+  gl::InternalFormat     format;
   std::array<GLsizei, 3> size;
 };
 using Texture        = Obj<Obj_TextureMeta>;
