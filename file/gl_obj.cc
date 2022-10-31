@@ -964,7 +964,7 @@ struct Program {
         assert(vao_lock_fu);
         try {
           if (fbo_lock_fu->error()) fbo_lock_fu->value();
-          if (fbo_lock_fu->error()) vao_lock_fu->value();
+          if (vao_lock_fu->error()) vao_lock_fu->value();
         } catch (nf7::Exception&) {
           p.log->Error("failed to acquire lock of VAO or FBO");
           return;
@@ -1020,8 +1020,10 @@ struct Program {
         glBindVertexArray(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glUseProgram(0);
-        assert(0 == glGetError());
 
+        if (0 != glGetError()) {
+          p.log->Warn("OpenGL error detected, drawing might be incomplete");
+        }
         if (status != GL_FRAMEBUFFER_COMPLETE) {
           p.log->Warn("framebuffer is broken");
         }
@@ -1044,7 +1046,6 @@ struct Program {
 
 
   static void SetUniform(GLuint prog, const char* name, const nf7::Value& v) {
-    assert(0 == glGetError());
     const GLint loc = glGetUniformLocation(prog, name);
     if (loc < 0) {
       throw nf7::Exception {"unknown uniform identifier"};
