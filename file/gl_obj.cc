@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <implot.h>
 
 #include <magic_enum.hpp>
@@ -38,6 +39,7 @@
 #include "common/gl_obj.hh"
 #include "common/gl_shader_preproc.hh"
 #include "common/gui_config.hh"
+#include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/nfile_watcher.hh"
@@ -67,6 +69,11 @@ struct HandleParam {
   std::shared_ptr<nf7::Node::Lambda>       la;
   nf7::Node::Lambda::Msg                   in;
   nf7::Mutex::Resource<std::shared_ptr<T>> obj;
+};
+
+template <typename T>
+concept HasWindow = requires(T& x) {
+  x.UpdateWindow(std::optional<nf7::Future<std::shared_ptr<typename T::Product>>> {});
 };
 
 template <typename T>
@@ -102,13 +109,23 @@ class ObjBase : public nf7::FileBase,
     nwatch_->onMod = mem_.onRestore = mem_.onCommit = [this]() {
       Drop();
     };
+
+    if constexpr (HasWindow<T>) {
+      win_.emplace(*this, T::kWindowTitle);
+    }
   }
 
   ObjBase(nf7::Deserializer& ar) : ObjBase(ar.env()) {
     ar(mem_.data());
+    if constexpr (HasWindow<T>) {
+      ar(*win_);
+    }
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(mem_.data());
+    if constexpr (HasWindow<T>) {
+      ar(*win_);
+    }
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<ThisObjBase>(env, T {mem_.data()});
@@ -156,6 +173,20 @@ class ObjBase : public nf7::FileBase,
         });
   }
 
+
+  void Update() noexcept override {
+    if constexpr (HasWindow<T>) {
+      if (win_->shownInCurrentFrame()) {
+        const auto em = ImGui::GetFontSize();
+        ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
+      }
+      if (win_->Begin()) {
+        mem_->UpdateWindow(fu_);
+      }
+      win_->End();
+    }
+  }
+
   void UpdateMenu() noexcept override {
     if (ImGui::BeginMenu("object management")) {
       if (ImGui::MenuItem("create", nullptr, false, !fu_)) {
@@ -178,6 +209,10 @@ class ObjBase : public nf7::FileBase,
         nf7::gui::Config(mem_);
         ImGui::EndMenu();
       }
+    }
+    if constexpr (HasWindow<T>) {
+      ImGui::Separator();
+      ImGui::MenuItem(T::kWindowTitle, nullptr, &win_->shown());
     }
   }
   void UpdateTooltip() noexcept override {
@@ -217,6 +252,7 @@ class ObjBase : public nf7::FileBase,
   std::optional<nf7::Future<std::shared_ptr<Product>>> fu_;
 
   nf7::GenericMemento<T> mem_;
+  std::optional<nf7::gui::Window> win_;
 
 
   void Drop() noexcept {
@@ -602,6 +638,43 @@ struct Texture {
                      ImVec2 {static_cast<float>(size_[0]), static_cast<float>(size_[1])});
       }
     }
+  }
+
+  static constexpr const char* kWindowTitle = "Texture Viewer";
+  void UpdateWindow(const std::optional<nf7::Future<std::shared_ptr<Product>>>& fu) noexcept {
+    if (!fu) {
+      ImGui::TextUnformatted("this object is not used yet");
+      return;
+    }
+    if (fu->error()) {
+      ImGui::TextUnformatted("error while texture creation ;(");
+      return;
+    }
+    if (fu->yet()) {
+      ImGui::TextUnformatted("creating new texture... X)");
+      return;
+    }
+    assert(fu->done());
+
+    const auto& tex = *fu->value();
+    if (tex.meta().target != gl::TextureTarget::Tex2D) {
+      ImGui::TextUnformatted("only Tex2D texture is supported");
+      return;
+    }
+
+    const auto avail  = ImGui::GetContentRegionAvail();
+    const auto aspect =
+        static_cast<float>(tex.meta().size[0]) /
+        static_cast<float>(tex.meta().size[1]);
+
+    auto size = ImVec2 {avail.x, avail.x/aspect};
+    if (size.y > avail.y) {
+      size = ImVec2 {avail.y*aspect, avail.y};
+    }
+
+    const auto id = reinterpret_cast<ImTextureID>(static_cast<intptr_t>(tex.id()));
+    ImGui::SetCursorPos(ImGui::GetCursorPos()+(avail-size)/2);
+    ImGui::Image(id, size);
   }
 
  private:
