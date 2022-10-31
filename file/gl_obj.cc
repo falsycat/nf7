@@ -867,7 +867,13 @@ struct Program {
       p.watch->Watch(fid);
       shaders.push_back(fid);
     }
-    return Product::Meta().Create(p.ctx, shaders);
+
+    Product::Meta meta;
+    if (depth_) {
+      meta.depth.emplace(*depth_);
+    }
+
+    return meta.Create(p.ctx, shaders);
   } catch (nf7::Exception&) {
     return {std::current_exception()};
   }

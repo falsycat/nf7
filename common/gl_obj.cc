@@ -153,7 +153,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
   }
 
   nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>>::Promise pro {ctx};
-  apro.future().Chain(nf7::Env::kGL, ctx, pro, [ctx, shs = std::move(shs)](auto&) {
+  apro.future().Chain(nf7::Env::kGL, ctx, pro, [*this, ctx, shs = std::move(shs)](auto&) {
     // check all shaders
     for (auto& sh : shs) { sh.value(); }
 
@@ -173,7 +173,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
     GLint status;
     glGetProgramiv(id, GL_LINK_STATUS, &status);
     if (status == GL_TRUE) {
-      return std::make_shared<Obj<Obj_ProgramMeta>>(ctx, id, gl::Program::Meta {});
+      return std::make_shared<Obj<Obj_ProgramMeta>>(ctx, id, *this);
     } else {
       GLint len;
       glGetProgramiv(id, GL_INFO_LOG_LENGTH, &len);
