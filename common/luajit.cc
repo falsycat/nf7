@@ -398,7 +398,7 @@ void PushNodeRootLambda(
     lua_setfield(L, -2, "__index");
 
     lua_pushcfunction(L, [](auto L) {
-      CheckNodeRootLambda(L, 1).~T();
+      CheckNodeRootLambda(L, 1).~shared_ptr();
       return 0;
     });
     lua_setfield(L, -2, "__gc");

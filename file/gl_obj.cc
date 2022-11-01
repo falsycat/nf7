@@ -983,7 +983,7 @@ struct Program {
         for (const auto& pa : *uni) {
           try {
             SetUniform(prog->id(), pa.first.c_str(), pa.second);
-          } catch (nf7::Exception& e) {
+          } catch (nf7::Exception&) {
             p.log->Warn("uniform '"+pa.first+"' is ignored");
           }
         }

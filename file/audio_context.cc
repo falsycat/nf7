@@ -178,8 +178,8 @@ void AudioContext::UpdateDeviceListMenu(ma_device_info* ptr, ma_uint32 n) noexce
       ImGui::Text("default: %s", ptr[i].isDefault? "yes": "no");
 
       ImGui::TextUnformatted("native formats:");
-      const auto n = std::min(ptr[i].nativeDataFormatCount, ma_uint32 {5});
-      for (ma_uint32 j = 0; j < n; ++j) {
+      const auto fmtn = std::min(ptr[i].nativeDataFormatCount, ma_uint32 {5});
+      for (ma_uint32 j = 0; j < fmtn; ++j) {
         const auto& d = ptr[i].nativeDataFormats[j];
         const char* fmt =
             d.format == ma_format_u8? "u8":
@@ -191,10 +191,10 @@ void AudioContext::UpdateDeviceListMenu(ma_device_info* ptr, ma_uint32 n) noexce
         ImGui::Bullet();
         ImGui::Text("%s / %" PRIu32 " ch / %" PRIu32 " Hz", fmt, d.channels, d.sampleRate);
       }
-      if (ptr[i].nativeDataFormatCount > n) {
+      if (ptr[i].nativeDataFormatCount > fmtn) {
         ImGui::Bullet(); ImGui::TextDisabled("etc...");
       }
-      if (n == 0) {
+      if (fmtn == 0) {
         ImGui::Bullet(); ImGui::TextDisabled("(nothing)");
       }
       ImGui::EndTooltip();

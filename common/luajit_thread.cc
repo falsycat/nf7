@@ -139,8 +139,7 @@ static void PushMeta(lua_State* L) noexcept {
           auto fu = im->Import(*th, name);
           fu.ThenIf([L, th](auto& obj) {
             th->ExecResume(L, obj);
-          }).
-          template Catch<nf7::Exception>([L, th](auto&) {
+          }).template Catch<nf7::Exception>([L, th](auto&) {
             if (auto log = th->logger()) {
               log->Warn("import failed, returning nil");
             }

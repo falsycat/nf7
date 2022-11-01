@@ -44,6 +44,7 @@ target_include_directories(nf7 PRIVATE . "${PROJECT_BINARY_DIR}/include")
 target_compile_options(nf7 PRIVATE
   ${NF7_OPTIONS_WARNING}
   ${NF7_OPTIONS_SANITIZE}
+  $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
 )
 target_link_options(nf7 PRIVATE
   ${NF7_OPTIONS_SANITIZE}

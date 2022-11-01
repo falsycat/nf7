@@ -265,10 +265,12 @@ class Future final {
     });
     return pro.future();
   }
-  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+  template <typename F>
+  ThisFuture& Then(const std::shared_ptr<nf7::Context>& ctx, F&& f) noexcept {
     return Then(nf7::Env::kSub, ctx, std::move(f));
   }
-  ThisFuture& Then(auto&& f) noexcept {
+  template <typename F>
+  ThisFuture& Then(F&& f) noexcept {
     return Then(nullptr, std::move(f));
   }
 
@@ -281,10 +283,11 @@ class Future final {
     });
     return *this;
   }
-  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+  ThisFuture& ThenIf(const std::shared_ptr<nf7::Context>& ctx,
+                     std::function<void(const T&)>&&      f) noexcept {
     return ThenIf(nf7::Env::kSub, ctx, std::move(f));
   }
-  ThisFuture& ThenIf(auto&& f) noexcept {
+  ThisFuture& ThenIf(std::function<void(const T&)>&& f) noexcept {
     return ThenIf(nullptr, std::move(f));
   }
 
@@ -299,18 +302,20 @@ class Future final {
     return *this;
   }
   template <typename E>
-  ThisFuture& Catch(const std::shared_ptr<nf7::Context>& ctx, auto&& f) noexcept {
+  ThisFuture& Catch(const std::shared_ptr<nf7::Context>& ctx,
+                    std::function<void(E&)>&&            f) noexcept {
     return Catch<E>(nf7::Env::kSub, ctx, std::move(f));
   }
   template <typename E>
-  ThisFuture& Catch(auto&& f) noexcept {
+  ThisFuture& Catch(std::function<void(E&)>&& f) noexcept {
     return Catch<E>(nullptr, std::move(f));
   }
 
   // Finalizes the other promise on finalize of this future.
+  template <typename P, typename F>
   ThisFuture& Chain(nf7::Env::Executor exec,
                     const std::shared_ptr<nf7::Context>& ctx,
-                    auto& pro, auto&& func) noexcept {
+                    P& pro, F&& func) noexcept {
     return Then(exec, ctx, [pro, func = std::move(func)](auto& fu) mutable {
       try {
         if constexpr (std::is_void<decltype(func(fu.value()))>::value) {
@@ -323,13 +328,16 @@ class Future final {
       }
     });
   }
-  ThisFuture& Chain(const std::shared_ptr<nf7::Context>& ctx, auto& pro, auto&& func) noexcept {
+  template <typename P, typename F>
+  ThisFuture& Chain(const std::shared_ptr<nf7::Context>& ctx, P& pro, F&& func) noexcept {
     return Chain(nf7::Env::kSub, ctx, pro, std::move(func));
   }
-  ThisFuture& Chain(auto& pro, auto&& func) noexcept {
+  template <typename P, typename F>
+  ThisFuture& Chain(P& pro, F&& func) noexcept {
     return Chain(nullptr, pro, std::move(func));
   }
-  ThisFuture& Chain(auto& pro) noexcept {
+  template <typename P>
+  ThisFuture& Chain(P& pro) noexcept {
     return Chain(pro, [](auto& v) { return v; });
   }
 

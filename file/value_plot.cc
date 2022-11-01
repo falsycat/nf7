@@ -225,7 +225,7 @@ class Plot::Lambda final : public nf7::Node::Lambda {
       throw nf7::Exception {"expected vector"};
     }
   } catch (nf7::ExpiredException&) {
-  } catch (nf7::Exception& e) {
+  } catch (nf7::Exception&) {
     f_->log_.Warn("plotter error");
   }
 
