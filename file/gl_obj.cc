@@ -175,6 +175,8 @@ class ObjBase : public nf7::FileBase,
 
 
   void Update() noexcept override {
+    nf7::FileBase::Update();
+
     if constexpr (HasWindow<T>) {
       if (win_->shownInCurrentFrame()) {
         const auto em = ImGui::GetFontSize();
