@@ -511,8 +511,8 @@ struct Texture {
 
       const auto dim = gl::GetDimension(target_);
       for (size_t i = 0; i < dim; ++i) {
-        offset[i] = v.tupleOr(kOffsetNames[i], nf7::Value::Integer {0}).integer<uint32_t>();
-        size[i]   = v.tuple(kSizeNames[i]).integer<uint32_t>();
+        offset[i] = v.tupleOr(kOffsetNames[i], nf7::Value::Integer {0}).integerOrScalar<uint32_t>();
+        size[i]   = v.tuple(kSizeNames[i]).integerOrScalar<uint32_t>();
         if (size[i] == 0) {
           return false;
         }
@@ -886,8 +886,8 @@ struct Program {
 
     if (p.in.name == "draw") {
       const auto mode  = gl::ToEnum<gl::DrawMode>(v.tuple("mode").string());
-      const auto count = v.tuple("count").integer<GLsizei>();
-      const auto inst  = v.tupleOr("instance", nf7::Value::Integer{1}).integer<GLsizei>();
+      const auto count = v.tuple("count").integerOrScalar<GLsizei>();
+      const auto inst  = v.tupleOr("instance", nf7::Value::Integer{1}).integerOrScalar<GLsizei>();
 
       const auto uni = v.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
       const auto tex = v.tupleOr("texture", nf7::Value::Tuple {}).tuple();
@@ -914,8 +914,7 @@ struct Program {
       std::optional<nf7::gl::FramebufferFactory::Product>                fbo_fu;
       std::optional<nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture> fbo_lock_fu;
       {
-        fbo_fu = base.
-            ResolveOrThrow(v.tuple("fbo").string()).
+        fbo_fu = v.tuple("fbo").file(base).
             interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
 
         nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
@@ -931,8 +930,7 @@ struct Program {
       std::optional<nf7::gl::VertexArrayFactory::Product>            vao_fu;
       std::optional<nf7::gl::VertexArray::Meta::LockedBuffersFuture> vao_lock_fu;
       {
-        vao_fu = base.
-            ResolveOrThrow(v.tuple("vao").string()).
+        vao_fu = v.tuple("vao").file(base).
             interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
 
         nf7::gl::VertexArray::Meta::ValidationHint vhint;

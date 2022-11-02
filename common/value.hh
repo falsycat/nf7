@@ -109,6 +109,7 @@ class Value {
   bool isTuple() const noexcept { return std::holds_alternative<ConstTuple>(value_); }
   bool isData() const noexcept { return std::holds_alternative<DataPtr>(value_); }
 
+  // direct accessors
   Integer integer() const { return get<Integer>(); }
   Boolean boolean() const { return get<Boolean>(); }
   Scalar scalar() const { return get<Scalar>(); }
@@ -117,6 +118,13 @@ class Value {
   const ConstTuple& tuple() const { return get<ConstTuple>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
 
+  // direct reference accessor
+  Integer& integer() { return get<Integer>(); }
+  Boolean& boolean() { return get<Boolean>(); }
+  Scalar& scalar() { return get<Scalar>(); }
+  String& string() { return get<String>(); }
+
+  // conversion accessor
   template <typename N>
   N integer() const {
     return SafeCast<N>(integer());
@@ -141,7 +149,13 @@ class Value {
       return SafeCast<N>(integer());
     }
   }
+  template <typename T>
+  std::shared_ptr<T> data() const {
+    if (auto ptr = std::dynamic_pointer_cast<T>(data())) return ptr;
+    throw IncompatibleException("data pointer downcast failure");
+  }
 
+  // tuple element accessor
   const Value& tuple(size_t idx) const {
     auto& tup = *tuple();
     return idx < tup.size()? tup[idx].second:
@@ -161,19 +175,17 @@ class Value {
       return v;
     }
   }
-  template <typename T>
-  std::shared_ptr<T> data() const {
-    if (auto ptr = std::dynamic_pointer_cast<T>(data())) return ptr;
-    throw IncompatibleException("data pointer downcast failure");
+
+  // extended accessor
+  nf7::File& file(const nf7::File& base) const {
+    if (isInteger()) {
+      return base.env().GetFileOrThrow(integerOrScalar<nf7::File::Id>());
+    } else if (isString()) {
+      return base.ResolveOrThrow(string());
+    } else {
+      throw IncompatibleException {"expected file id or file path"};
+    }
   }
-
-  Integer& integer() { return get<Integer>(); }
-  Boolean& boolean() { return get<Boolean>(); }
-  Scalar& scalar() { return get<Scalar>(); }
-  String& string() { return get<String>(); }
-
-  Vector vectorUniq() { return getUniq<ConstVector>(); }
-  Tuple tupleUniq() { return getUniq<ConstTuple>(); }
 
   const char* typeName() const noexcept {
     struct Visitor final {
