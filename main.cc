@@ -130,6 +130,7 @@ void GLThread(GLFWwindow* window) noexcept {
       } catch (nf7::Exception&) {
         panicq_.Push(std::current_exception());
       }
+      assert(0 == glGetError());
     }
     glfwMakeContextCurrent(nullptr);
 
