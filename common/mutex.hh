@@ -120,7 +120,8 @@ class Mutex::Lock {
 
   ~Lock() noexcept {
     // Ensure that the Sync's destructor is called on worker thread.
-    ctx_->env().ExecSub(ctx_, [sync = sync_](){});
+    ctx_->env().ExecSub(
+        ctx_, [sync = std::move(sync_)]() mutable { sync = nullptr; });
   }
 
  private:
