@@ -116,6 +116,12 @@ void AsyncThread() noexcept {
 
 void GLThread(GLFWwindow* window) noexcept {
   std::unique_lock<std::mutex> k {cycle_mtx_};
+
+  // does nothing when the first cycle because the main thread is using GL context
+  cycle_cv_.wait(k, []() { return cycle_ == kSyncDraw; });
+  cycle_ = kDraw;
+  cycle_cv_.notify_all();
+
   while (alive_) {
     // wait for the end of GUI drawing
     cycle_cv_.wait(k, []() { return cycle_ != kDraw; });
