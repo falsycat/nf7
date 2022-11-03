@@ -143,7 +143,7 @@ class ObjBase : public nf7::FileBase,
   }
 
   ResourceFuture Create() noexcept final {
-    return Create(false);
+    return Create(true);
   }
   ResourceFuture Create(bool ex) noexcept {
     auto ctx = std::make_shared<nf7::GenericContext>(*this, "OpenGL obj factory");
@@ -1272,7 +1272,7 @@ struct Framebuffer {
   }
 
   static inline const std::vector<std::string> kInputs  = {
-    "clear",
+    "clear", "blit",
   };
   static inline const std::vector<std::string> kOutputs = {
   };
@@ -1391,7 +1391,43 @@ struct Framebuffer {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
       });
-      return false;
+      return true;
+    } else if (p.in.name == "blit") {
+      std::array<GLint, 8> rect;
+      const auto& rect_tup = p.in.value.tuple("rect");
+      for (size_t i = 0; i < rect.size(); ++i) {
+        rect[i] = rect_tup.tuple(i).integerOrScalar<GLint>();
+      }
+
+      nf7::AggregatePromise apro {p.la};
+
+      auto dst_lock_fu = (**p.obj).meta().LockAttachments(p.la);
+      apro.Add(dst_lock_fu);
+
+      auto src_fu = gl::LockRecursively<gl::Framebuffer>(
+          p.in.value.tuple("src").
+              file(*p.file).interfaceOrThrow<gl::Framebuffer::Factory>(),
+          p.la);
+      apro.Add(src_fu);
+
+      apro.future().ThenIf(nf7::Env::kGL, p.la, [=](auto&) {
+        const auto& src = **src_fu.value().first;
+        const auto& dst = **p.obj;
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, src.id());
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.id());
+
+        glBlitFramebuffer(rect[0], rect[1], rect[2], rect[3],
+                          rect[4], rect[5], rect[6], rect[7],
+                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        if (0 != glGetError()) {
+          p.log->Warn("failed to blit framebuffer (maybe incompatible buffer format)");
+        }
+      });
+      return true;
     } else {
       throw nf7::Exception {"unknown command: "+p.in.name};
     }
