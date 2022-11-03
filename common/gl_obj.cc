@@ -19,9 +19,9 @@
 namespace nf7::gl {
 
 template <typename T>
-auto LockAndValidate(const std::shared_ptr<nf7::Context>&                         ctx,
-                     nf7::AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<T>>>& factory,
-                     std::function<void(const T&)>&&                              validator) noexcept {
+auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
+                     typename T::Factory&                 factory,
+                     std::function<void(const T&)>&&      validator) noexcept {
   typename nf7::Future<nf7::Mutex::Resource<std::shared_ptr<T>>>::Promise pro {ctx};
   factory.Create().Chain(pro, [validator](auto& v) {
         validator(**v);
@@ -30,7 +30,7 @@ auto LockAndValidate(const std::shared_ptr<nf7::Context>&                       
   return pro.future();
 }
 static auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
-                            nf7::gl::BufferFactory&              factory,
+                            nf7::gl::Buffer::Factory&            factory,
                             nf7::gl::BufferTarget                target,
                             size_t                               required) noexcept {
   return LockAndValidate<gl::Buffer>(ctx, factory, [target, required](auto& buf) {
@@ -46,7 +46,7 @@ static auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
   });
 }
 static auto LockAndValidate(const std::shared_ptr<nf7::Context>& ctx,
-                            nf7::gl::TextureFactory&             factory,
+                            nf7::gl::Texture::Factory&           factory,
                             nf7::gl::TextureTarget               target) noexcept {
   return LockAndValidate<gl::Texture>(ctx, factory, [target](auto& tex) {
     if (tex.meta().target != target) {
@@ -148,7 +148,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
   std::vector<nf7::Future<nf7::Mutex::Resource<std::shared_ptr<gl::Shader>>>> shs;
   for (auto shader : shaders) {
     shs.emplace_back(ctx->env().GetFileOrThrow(shader).
-        interfaceOrThrow<nf7::gl::ShaderFactory>().Create());
+        interfaceOrThrow<nf7::gl::Shader::Factory>().Create());
     apro.Add(shs.back());
   }
 
@@ -212,21 +212,20 @@ try {
   }
 
   nf7::Future<std::shared_ptr<Obj<Obj_VertexArrayMeta>>>::Promise pro {ctx};
-  LockBuffers(ctx).Chain(
+  LockAttachments(ctx).Chain(
       nf7::Env::kGL, ctx, pro,
       [*this, ctx, pro](auto& bufs) mutable {
         // check all buffers
         if (index) {
-          assert(bufs.size() == attrs.size()+1);
-          const auto& m = (*bufs.back().value()).meta();
+          assert(bufs.index);
+          const auto& m = (***bufs.index).meta();
           if (m.target != gl::BufferTarget::ElementArray) {
             throw nf7::Exception {"index buffer is not ElementArray"};
           }
-        } else {
-          assert(bufs.size() == attrs.size());
         }
+        assert(bufs.attrs.size() == attrs.size());
         for (size_t i = 0; i < attrs.size(); ++i) {
-          if ((*bufs[i].value()).meta().target != gl::BufferTarget::Array) {
+          if ((**bufs.attrs[i]).meta().target != gl::BufferTarget::Array) {
             throw nf7::Exception {"buffer is not Array"};
           }
         }
@@ -236,7 +235,7 @@ try {
         glBindVertexArray(id);
         for (size_t i = 0; i < attrs.size(); ++i) {
           const auto& attr = attrs[i];
-          const auto& buf  = *bufs[i].value();
+          const auto& buf  = **bufs.attrs[i];
 
           glBindBuffer(GL_ARRAY_BUFFER, buf.id());
           glEnableVertexAttribArray(attr.location);
@@ -250,8 +249,7 @@ try {
               reinterpret_cast<GLvoid*>(static_cast<GLintptr>(attr.offset)));
         }
         if (index) {
-          const auto& buf = *bufs.back().value();
-          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buf.id());
+          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, (***bufs.index).id());
         }
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
@@ -264,17 +262,27 @@ try {
   return {std::current_exception()};
 }
 
-Obj_VertexArrayMeta::LockedBuffersFuture Obj_VertexArrayMeta::LockBuffers(
+Obj_VertexArrayMeta::LockedAttachmentsFuture Obj_VertexArrayMeta::LockAttachments(
     const std::shared_ptr<nf7::Context>& ctx,
     const ValidationHint&                vhint) const noexcept
 try {
+  const auto Lock = [&](nf7::File::Id id, gl::BufferTarget target, size_t req) {
+    auto& factory = ctx->env().
+        GetFileOrThrow(id).interfaceOrThrow<gl::Buffer::Factory>();
+    return LockAndValidate(ctx, factory, target, req);
+  };
+
   nf7::AggregatePromise apro {ctx};
 
-  std::vector<nf7::gl::BufferFactory::Product> fus;
-  fus.reserve(1+attrs.size());
+  auto ret = std::make_shared<LockedAttachments>();
+  LockedAttachmentsFuture::Promise pro {ctx};
 
   // lock array buffers
-  for (const auto& attr : attrs) {
+  std::vector<gl::Buffer::Factory::Product> attrs_fu;
+  attrs_fu.reserve(attrs.size());
+  for (size_t i = 0; i < attrs.size(); ++i) {
+    const auto& attr = attrs[i];
+
     const size_t required =
         // when non-instanced and no-index-buffer drawing
         attr.divisor == 0 && vhint.vertices > 0 && !index?
@@ -284,35 +292,24 @@ try {
           static_cast<size_t>(attr.stride) * (vhint.instances-1) + attr.offset:
         size_t {0};
 
-    auto& factory = ctx->env().
-        GetFileOrThrow(attr.buffer).
-        interfaceOrThrow<gl::BufferFactory>();
-    auto fu = LockAndValidate(ctx, factory, gl::BufferTarget::Array, required);
-    apro.Add(fu);
-    fus.emplace_back(fu);
+    attrs_fu.push_back(Lock(attr.buffer, gl::BufferTarget::Array, required));
+    apro.Add(attrs_fu.back());
   }
 
   // lock index buffers (it must be the last element in `fus`)
   if (index) {
     const auto required = gl::GetByteSize(index->numtype) * vhint.vertices;
-
-    auto& factory = ctx->env().
-        GetFileOrThrow(index->buffer).
-        interfaceOrThrow<gl::BufferFactory>();
-    auto fu = LockAndValidate(ctx, factory, gl::BufferTarget::ElementArray, required);
-    apro.Add(fu);
-    fus.emplace_back(fu);
+    apro.Add(Lock(index->buffer, gl::BufferTarget::ElementArray, required).
+        Chain(pro, [ret](auto& buf) { ret->index = buf; }));
   }
 
-  // wait for all registered futures
-  nf7::Future<std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>>>::Promise pro {ctx};
-  apro.future().Chain(pro, [fus = std::move(fus)](auto&) {
-    std::vector<nf7::Mutex::Resource<std::shared_ptr<gl::Buffer>>> ret;
-    ret.reserve(fus.size());
-    for (auto& fu : fus) {
-      ret.emplace_back(fu.value());
+  // return ret
+  apro.future().Chain(pro, [ret, attrs_fu = std::move(attrs_fu)](auto&) {
+    ret->attrs.reserve(attrs_fu.size());
+    for (auto& fu : attrs_fu) {
+      ret->attrs.push_back(fu.value());
     }
-    return ret;
+    return std::move(*ret);
   });
   return pro.future();
 } catch (nf7::Exception&) {
@@ -371,34 +368,34 @@ try {
   auto ret = std::make_shared<LockedAttachments>();
 
   nf7::AggregatePromise apro {ctx};
+  LockedAttachmentsFuture::Promise pro {ctx};
 
-  const auto lock = [&](nf7::File::Id id) {
+  const auto Lock = [&](nf7::File::Id id) {
     auto& factory = ctx->env().
         GetFileOrThrow(id).
-        interfaceOrThrow<nf7::gl::TextureFactory>();
+        interfaceOrThrow<gl::Texture::Factory>();
     return LockAndValidate(ctx, factory, gl::TextureTarget::Tex2D);
   };
 
   for (size_t i = 0; i < colors.size(); ++i) {
     const auto& color = colors[i];
     if (color && color->tex) {
-      apro.Add(lock(color->tex).ThenIf([i, ret](auto& res) {
+      apro.Add(Lock(color->tex).Chain(pro, [i, ret](auto& res) {
         ret->colors[i] = res;
       }));
     }
   }
   if (depth && depth->tex) {
-    apro.Add(lock(depth->tex).ThenIf([ret](auto& res) {
+    apro.Add(Lock(depth->tex).Chain(pro, [ret](auto& res) {
       ret->depth = res;
     }));
   }
   if (stencil && stencil->tex) {
-    apro.Add(lock(stencil->tex).ThenIf([ret](auto& res) {
+    apro.Add(Lock(stencil->tex).Chain(pro, [ret](auto& res) {
       ret->stencil = res;
     }));
   }
 
-  LockedAttachmentsFuture::Promise pro {ctx};
   apro.future().Chain(pro, [ret](auto&) { return std::move(*ret); });
   return pro.future();
 } catch (nf7::Exception&) {

@@ -911,66 +911,41 @@ struct Program {
       nf7::AggregatePromise apro {p.la};
 
       // find, fetch and lock FBO
-      std::optional<nf7::gl::FramebufferFactory::Product>                fbo_fu;
-      std::optional<nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture> fbo_lock_fu;
-      {
-        fbo_fu = v.tuple("fbo").file(base).
-            interfaceOrThrow<nf7::gl::FramebufferFactory>().Create();
-
-        nf7::gl::Framebuffer::Meta::LockedAttachmentsFuture::Promise fbo_lock_pro;
-        fbo_fu->ThenIf([la = p.la, fbo_lock_pro](auto& fbo) mutable {
-          (**fbo).meta().LockAttachments(la).Chain(fbo_lock_pro);
-        });
-
-        fbo_lock_fu = fbo_lock_pro.future();
-        apro.Add(*fbo_lock_fu);
-      }
+      auto fbo_fu = gl::LockRecursively<gl::Framebuffer>(
+          v.tuple("fbo").
+              file(base).
+              interfaceOrThrow<nf7::gl::Framebuffer::Factory>(),
+          p.la);
+      apro.Add(fbo_fu);
 
       // find, fetch and lock VAO
-      std::optional<nf7::gl::VertexArrayFactory::Product>            vao_fu;
-      std::optional<nf7::gl::VertexArray::Meta::LockedBuffersFuture> vao_lock_fu;
-      {
-        vao_fu = v.tuple("vao").file(base).
-            interfaceOrThrow<nf7::gl::VertexArrayFactory>().Create();
-
-        nf7::gl::VertexArray::Meta::ValidationHint vhint;
-        vhint.vertices  = static_cast<size_t>(count);
-        vhint.instances = static_cast<size_t>(inst);
-
-        nf7::gl::VertexArray::Meta::LockedBuffersFuture::Promise vao_lock_pro;
-        vao_fu->ThenIf([la = p.la, vao_lock_pro, vhint](auto& vao) mutable {
-          (**vao).meta().LockBuffers(la, vhint).Chain(vao_lock_pro);
-        });
-
-        vao_lock_fu = vao_lock_pro.future();
-        apro.Add(*vao_lock_fu);
-      }
+      auto vao_fu = gl::LockRecursively<gl::VertexArray>(
+          v.tuple("vao").
+              file(base).
+              interfaceOrThrow<nf7::gl::VertexArray::Factory>(),
+          p.la,
+          gl::VertexArray::Meta::ValidationHint {
+            .vertices  = static_cast<size_t>(count),
+            .instances = static_cast<size_t>(inst),
+          });
+      apro.Add(vao_fu);
 
       // find, fetch and lock textures
-      std::vector<std::pair<std::string, nf7::gl::TextureFactory::Product>> tex_fu;
+      std::vector<std::pair<std::string, gl::Texture::Factory::Product>> tex_fu;
       tex_fu.reserve(tex->size());
       for (auto& pa : *tex) {
         auto fu = base.
             ResolveOrThrow(pa.second.string()).
-            interfaceOrThrow<nf7::gl::TextureFactory>().
+            interfaceOrThrow<gl::Texture::Factory>().
             Create();
         tex_fu.emplace_back(pa.first, fu);
         apro.Add(fu);
       }
 
       // execute drawing after successful locking
-      apro.future().Then(nf7::Env::kGL, p.la, [=, tex_fu = std::move(tex_fu)](auto&) {
-        assert(fbo_lock_fu);
-        assert(vao_lock_fu);
-        try {
-          if (fbo_lock_fu->error()) fbo_lock_fu->value();
-          if (vao_lock_fu->error()) vao_lock_fu->value();
-        } catch (nf7::Exception&) {
-          p.log->Error("failed to acquire lock of VAO or FBO");
-          return;
-        }
-        const auto& fbo  = *fbo_fu->value();
-        const auto& vao  = *vao_fu->value();
+      apro.future().ThenIf(nf7::Env::kGL, p.la, [=, tex_fu = std::move(tex_fu)](auto&) {
+        const auto& fbo  = *fbo_fu.value().first;
+        const auto& vao  = *vao_fu.value().first;
         const auto& prog = *p.obj;
 
         // bind objects
@@ -1027,6 +1002,8 @@ struct Program {
         if (status != GL_FRAMEBUFFER_COMPLETE) {
           p.log->Warn("framebuffer is broken");
         }
+      }).Catch<nf7::Exception>([p](auto& e) {
+        p.log->Error(e);
       });
       return false;
     } else {
