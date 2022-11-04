@@ -73,6 +73,7 @@ target_sources(nf7
     common/file_base.hh
     common/file_holder.hh
     common/file_holder.cc
+    common/font_queue.hh
     common/future.hh
     common/generic_context.hh
     common/generic_history.hh
@@ -161,6 +162,7 @@ target_sources(nf7
 )
 target_link_libraries(nf7
   PRIVATE
+    freetype
     glew
     glfw
     imgui
