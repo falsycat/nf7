@@ -27,7 +27,15 @@ class Queue : public nf7::File::Interface {
 };
 
 inline void Enforce(FT_Error e) {
-  if (e) throw nf7::Exception {FT_Error_String(e)};
+  if (e == 0) return;
+# undef FTERRORS_H_
+# define FT_ERROR_START_LIST   switch (e) {
+# define FT_ERRORDEF(e, v, s)  case e: throw nf7::Exception {s};
+# define FT_ERROR_END_LIST     default: throw nf7::Exception {"unknown freetype error"};}
+# include FT_ERRORS_H
+# undef FT_ERROR_START_LIST
+# undef FT_ERRORDEF
+# undef FT_ERROR_END_LIST
 }
 
 }  // namespace nf7::font
