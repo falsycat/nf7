@@ -26,4 +26,8 @@ class Queue : public nf7::File::Interface {
   virtual std::shared_ptr<Queue> self() noexcept = 0;
 };
 
+inline void Enforce(FT_Error e) {
+  if (e) throw nf7::Exception {FT_Error_String(e)};
+}
+
 }  // namespace nf7::font
