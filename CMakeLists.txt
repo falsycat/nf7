@@ -142,6 +142,7 @@ target_sources(nf7
 
     file/audio_context.cc
     file/audio_device.cc
+    file/font_context.cc
     file/gl_obj.cc
     file/luajit_context.cc
     file/luajit_node.cc
