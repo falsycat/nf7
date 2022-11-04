@@ -59,7 +59,6 @@ class Thread final : public nf7::Context,
     auto self = shared_from_this();
     if (auto p = q_.Pop()) {
       k.unlock();
-
       env_->ExecAsync(p->first, [this, self, t = std::move(p->second)]() mutable {
         runner_(std::move(t));
         ++tasks_done_;
@@ -67,8 +66,7 @@ class Thread final : public nf7::Context,
       });
     } else if (auto time = q_.next()) {
       working_ = false;
-      env_->ExecAsync(
-          shared_from_this(), [this, self]() mutable { HandleNext(); }, *time);
+      env_->ExecAsync(self, [this]() mutable { HandleNext(); }, *time);
     } else {
       working_ = false;
     }

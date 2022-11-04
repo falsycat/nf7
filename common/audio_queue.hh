@@ -22,7 +22,6 @@ class Queue : public nf7::File::Interface {
   Queue& operator=(Queue&&) = delete;
 
   // thread-safe
-  // WARNING: when failed to create ma_context, nullptr is passed
   virtual void Push(const std::shared_ptr<nf7::Context>&, Task&&) noexcept = 0;
 
   virtual std::shared_ptr<Queue> self() noexcept = 0;

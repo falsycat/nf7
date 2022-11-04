@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <memory>
+#include <typeinfo>
 
 #include <imgui.h>
 #include <miniaudio.h>
@@ -10,7 +11,6 @@
 
 #include "common/audio_queue.hh"
 #include "common/dir_item.hh"
-#include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/ptr_selector.hh"
 #include "common/thread.hh"
@@ -67,74 +67,58 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 class AudioContext::Queue final : public nf7::audio::Queue,
     public std::enable_shared_from_this<AudioContext::Queue> {
  public:
-  enum State {
-    kInitial,
-    kReady,
-    kBroken,
-  };
-
-  struct ThreadData {
+  struct SharedData {
    public:
-    std::atomic<State> state = kInitial;
-    ma_context ctx;
+    std::atomic<bool> broken = false;
+    ma_context        ctx;
   };
   struct Runner {
    public:
-    Runner(const std::shared_ptr<ThreadData>& tdata) noexcept : tdata_(tdata) {
+    Runner(const std::shared_ptr<SharedData>& d) noexcept : data_(d) {
     }
     void operator()(Task&& t) {
-      if (tdata_->state != kBroken) {
-        t(&tdata_->ctx);
+      if (!data_->broken) {
+        t(&data_->ctx);
       }
     }
    private:
-    std::shared_ptr<ThreadData> tdata_;
+    std::shared_ptr<SharedData> data_;
   };
   using Thread = nf7::Thread<Runner, Task>;
 
   Queue() = delete;
   Queue(AudioContext& f) noexcept :
       env_(&f.env()),
-      tdata_(std::make_shared<ThreadData>()),
-      th_(std::make_shared<Thread>(f, Runner {tdata_})) {
-    auto ctx = std::make_shared<nf7::GenericContext>(f.env(), 0, "creating ma_context");
-    th_->Push(ctx, [tdata = tdata_](auto) {
-      if (MA_SUCCESS == ma_context_init(nullptr, 0, nullptr, &tdata->ctx)) {
-        tdata->state = kReady;
-      } else {
-        tdata->state = kBroken;
+      data_(std::make_shared<SharedData>()),
+      th_(std::make_shared<Thread>(f, Runner {data_})) {
+    th_->Push(th_, [data = data_](auto) {
+      if (MA_SUCCESS != ma_context_init(nullptr, 0, nullptr, &data->ctx)) {
+        data->broken = true;
       }
     });
   }
   ~Queue() noexcept {
-    th_->Push(
-      std::make_shared<nf7::GenericContext>(*env_, 0, "deleting ma_context"),
-      [](auto ma) { ma_context_uninit(ma); }
-    );
+    th_->Push(th_, [](auto ma) { ma_context_uninit(ma); });
   }
-  Queue(const Queue&) = delete;
-  Queue(Queue&&) = delete;
-  Queue& operator=(const Queue&) = delete;
-  Queue& operator=(Queue&&) = delete;
 
   void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task) noexcept override {
     th_->Push(ctx, std::move(task));
   }
   std::shared_ptr<audio::Queue> self() noexcept override { return shared_from_this(); }
 
-  State state() const noexcept { return tdata_->state; }
+  bool broken() const noexcept { return data_->broken; }
   size_t tasksDone() const noexcept { return th_->tasksDone(); }
 
   // thread-safe
   ma_context* ctx() const noexcept {
-    return state() == kReady? &tdata_->ctx: nullptr;
+    return broken()? nullptr: &data_->ctx;
   }
 
  private:
   Env* const env_;
 
-  std::shared_ptr<ThreadData> tdata_;
-  std::shared_ptr<Thread> th_;
+  std::shared_ptr<SharedData> data_;
+  std::shared_ptr<Thread>     th_;
 };
 
 
@@ -203,12 +187,7 @@ void AudioContext::UpdateDeviceListMenu(ma_device_info* ptr, ma_uint32 n) noexce
 }
 
 void AudioContext::UpdateTooltip() noexcept {
-  const auto  state     = q_->state();
-  const char* state_str =
-      state == Queue::kInitial? "initializing":
-      state == Queue::kReady  ? "ready":
-      state == Queue::kBroken ? "broken": "unknown";
-  ImGui::Text("state: %s", state_str);
+  ImGui::Text("state: %s", q_->broken()? "broken": "running");
 }
 
 }
