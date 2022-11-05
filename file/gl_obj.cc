@@ -530,6 +530,8 @@ struct Texture {
       const auto fmt  = gl::ToEnum(gl::GetColorComp(ifmt_));
       const auto type = gl::ToEnum(gl::GetNumericType(ifmt_));
       p.la->env().ExecGL(p.la, [=, &tex]() {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
         const auto t = gl::ToEnum(tex.meta().target);
         glBindTexture(t, tex.id());
         switch (t) {
@@ -547,6 +549,8 @@ struct Texture {
           break;
         }
         glBindTexture(t, 0);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         assert(0 == glGetError());
       });
       return true;
@@ -582,7 +586,9 @@ struct Texture {
 
         const auto t = gl::ToEnum(tex.meta().target);
         glBindTexture(t, tex.id());
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glGetTexImage(t, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
         glBindTexture(t, 0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         assert(0 == glGetError());
