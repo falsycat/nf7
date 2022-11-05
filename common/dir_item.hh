@@ -16,6 +16,10 @@ class DirItem : public File::Interface {
     kTooltip        = 1 << 2,
     kWidget         = 1 << 3,
     kDragDropTarget = 1 << 4,
+
+    // Update() will be called earlier than other items.
+    // This is used by some system files and meaningless in most of cases.
+    kEarlyUpdate = 1 << 5,
   };
   using Flags = uint8_t;
 

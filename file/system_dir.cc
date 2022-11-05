@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -148,6 +149,13 @@ class Dir final : public nf7::FileBase,
   std::unordered_set<std::string> opened_;
 
 
+  static bool TestFlags(nf7::File& f, nf7::DirItem::Flags flags) noexcept
+  try {
+    return f.interfaceOrThrow<nf7::DirItem>().flags() & flags;
+  } catch (nf7::Exception&) {
+    return false;
+  }
+
   std::string GetUniqueName(std::string_view name) const noexcept {
     auto ret = std::string {name};
     while (Find(ret)) {
@@ -164,13 +172,28 @@ class Dir final : public nf7::FileBase,
 };
 
 void Dir::Update() noexcept {
-  // update children
+  // update children flagged as kEarlyUpdate
+  std::vector<nf7::File*> later;
+  later.reserve(items_.size());
   for (const auto& item : items_) {
-    ImGui::PushID(item.second.get());
-    item.second->Update();
+    auto& f = *item.second;
+    if (TestFlags(f, nf7::DirItem::kEarlyUpdate)) {
+      ImGui::PushID(&f);
+      f.Update();
+      ImGui::PopID();
+    } else {
+      later.push_back(&f);
+    }
+  }
+
+  nf7::FileBase::Update();
+
+  // update children
+  for (auto f : later) {
+    ImGui::PushID(f);
+    f->Update();
     ImGui::PopID();
   }
-  nf7::FileBase::Update();
 }
 void Dir::UpdateTree() noexcept {
   for (const auto& item : items_) {

@@ -29,7 +29,7 @@ class ImGui_ final : public nf7::File, public nf7::DirItem {
   static inline const nf7::GenericTypeInfo<ImGui_> kType = {"System/ImGui", {}};
 
   ImGui_(nf7::Env& env) noexcept :
-      nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kNone) {
+      nf7::File(kType, env), nf7::DirItem(nf7::DirItem::kEarlyUpdate) {
   }
   ImGui_(nf7::Deserializer& ar) : ImGui_(ar.env()) {
     std::string config;
