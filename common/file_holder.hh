@@ -35,11 +35,12 @@ class FileHolder : public nf7::FileBase::Feature {
   using Entity = std::variant<
       std::monostate, nf7::File::Path, std::shared_ptr<nf7::File>>;
 
-  FileHolder(nf7::File& owner, std::string_view id,
+  FileHolder(nf7::FileBase& owner, std::string_view id,
              nf7::MutableMemento* mem = nullptr) noexcept :
+      nf7::FileBase::Feature(owner),
       owner_(&owner), mem_(mem), id_(id) {
   }
-  FileHolder(nf7::File& owner, std::string_view id,
+  FileHolder(nf7::FileBase& owner, std::string_view id,
              nf7::MutableMemento& mem) noexcept :
       FileHolder(owner, id, &mem) {
   }

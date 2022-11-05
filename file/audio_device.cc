@@ -100,7 +100,7 @@ class Device final : public nf7::FileBase, public nf7::DirItem, public nf7::Node
   };
 
   Device(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&log_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this), mem_(std::move(data), *this) {

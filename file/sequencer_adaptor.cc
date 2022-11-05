@@ -63,13 +63,13 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
   };
 
   Adaptor(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&target_, &target_editor_}),
+      nf7::FileBase(kType, env),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
       target_(*this, "target", mem_),
-      target_editor_(target_,
+      target_editor_(*this, target_,
                      [](auto& t) { return t.flags().contains("nf7::Sequencer"); }),
       mem_(std::move(data), *this) {
     mem_.data().target.SetTarget(target_);

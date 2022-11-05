@@ -17,7 +17,6 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
-#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -111,7 +110,7 @@ class Logger final : public nf7::File,
   };
 
   Logger(nf7::Env& env, Data&& d = {}) noexcept :
-      File(kType, env), DirItem(DirItem::kMenu),
+      nf7::File(kType, env), DirItem(DirItem::kMenu),
       mem_(std::move(d), *this), win_(*this, "Log View") {
     win_.shown() = true;
 

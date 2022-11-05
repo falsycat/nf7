@@ -44,12 +44,12 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
   };
 
   Event(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&logger_, &handler_, &handler_editor_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this), logger_(*this),
       handler_(*this, "handler", mem_),
-      handler_editor_(handler_,
+      handler_editor_(*this, handler_,
                       [](auto& t) { return t.flags().contains("nf7::Node"); }),
       la_root_(std::make_shared<nf7::Node::Lambda>(*this)),
       mem_(std::move(data)) {

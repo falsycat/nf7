@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <string_view>
 #include <vector>
 
@@ -12,24 +13,22 @@ class FileBase : public nf7::File {
  public:
   class Feature {
    public:
-    Feature() = default;
+    Feature() = delete;
+    Feature(nf7::FileBase& f) noexcept {
+      f.feats_.push_back(this);
+    }
     virtual ~Feature() = default;
     Feature(const Feature&) = delete;
     Feature(Feature&&) = delete;
     Feature& operator=(const Feature&) = delete;
     Feature& operator=(Feature&&) = delete;
 
-    // Feature* is just for avoiding multi inheritance issues with Env::Watcher
     virtual nf7::File* Find(std::string_view) const noexcept { return nullptr; }
     virtual void Handle(const nf7::File::Event&) noexcept { }
     virtual void Update() noexcept { }
   };
 
-  FileBase(const nf7::File::TypeInfo& t,
-           nf7::Env&                  env,
-           std::vector<Feature*>&&    feats = {}) noexcept :
-      nf7::File(t, env), feats_(std::move(feats)) {
-  }
+  using nf7::File::File;
 
   nf7::File* Find(std::string_view name) const noexcept override {
     for (auto feat : feats_) {
@@ -48,11 +47,6 @@ class FileBase : public nf7::File {
     for (auto feat : feats_) {
       feat->Update();
     }
-  }
-
- protected:
-  void Install(Feature& f) noexcept {
-    feats_.push_back(&f);
   }
 
  private:

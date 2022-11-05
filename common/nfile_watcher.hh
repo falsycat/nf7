@@ -12,7 +12,9 @@ namespace nf7 {
 
 class NFileWatcher final : public nf7::FileBase::Feature {
  public:
-  NFileWatcher() = default;
+  NFileWatcher() = delete;
+  NFileWatcher(nf7::FileBase& f) noexcept : nf7::FileBase::Feature(f) {
+  }
   NFileWatcher(const NFileWatcher&) = delete;
   NFileWatcher(NFileWatcher&&) = delete;
   NFileWatcher& operator=(const NFileWatcher&) = delete;

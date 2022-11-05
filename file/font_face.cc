@@ -69,14 +69,14 @@ class FontFace final : public nf7::FileBase,
   };
 
   FontFace(nf7::Env& env, Data&& d = {}) noexcept :
-      nf7::FileBase(kType, env, {&nwatch_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
       life_(*this),
+      nwatch_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(d), *this) {
-    nf7::FileBase::Install(*log_);
     mem_.onCommit = mem_.onRestore = nwatch_.onMod = [this]() {
       cache_ = std::nullopt;
     };

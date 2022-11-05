@@ -55,7 +55,8 @@ class FileHolderEditor final : public nf7::FileBase::Feature {
     kRef,
   };
 
-  FileHolderEditor(nf7::FileHolder& h, FileFactory::Filter&& filter) noexcept :
+  FileHolderEditor(nf7::FileBase& f, nf7::FileHolder& h, FileFactory::Filter&& filter) noexcept :
+      nf7::FileBase::Feature(f),
       holder_(&h), factory_(h.owner(), std::move(filter)) {
   }
   FileHolderEditor(const FileHolderEditor&) = delete;

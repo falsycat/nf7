@@ -18,8 +18,8 @@ namespace nf7 {
 
 class LoggerRef final : public nf7::FileBase::Feature {
  public:
-  LoggerRef(nf7::File& f, nf7::File::Path&& p = {"_logger"}) noexcept :
-      file_(&f), path_(std::move(p)) {
+  LoggerRef(nf7::FileBase& f, nf7::File::Path&& p = {"_logger"}) noexcept :
+      nf7::FileBase::Feature(f), file_(&f), path_(std::move(p)) {
   }
   LoggerRef(const LoggerRef&) = default;
   LoggerRef(LoggerRef&&) = default;

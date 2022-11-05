@@ -69,7 +69,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
-      nf7::FileBase(kType, env, {&log_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this), log_(*this),

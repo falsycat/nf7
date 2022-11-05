@@ -62,15 +62,13 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   };
 
   Node(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data), *this),
       importer_(std::make_shared<nf7::luajit::NFileImporter>(env.npath())) {
-    nf7::FileBase::Install(*log_);
-
     mem_.onCommit = mem_.onRestore = [this]() {
       cache_ = std::nullopt;
     };

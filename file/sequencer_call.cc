@@ -48,13 +48,13 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   };
 
   Call(nf7::Env& env, Data&& data = {}) noexcept :
-      FileBase(kType, env, {&callee_, &callee_editor_}),
+      nf7::FileBase(kType, env),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
       callee_(*this, "callee", mem_),
-      callee_editor_(callee_,
+      callee_editor_(*this, callee_,
                      [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data), *this) {
     mem_.data().callee.SetTarget(callee_);

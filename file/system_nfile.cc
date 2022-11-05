@@ -112,16 +112,14 @@ class NFile final : public nf7::FileBase,
   };
 
   NFile(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&nwatch_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kMenu_DirItem),
-      life_(*this),
+      life_(*this), nwatch_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
       mem_(std::move(data), *this) {
-    nf7::FileBase::Install(shared_->log);
-
     mtx_.onLock   = [this]() { SetUp(); };
     mtx_.onUnlock = [this]() { shared_->nfile.reset(); };
 

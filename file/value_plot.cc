@@ -110,7 +110,7 @@ class Plot final : public nf7::FileBase,
   };
 
   Plot(nf7::Env& env, const nf7::gui::Window* win = nullptr, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&log_}),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this), win_(*this, "Plot", win), mem_(std::move(data)) {

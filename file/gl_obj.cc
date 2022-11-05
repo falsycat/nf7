@@ -95,17 +95,14 @@ class ObjBase : public nf7::FileBase,
   }
 
   ObjBase(nf7::Env& env, T&& data = {}) noexcept :
-      nf7::FileBase(TypeInfo::kType, env, {}),
+      nf7::FileBase(TypeInfo::kType, env),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      nwatch_(std::make_shared<nf7::NFileWatcher>()),
+      nwatch_(std::make_shared<nf7::NFileWatcher>(*this)),
       mem_(std::move(data), *this) {
-    nf7::FileBase::Install(*log_);
-    nf7::FileBase::Install(*nwatch_);
-
     nwatch_->onMod = mem_.onRestore = mem_.onCommit = [this]() {
       Drop();
     };

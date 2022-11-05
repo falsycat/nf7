@@ -62,8 +62,6 @@ class Ref final : public nf7::FileBase, public nf7::Node {
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(std::move(data), *this) {
-    nf7::FileBase::Install(*log_);
-
     mem_.onRestore = mem_.onCommit = [this]() { SetUpWatcher(); };
   }
 
