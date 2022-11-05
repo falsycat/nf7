@@ -109,6 +109,11 @@ class ObjBase : public nf7::FileBase,
 
     if constexpr (HasWindow<T>) {
       win_.emplace(*this, T::kWindowTitle);
+      win_->onConfig = []() {
+        const auto em = ImGui::GetFontSize();
+        ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
+      };
+      win_->onUpdate = [this]() { mem_->UpdateWindow(fu_); };
     }
   }
 
@@ -170,22 +175,6 @@ class ObjBase : public nf7::FileBase,
         });
   }
 
-
-  void Update() noexcept override {
-    nf7::FileBase::Update();
-
-    if constexpr (HasWindow<T>) {
-      if (win_->shownInCurrentFrame()) {
-        const auto em = ImGui::GetFontSize();
-        ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
-      }
-      if (win_->Begin()) {
-        mem_->UpdateWindow(fu_);
-      }
-      win_->End();
-    }
-  }
-
   void UpdateMenu() noexcept override {
     if (ImGui::BeginMenu("object management")) {
       if (ImGui::MenuItem("create", nullptr, false, !fu_)) {
@@ -211,7 +200,7 @@ class ObjBase : public nf7::FileBase,
     }
     if constexpr (HasWindow<T>) {
       ImGui::Separator();
-      ImGui::MenuItem(T::kWindowTitle, nullptr, &win_->shown());
+      win_->MenuItem();
     }
   }
   void UpdateTooltip() noexcept override {

@@ -109,7 +109,6 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   };
 
   Network(nf7::Env& env,
-          const gui::Window*   win   = nullptr,
           ItemList&&           items = {},
           nf7::NodeLinkStore&& links = {},
           Data&&               d     = {}) :
@@ -119,9 +118,15 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
                    nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kNone),
       life_(*this),
-      win_(*this, "Editor Node/Network", win),
+      win_(*this, "Editor Node/Network"),
       items_(std::move(items)), links_(std::move(links)),
       mem_(std::move(d), *this) {
+    win_.onConfig = []() {
+      const auto em = ImGui::GetFontSize();
+      ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
+    };
+    win_.onUpdate = [this]() { NetworkEditor(); };
+
     Sanitize();
   }
   ~Network() noexcept {
@@ -142,7 +147,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
       items.push_back(std::make_unique<Item>(env, *item));
     }
     return std::make_unique<Network>(
-        env, &win_, std::move(items), NodeLinkStore(links_));
+        env, std::move(items), NodeLinkStore(links_));
   }
 
   File* Find(std::string_view name) const noexcept;
@@ -243,6 +248,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   }
 
   // gui
+  void NetworkEditor() noexcept;
   void ItemAdder(const ImVec2&) noexcept;
   void Config() noexcept;
 
@@ -964,8 +970,6 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 void Network::Update() noexcept {
   nf7::FileBase::Update();
 
-  const auto em = ImGui::GetFontSize();
-
   // forget expired lambdas
   lambdas_running_.erase(
       std::remove_if(lambdas_running_.begin(), lambdas_running_.end(),
@@ -977,132 +981,13 @@ void Network::Update() noexcept {
     item->Update();
   }
 
-  // ---- editor window
-  if (win_.shownInCurrentFrame()) {
-    ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
-  }
-  if (win_.Begin()) {
-    // ---- editor window / toolbar
-    ImGui::BeginGroup();
-    {
-      // ---- editor window / toolbar / attached lambda combo
-      const auto current_lambda =
-          !lambda_?              "(unselected)"s:
-          lambda_->depth() == 0? "(isolated)"s:
-          nf7::gui::GetContextDisplayName(*lambda_);
-      if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
-        if (lambda_) {
-          if (ImGui::Selectable("detach current lambda")) {
-            AttachLambda(nullptr);
-          }
-          ImGui::Separator();
-        }
-        for (const auto& wptr : lambdas_running_) {
-          auto ptr = wptr.lock();
-          if (!ptr) continue;
-
-          const auto name = nf7::gui::GetContextDisplayName(*ptr);
-          if (ImGui::Selectable(name.c_str(), ptr == lambda_)) {
-            AttachLambda(nullptr);
-            lambda_ = ptr;
-          }
-          if (ImGui::IsItemHovered()) {
-            ImGui::BeginTooltip();
-            ImGui::TextUnformatted("call stack:");
-            ImGui::Indent();
-            nf7::gui::ContextStack(*ptr);
-            ImGui::Unindent();
-            ImGui::EndTooltip();
-          }
-        }
-        if (lambdas_running_.size() == 0) {
-          ImGui::TextDisabled("no running lambda found...");
-        }
-        ImGui::EndCombo();
-      }
-    }
-    ImGui::EndGroup();
-
-    // ---- editor window / canvas
-    if (ImGui::BeginChild("canvas", {0, 0}, false, ImGuiWindowFlags_NoMove)) {
-      canvas_pos_ = ImGui::GetCursorScreenPos();
-      ImNodes::BeginCanvas(&canvas_);
-
-      // update child nodes
-      auto ed = Network::Editor {*this};
-      for (const auto& item : items_) {
-        item->UpdateNode(ed);
-      }
-
-      // handle existing links
-      for (const auto& lk : links_.items()) {
-        const auto src_id   = reinterpret_cast<void*>(lk.src_id);
-        const auto dst_id   = reinterpret_cast<void*>(lk.dst_id);
-        const auto src_name = lk.src_name.c_str();
-        const auto dst_name = lk.dst_name.c_str();
-        if (!ImNodes::Connection(dst_id, dst_name, src_id, src_name)) {
-          ExecUnlink(lk);
-        }
-      }
-
-      // handle new link
-      void*       src_ptr;
-      const char* src_name;
-      void*       dst_ptr;
-      const char* dst_name;
-      if (ImNodes::GetNewConnection(&dst_ptr, &dst_name, &src_ptr, &src_name)) {
-        ExecLink({
-          .src_id   = reinterpret_cast<ItemId>(src_ptr),
-          .src_name = src_name,
-          .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
-          .dst_name = dst_name,
-        });
-      }
-      ImNodes::EndCanvas();
-
-      // popup menu for canvas
-      constexpr auto kFlags =
-          ImGuiPopupFlags_MouseButtonRight |
-          ImGuiPopupFlags_NoOpenOverExistingPopup;
-      if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
-        const auto pos =
-            GetCanvasPosFromScreenPos(ImGui::GetMousePosOnOpeningCurrentPopup());
-        if (ImGui::BeginMenu("add")) {
-          ItemAdder(pos);
-          ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
-          UnDo();
-        }
-        if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
-          ReDo();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("reset canvas zoom")) {
-          canvas_.Zoom = 1.f;
-        }
-        ImGui::Separator();
-        if (ImGui::BeginMenu("config")) {
-          Config();
-          ImGui::EndMenu();
-        }
-        ImGui::EndPopup();
-      }
-    }
-    ImGui::EndChild();
-  }
-  win_.End();
-
   // squash queued commands
   if (history_.Squash()) {
     Touch();
   }
 }
 void Network::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("Editor", nullptr, &win_.shown()) && win_.shown()) {
-    win_.SetFocus();
-  }
+  win_.MenuItem();
   if (ImGui::BeginMenu("config")) {
     Config();
     ImGui::EndMenu();
@@ -1119,60 +1004,118 @@ void Network::UpdateWidget() noexcept {
   Config();
 }
 
-void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
-  assert(owner_);
-  ImGui::PushID(node_);
 
-  const auto id = reinterpret_cast<void*>(id_);
-  if (ImNodes::BeginNode(id, &pos_, &select_)) {
-    if (node_->flags() & nf7::Node::kCustomNode) {
-      node_->UpdateNode(ed);
-    } else {
-      ImGui::TextUnformatted(file_->type().name().c_str());
-      nf7::gui::NodeInputSockets(node_->GetInputs());
-      ImGui::SameLine();
-      nf7::gui::NodeOutputSockets(node_->GetOutputs());
+void Network::NetworkEditor() noexcept {
+  // ---- editor window / toolbar
+  ImGui::BeginGroup();
+  {
+    // ---- editor window / toolbar / attached lambda combo
+    const auto current_lambda =
+        !lambda_?              "(unselected)"s:
+        lambda_->depth() == 0? "(isolated)"s:
+        nf7::gui::GetContextDisplayName(*lambda_);
+    if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
+      if (lambda_) {
+        if (ImGui::Selectable("detach current lambda")) {
+          AttachLambda(nullptr);
+        }
+        ImGui::Separator();
+      }
+      for (const auto& wptr : lambdas_running_) {
+        auto ptr = wptr.lock();
+        if (!ptr) continue;
+
+        const auto name = nf7::gui::GetContextDisplayName(*ptr);
+        if (ImGui::Selectable(name.c_str(), ptr == lambda_)) {
+          AttachLambda(nullptr);
+          lambda_ = ptr;
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::BeginTooltip();
+          ImGui::TextUnformatted("call stack:");
+          ImGui::Indent();
+          nf7::gui::ContextStack(*ptr);
+          ImGui::Unindent();
+          ImGui::EndTooltip();
+        }
+      }
+      if (lambdas_running_.size() == 0) {
+        ImGui::TextDisabled("no running lambda found...");
+      }
+      ImGui::EndCombo();
     }
   }
-  ImNodes::EndNode();
+  ImGui::EndGroup();
 
-  const bool moved =
-      pos_.x != prev_pos_.x || pos_.y != prev_pos_.y;
-  if (moved && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-    owner_->history_.Add(std::make_unique<Item::MoveCommand>(*this, prev_pos_));
-    prev_pos_ = pos_;
-  }
+  // ---- editor window / canvas
+  if (ImGui::BeginChild("canvas", {0, 0}, false, ImGuiWindowFlags_NoMove)) {
+    canvas_pos_ = ImGui::GetCursorScreenPos();
+    ImNodes::BeginCanvas(&canvas_);
 
-  constexpr auto kFlags =
-      ImGuiPopupFlags_MouseButtonRight |
-      ImGuiPopupFlags_NoOpenOverExistingPopup;
-  if (ImGui::BeginPopupContextItem(nullptr, kFlags)) {
-    const auto pos =
-        owner_->GetCanvasPosFromScreenPos(
-            ImGui::GetMousePosOnOpeningCurrentPopup());
-    if (ImGui::MenuItem("remove")) {
-      owner_->ExecRemoveItem(id_);
+    // update child nodes
+    auto ed = Network::Editor {*this};
+    for (const auto& item : items_) {
+      item->UpdateNode(ed);
     }
-    if (ImGui::MenuItem("clone")) {
-      owner_->ExecAddItem(
-          std::make_unique<Item>(owner_->next_++, file_->Clone(env())), pos);
+
+    // handle existing links
+    for (const auto& lk : links_.items()) {
+      const auto src_id   = reinterpret_cast<void*>(lk.src_id);
+      const auto dst_id   = reinterpret_cast<void*>(lk.dst_id);
+      const auto src_name = lk.src_name.c_str();
+      const auto dst_name = lk.dst_name.c_str();
+      if (!ImNodes::Connection(dst_id, dst_name, src_id, src_name)) {
+        ExecUnlink(lk);
+      }
     }
-    if (node_->flags() & nf7::Node::kMenu_DirItem) {
+
+    // handle new link
+    void*       src_ptr;
+    const char* src_name;
+    void*       dst_ptr;
+    const char* dst_name;
+    if (ImNodes::GetNewConnection(&dst_ptr, &dst_name, &src_ptr, &src_name)) {
+      ExecLink({
+        .src_id   = reinterpret_cast<ItemId>(src_ptr),
+        .src_name = src_name,
+        .dst_id   = reinterpret_cast<ItemId>(dst_ptr),
+        .dst_name = dst_name,
+      });
+    }
+    ImNodes::EndCanvas();
+
+    // popup menu for canvas
+    constexpr auto kFlags =
+        ImGuiPopupFlags_MouseButtonRight |
+        ImGuiPopupFlags_NoOpenOverExistingPopup;
+    if (ImGui::BeginPopupContextWindow(nullptr, kFlags)) {
+      const auto pos =
+          GetCanvasPosFromScreenPos(ImGui::GetMousePosOnOpeningCurrentPopup());
+      if (ImGui::BeginMenu("add")) {
+        ItemAdder(pos);
+        ImGui::EndMenu();
+      }
       ImGui::Separator();
-      auto dir = file_->interface<nf7::DirItem>();
-      assert(dir);
-      dir->UpdateMenu();
-    }
-    if (node_->flags() & nf7::Node::kMenu) {
+      if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
+        UnDo();
+      }
+      if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
+        ReDo();
+      }
       ImGui::Separator();
-      node_->UpdateMenu(ed);
+      if (ImGui::MenuItem("reset canvas zoom")) {
+        canvas_.Zoom = 1.f;
+      }
+      ImGui::Separator();
+      if (ImGui::BeginMenu("config")) {
+        Config();
+        ImGui::EndMenu();
+      }
+      ImGui::EndPopup();
     }
-    ImGui::EndPopup();
   }
-
-  ImGui::PopID();
+  ImGui::EndChild();
 }
-
 
 void Network::ItemAdder(const ImVec2& pos) noexcept {
   static const nf7::File::TypeInfo* type;
@@ -1238,6 +1181,61 @@ void Network::Config() noexcept {
   if (ptag != tag) {
     history_.Add(std::make_unique<nf7::Memento::RestoreCommand>(mem_, tag, ptag));
   }
+}
+
+
+void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
+  assert(owner_);
+  ImGui::PushID(node_);
+
+  const auto id = reinterpret_cast<void*>(id_);
+  if (ImNodes::BeginNode(id, &pos_, &select_)) {
+    if (node_->flags() & nf7::Node::kCustomNode) {
+      node_->UpdateNode(ed);
+    } else {
+      ImGui::TextUnformatted(file_->type().name().c_str());
+      nf7::gui::NodeInputSockets(node_->GetInputs());
+      ImGui::SameLine();
+      nf7::gui::NodeOutputSockets(node_->GetOutputs());
+    }
+  }
+  ImNodes::EndNode();
+
+  const bool moved =
+      pos_.x != prev_pos_.x || pos_.y != prev_pos_.y;
+  if (moved && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    owner_->history_.Add(std::make_unique<Item::MoveCommand>(*this, prev_pos_));
+    prev_pos_ = pos_;
+  }
+
+  constexpr auto kFlags =
+      ImGuiPopupFlags_MouseButtonRight |
+      ImGuiPopupFlags_NoOpenOverExistingPopup;
+  if (ImGui::BeginPopupContextItem(nullptr, kFlags)) {
+    const auto pos =
+        owner_->GetCanvasPosFromScreenPos(
+            ImGui::GetMousePosOnOpeningCurrentPopup());
+    if (ImGui::MenuItem("remove")) {
+      owner_->ExecRemoveItem(id_);
+    }
+    if (ImGui::MenuItem("clone")) {
+      owner_->ExecAddItem(
+          std::make_unique<Item>(owner_->next_++, file_->Clone(env())), pos);
+    }
+    if (node_->flags() & nf7::Node::kMenu_DirItem) {
+      ImGui::Separator();
+      auto dir = file_->interface<nf7::DirItem>();
+      assert(dir);
+      dir->UpdateMenu();
+    }
+    if (node_->flags() & nf7::Node::kMenu) {
+      ImGui::Separator();
+      node_->UpdateMenu(ed);
+    }
+    ImGui::EndPopup();
+  }
+
+  ImGui::PopID();
 }
 
 

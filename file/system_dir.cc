@@ -36,13 +36,18 @@ class Dir final : public nf7::FileBase,
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
-  Dir(nf7::Env& env, ItemMap&& items = {}, const gui::Window* src = nullptr) noexcept :
+  Dir(nf7::Env& env, ItemMap&& items = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kTree |
                    nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
                    nf7::DirItem::kDragDropTarget),
-      items_(std::move(items)), win_(*this, "TreeView System/Dir", src) {
+      items_(std::move(items)), win_(*this, "Tree View") {
+    win_.onConfig = []() {
+      const auto em = ImGui::GetFontSize();
+      ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
+    };
+    win_.onUpdate = [this]() { TreeView(); };
   }
 
   Dir(nf7::Deserializer& ar) : Dir(ar.env()) {
@@ -113,23 +118,21 @@ class Dir final : public nf7::FileBase,
 
   void Handle(const Event& ev) noexcept override {
     nf7::FileBase::Handle(ev);
+
     switch (ev.type) {
     case Event::kAdd:
       // force to show window if this is the root
       if (name() == "$") {
-        win_.shown() = true;
+        win_.Show();
       }
       for (const auto& item : items_) item.second->MoveUnder(*this, item.first);
-      break;
+      return;
     case Event::kRemove:
       for (const auto& item : items_) item.second->Isolate();
-      break;
-    case Event::kReqFocus:
-      win_.SetFocus();
-      break;
+      return;
 
     default:
-      break;
+      return;
     }
   }
 
@@ -154,44 +157,20 @@ class Dir final : public nf7::FileBase,
   }
 
   // imgui widgets
+  void TreeView() noexcept;
   void ItemAdder() noexcept;
   void ItemRenamer(const std::string& name) noexcept;
   bool ValidateName(const std::string& name) noexcept;
 };
 
 void Dir::Update() noexcept {
-  nf7::FileBase::Update();
-
-  const auto em = ImGui::GetFontSize();
-
   // update children
   for (const auto& item : items_) {
     ImGui::PushID(item.second.get());
     item.second->Update();
     ImGui::PopID();
   }
-
-  // tree view window
-  if (win_.shownInCurrentFrame()) {
-    ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
-  }
-  if (win_.Begin()) {
-    if (ImGui::BeginPopupContextWindow()) {
-      UpdateMenu();
-      ImGui::EndPopup();
-    }
-    UpdateTree();
-
-    if (nf7::gui::dnd::IsFirstAccept()) {
-      ImGui::SetCursorPos({0, 0});
-      ImGui::Dummy(ImGui::GetContentRegionAvail());
-      if (ImGui::BeginDragDropTarget()) {
-        UpdateDragDropTarget();
-        ImGui::EndDragDropTarget();
-      }
-    }
-  }
-  win_.End();
+  nf7::FileBase::Update();
 }
 void Dir::UpdateTree() noexcept {
   for (const auto& item : items_) {
@@ -315,7 +294,7 @@ void Dir::UpdateMenu() noexcept {
     ImGui::EndMenu();
   }
   ImGui::Separator();
-  ImGui::MenuItem("TreeView", nullptr, &win_.shown());
+  win_.MenuItem();
 }
 void Dir::UpdateTooltip() noexcept {
   ImGui::Text("children: %zu", items_.size());
@@ -347,6 +326,23 @@ try {
 } catch (nf7::Exception&) {
 }
 
+
+void Dir::TreeView() noexcept {
+  if (ImGui::BeginPopupContextWindow()) {
+    UpdateMenu();
+    ImGui::EndPopup();
+  }
+  UpdateTree();
+
+  if (nf7::gui::dnd::IsFirstAccept()) {
+    ImGui::SetCursorPos({0, 0});
+    ImGui::Dummy(ImGui::GetContentRegionAvail());
+    if (ImGui::BeginDragDropTarget()) {
+      UpdateDragDropTarget();
+      ImGui::EndDragDropTarget();
+    }
+  }
+}
 
 void Dir::ItemAdder() noexcept {
   static const nf7::File::TypeInfo* type;

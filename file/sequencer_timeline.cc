@@ -67,14 +67,14 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   TL(nf7::Env& env,
      std::vector<std::unique_ptr<Layer>>&& layers = {},
-     ItemId                                next   = 1,
-     const nf7::gui::Window*               win    = nullptr) noexcept :
+     ItemId                                next   = 1) noexcept :
       nf7::FileBase(kType, env),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this), log_(*this),
       layers_(std::move(layers)), next_(next),
-      win_(*this, "Timeline Editor", win), tl_("timeline") {
+      win_(*this, "Timeline Editor"), tl_("timeline") {
+    win_.onUpdate = [this]() { TimelineEditor(); };
   }
   ~TL() noexcept {
     history_.Clear();
@@ -103,7 +103,6 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   void Handle(const nf7::File::Event& ev) noexcept;
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
-  void UpdateWidget() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -175,8 +174,8 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   void AttachLambda(const std::shared_ptr<TL::Lambda>&) noexcept;
 
   // gui
-  void EditorWindow() noexcept;
-  void ParamPanelWindow() noexcept;
+  void TimelineEditor() noexcept;
+  void ParamPanel() noexcept;
   void LambdaSelector() noexcept;
   void ItemAdder() noexcept;
 
@@ -1089,8 +1088,10 @@ std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   std::vector<std::unique_ptr<TL::Layer>> layers;
   layers.reserve(layers_.size());
   ItemId next = 1;
-  for (const auto& layer : layers_) layers.push_back(layer->Clone(env, next));
-  return std::make_unique<TL>(env, std::move(layers), next, &win_);
+  for (const auto& layer : layers_) {
+    layers.push_back(layer->Clone(env, next));
+  }
+  return std::make_unique<TL>(env, std::move(layers), next);
 }
 void TL::Handle(const Event& ev) noexcept {
   nf7::FileBase::Handle(ev);
@@ -1127,188 +1128,174 @@ void TL::Handle(const Event& ev) noexcept {
 void TL::Update() noexcept {
   nf7::FileBase::Update();
 
+  // display param panel window
+  if (win_.shown()) {
+    const auto em = ImGui::GetFontSize();
+    const auto id = nf7::gui::Window::ConcatId(*this, "Parameter Panel");
+
+    if (std::exchange(param_panel_request_focus_, false)) {
+      ImGui::SetNextWindowFocus();
+    }
+
+    ImGui::SetNextWindowSize({16*em, 16*em}, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin(id.c_str())) {
+      ParamPanel();
+    }
+    ImGui::End();
+  }
+
+  // update children
   for (const auto& layer : layers_) {
     for (const auto& item : layer->items()) {
       item->file().Update();
     }
   }
 
-  EditorWindow();
-  ParamPanelWindow();
-
+  // squash queued commands
   if (history_.Squash()) {
     env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
                    [this]() { Touch(); });
   }
 }
 void TL::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("editor", nullptr, &win_.shown()) && win_.shown()) {
-    win_.SetFocus();
-  }
-}
-void TL::UpdateWidget() noexcept {
-  ImGui::TextUnformatted("Sequencer/Timeline");
-  if (ImGui::Button("Editor")) {
-    win_.SetFocus();
-  }
+  win_.MenuItem();
 }
 
-void TL::EditorWindow() noexcept {
-  if (win_.shownInCurrentFrame()) {
-    const auto em = ImGui::GetFontSize();
-    ImGui::SetNextWindowSizeConstraints({32*em, 16*em}, {1e8, 1e8});
-  }
-  if (win_.Begin()) {
-    LambdaSelector();
+void TL::TimelineEditor() noexcept {
+  LambdaSelector();
 
-    // timeline
-    if (tl_.Begin()) {
-      // layer headers
-      for (size_t i = 0; i < layers_.size(); ++i) {
-        auto& layer = layers_[i];
-        tl_.NextLayerHeader(layer.get(), layer->height());
-        ImGui::PushID(layer.get());
-        layer->UpdateHeader(i);
-        ImGui::PopID();
-      }
+  // timeline
+  if (tl_.Begin()) {
+    // layer headers
+    for (size_t i = 0; i < layers_.size(); ++i) {
+      auto& layer = layers_[i];
+      tl_.NextLayerHeader(layer.get(), layer->height());
+      ImGui::PushID(layer.get());
+      layer->UpdateHeader(i);
+      ImGui::PopID();
+    }
 
-      if (tl_.BeginBody()) {
-        // context menu on timeline
-        if (ImGui::BeginPopupContextWindow()) {
-          if (ImGui::IsWindowAppearing()) {
-            action_time_  = tl_.mouseTime();
-            action_layer_ = 0;
-            if (auto layer = reinterpret_cast<TL::Layer*>(tl_.mouseLayer())) {
-              action_layer_ = layer->index();
-            }
+    if (tl_.BeginBody()) {
+      // context menu on timeline
+      if (ImGui::BeginPopupContextWindow()) {
+        if (ImGui::IsWindowAppearing()) {
+          action_time_  = tl_.mouseTime();
+          action_layer_ = 0;
+          if (auto layer = reinterpret_cast<TL::Layer*>(tl_.mouseLayer())) {
+            action_layer_ = layer->index();
           }
-          if (action_layer_ < layers_.size()) {
-            if (ImGui::BeginMenu("add new item")) {
-              ItemAdder();
-              ImGui::EndMenu();
-            }
+        }
+        if (action_layer_ < layers_.size()) {
+          if (ImGui::BeginMenu("add new item")) {
+            ItemAdder();
+            ImGui::EndMenu();
           }
-          if (selected_.size()) {
-            ImGui::Separator();
-            if (ImGui::MenuItem("deselect")) {
-              Deselect();
-            }
-          }
+        }
+        if (selected_.size()) {
           ImGui::Separator();
-          if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
-            ExecUnDo();
-          }
-          if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
-            ExecReDo();
-          }
-          ImGui::EndPopup();
-        }
-
-        // layer body
-        for (auto& layer : layers_) {
-          tl_.NextLayer(layer.get(), layer->height());
-          for (auto& item : layer->items()) {
-            const auto& t      = item->displayTiming();
-            const bool  select = selected_.contains(item.get());
-
-            ImGui::PushStyleColor(
-                ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg, 0.3f));
-            ImGui::PushStyleColor(
-                ImGuiCol_Border,
-                ImGui::GetColorU32(select? ImGuiCol_FrameBgActive: ImGuiCol_Border));
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 2);
-            const bool shown = tl_.BeginItem(item.get(), t.begin(), t.end());
-            ImGui::PopStyleVar(1);
-            ImGui::PopStyleColor(2);
-            if (shown) {
-              item->Update();
-            }
-            tl_.EndItem();
-
+          if (ImGui::MenuItem("deselect")) {
+            Deselect();
           }
         }
-      }
-      tl_.EndBody();
-
-      // mouse curosr
-      constexpr auto kFlags =
-          ImGuiHoveredFlags_ChildWindows |
-          ImGuiHoveredFlags_AllowWhenBlockedByPopup;
-      if (ImGui::IsWindowHovered(kFlags)) {
-        tl_.Cursor(
-            "mouse",
-            tl_.GetTimeFromScreenX(ImGui::GetMousePos().x),
-            ImGui::GetColorU32(ImGuiCol_TextDisabled, .5f));
+        ImGui::Separator();
+        if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
+          ExecUnDo();
+        }
+        if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
+          ExecReDo();
+        }
+        ImGui::EndPopup();
       }
 
-      // frame cursor
-      tl_.Cursor("cursor", cursor_, ImGui::GetColorU32(ImGuiCol_Text, .5f));
+      // layer body
+      for (auto& layer : layers_) {
+        tl_.NextLayer(layer.get(), layer->height());
+        for (auto& item : layer->items()) {
+          const auto& t      = item->displayTiming();
+          const bool  select = selected_.contains(item.get());
 
-      // running sessions
-      if (lambda_) {
-        const auto now = nf7::Env::Clock::now();
-        for (auto& wss : lambda_->sessions()) {
-          auto ss = wss.lock();
-          if (!ss || ss->done()) continue;
-
-          const auto elapsed =
-              static_cast<float>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - ss->lastActive()).count()) / 1000;
-
-          const auto alpha = 1.f - std::clamp(elapsed, 0.f, 1.f)*0.6f;
-          const auto color = IM_COL32(255, 0, 0, static_cast<uint8_t>(alpha*255));
-
-          tl_.Cursor("S", ss->time(), color);
-          if (ss->layer() > 0) {
-            tl_.Arrow(ss->time(), ss->layer()-1, color);
+          ImGui::PushStyleColor(
+              ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg, 0.3f));
+          ImGui::PushStyleColor(
+              ImGuiCol_Border,
+              ImGui::GetColorU32(select? ImGuiCol_FrameBgActive: ImGuiCol_Border));
+          ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 2);
+          const bool shown = tl_.BeginItem(item.get(), t.begin(), t.end());
+          ImGui::PopStyleVar(1);
+          ImGui::PopStyleColor(2);
+          if (shown) {
+            item->Update();
           }
+          tl_.EndItem();
+
         }
       }
-
-      HandleTimelineAction();
     }
-    tl_.End();
+    tl_.EndBody();
 
-    // key bindings
-    const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    if (focused && !ImGui::IsAnyItemFocused()) {
-      if (!lambda_ || lambda_->depth() == 0) {
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
-          if (cursor_ > 0) MoveCursorTo(cursor_-1);
-        } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-          MoveCursorTo(cursor_+1);
+    // mouse curosr
+    constexpr auto kFlags =
+        ImGuiHoveredFlags_ChildWindows |
+        ImGuiHoveredFlags_AllowWhenBlockedByPopup;
+    if (ImGui::IsWindowHovered(kFlags)) {
+      tl_.Cursor(
+          "mouse",
+          tl_.GetTimeFromScreenX(ImGui::GetMousePos().x),
+          ImGui::GetColorU32(ImGuiCol_TextDisabled, .5f));
+    }
+
+    // frame cursor
+    tl_.Cursor("cursor", cursor_, ImGui::GetColorU32(ImGuiCol_Text, .5f));
+
+    // running sessions
+    if (lambda_) {
+      const auto now = nf7::Env::Clock::now();
+      for (auto& wss : lambda_->sessions()) {
+        auto ss = wss.lock();
+        if (!ss || ss->done()) continue;
+
+        const auto elapsed =
+            static_cast<float>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now - ss->lastActive()).count()) / 1000;
+
+        const auto alpha = 1.f - std::clamp(elapsed, 0.f, 1.f)*0.6f;
+        const auto color = IM_COL32(255, 0, 0, static_cast<uint8_t>(alpha*255));
+
+        tl_.Cursor("S", ss->time(), color);
+        if (ss->layer() > 0) {
+          tl_.Arrow(ss->time(), ss->layer()-1, color);
         }
+      }
+    }
+
+    HandleTimelineAction();
+  }
+  tl_.End();
+
+  // key bindings
+  const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+  if (focused && !ImGui::IsAnyItemFocused()) {
+    if (!lambda_ || lambda_->depth() == 0) {
+      if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+        if (cursor_ > 0) MoveCursorTo(cursor_-1);
+      } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+        MoveCursorTo(cursor_+1);
       }
     }
   }
-  win_.End();
 }
-void TL::ParamPanelWindow() noexcept {
-  if (!win_.shown()) return;
-
-  const auto name = abspath().Stringify() + " | Parameter Panel";
-
-  if (std::exchange(param_panel_request_focus_, false)) {
-    ImGui::SetNextWindowFocus();
-  }
-
-  const auto em = ImGui::GetFontSize();
-  ImGui::SetNextWindowSize({16*em, 16*em}, ImGuiCond_FirstUseEver);
-
-  if (ImGui::Begin(name.c_str())) {
-    if (auto item = param_panel_target_) {
-      if (item->seq().flags() & Sequencer::kParamPanel) {
-        TL::Editor ed {*item};
-        item->seq().UpdateParamPanel(ed);
-      } else {
-        ImGui::TextUnformatted("item doesn't have parameter panel");
-      }
+void TL::ParamPanel() noexcept {
+  if (auto item = param_panel_target_) {
+    if (item->seq().flags() & Sequencer::kParamPanel) {
+      TL::Editor ed {*item};
+      item->seq().UpdateParamPanel(ed);
     } else {
-      ImGui::TextUnformatted("no item selected");
+      ImGui::TextUnformatted("item doesn't have parameter panel");
     }
+  } else {
+    ImGui::TextUnformatted("no item selected");
   }
-  ImGui::End();
 }
 void TL::LambdaSelector() noexcept {
   const auto current_lambda =

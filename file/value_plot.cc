@@ -109,11 +109,12 @@ class Plot final : public nf7::FileBase,
     std::vector<Series> series;
   };
 
-  Plot(nf7::Env& env, const nf7::gui::Window* win = nullptr, Data&& data = {}) noexcept :
+  Plot(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kNone),
-      life_(*this), log_(*this), win_(*this, "Plot", win), mem_(std::move(data)) {
+      life_(*this), log_(*this), win_(*this, "Plot"), mem_(std::move(data)) {
+    win_.onUpdate = [this]() { PlotGraph(); };
     mem_.onRestore = mem_.onCommit = [this]() { BuildInputList(); };
     Sanitize();
   }
@@ -126,7 +127,7 @@ class Plot final : public nf7::FileBase,
     ar(win_, mem_->series);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Plot>(env, &win_, Data {mem_.data()});
+    return std::make_unique<Plot>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -139,11 +140,7 @@ class Plot final : public nf7::FileBase,
     return {};
   }
 
-  void Update() noexcept override;
-  void UpdateWidget() noexcept override;
   void UpdateMenu() noexcept override;
-
-  void UpdatePlot() noexcept;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
@@ -161,6 +158,7 @@ class Plot final : public nf7::FileBase,
   std::vector<std::string> inputs_;
 
 
+  // config management
   void Sanitize() {
     nf7::util::Uniq(mem_->series);
     mem_.CommitAmend();
@@ -172,6 +170,9 @@ class Plot final : public nf7::FileBase,
       inputs_.push_back(s.name);
     }
   }
+
+  // gui
+  void PlotGraph() noexcept;
 };
 
 
@@ -237,22 +238,8 @@ std::shared_ptr<nf7::Node::Lambda> Plot::CreateLambda(
 }
 
 
-void Plot::Update() noexcept {
-  nf7::FileBase::Update();
-
-  if (win_.Begin()) {
-    UpdatePlot();
-  }
-  win_.End();
-}
-void Plot::UpdateWidget() noexcept {
-  if (ImGui::Button("plot window")) {
-    win_.SetFocus();
-  }
-  nf7::gui::Config(mem_);
-}
 void Plot::UpdateMenu() noexcept {
-  ImGui::MenuItem("plot window", nullptr, &win_.shown());
+  win_.MenuItem();
 
   if (ImGui::BeginMenu("config")) {
     nf7::gui::Config(mem_);
@@ -260,7 +247,7 @@ void Plot::UpdateMenu() noexcept {
   }
 }
 
-void Plot::UpdatePlot() noexcept {
+void Plot::PlotGraph() noexcept {
   if (ImPlot::BeginPlot("##plot", ImGui::GetContentRegionAvail())) {
     ImPlot::SetupAxis(ImAxis_X1, "X", ImPlotAxisFlags_AutoFit);
     ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_AutoFit);

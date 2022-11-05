@@ -17,6 +17,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -34,7 +35,7 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Logger final : public nf7::File,
+class Logger final : public nf7::FileBase,
     public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<Logger> kType = {
@@ -110,13 +111,17 @@ class Logger final : public nf7::File,
   };
 
   Logger(nf7::Env& env, Data&& d = {}) noexcept :
-      nf7::File(kType, env), DirItem(DirItem::kMenu),
+      nf7::FileBase(kType, env), nf7::DirItem(DirItem::kMenu),
       mem_(std::move(d), *this), win_(*this, "Log View") {
-    win_.shown() = true;
-
     mem_.onCommit = mem_.onRestore = [this]() {
       store_->param(mem_.data());
     };
+
+    win_.onConfig = []() {
+      const auto em = ImGui::GetFontSize();
+      ImGui::SetNextWindowSize({48*em, 16*em}, ImGuiCond_FirstUseEver);
+    };
+    win_.onUpdate = [this]() { LogView(); };
   }
 
   Logger(nf7::Deserializer& ar) : Logger(ar.env()) {
@@ -142,7 +147,6 @@ class Logger final : public nf7::File,
     }
   }
 
-  void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateRowMenu(const Row&) noexcept;
 
@@ -161,11 +165,13 @@ class Logger final : public nf7::File,
   nf7::gui::Window win_;
 
 
+  // log record management
   void DropExceededRows() noexcept {
     if (rows_.size() <= mem_->max_rows) return;
     rows_.erase(rows_.begin(), rows_.end()-mem_->max_rows);
   }
 
+  // stringify
   std::string GetPathString(File::Id id) const noexcept
   try {
     return env().GetFileOrThrow(id).abspath().Stringify();
@@ -190,6 +196,9 @@ class Logger final : public nf7::File,
   static std::string GetLocationString(const std::source_location loc) noexcept {
     return loc.file_name()+":"s+std::to_string(loc.line());
   }
+
+  // gui
+  void LogView() noexcept;
 
 
   class ItemStore final : public nf7::Context,
@@ -266,100 +275,13 @@ class Logger final : public nf7::File,
 };
 
 
-void Logger::Update() noexcept {
-  const auto em = ImGui::GetFontSize();
-
-  if (win_.shownInCurrentFrame()) {
-    ImGui::SetNextWindowSize({48*em, 16*em}, ImGuiCond_FirstUseEver);
-  }
-  if (win_.Begin()) {
-    constexpr auto kTableFlags =
-        ImGuiTableFlags_Resizable         |
-        ImGuiTableFlags_Hideable          |
-        ImGuiTableFlags_RowBg             |
-        ImGuiTableFlags_Borders           |
-        ImGuiTableFlags_ContextMenuInBody |
-        ImGuiTableFlags_SizingStretchProp |
-        ImGuiTableFlags_ScrollY;
-    if (ImGui::BeginTable("logs", 4, kTableFlags, ImGui::GetContentRegionAvail(), 0)) {
-      const bool updated    = store_->MoveItemsTo(*this);
-      const bool autoscroll = updated && ImGui::GetScrollY() == ImGui::GetScrollMaxY();
-
-      ImGui::TableSetupColumn("level");
-      ImGui::TableSetupColumn("msg");
-      ImGui::TableSetupColumn("path");
-      ImGui::TableSetupColumn("location");
-      ImGui::TableSetupScrollFreeze(0, 1);
-      ImGui::TableHeadersRow();
-
-      for (const auto& row : rows_) {
-        ImGui::TableNextRow();
-        ImGui::PushID(&row);
-
-        if (autoscroll && &row == &rows_.back()) {
-          ImGui::SetScrollHereY();
-        }
-
-        // level column
-        if (ImGui::TableSetColumnIndex(0)) {
-          constexpr auto kFlags =
-              ImGuiSelectableFlags_SpanAllColumns |
-              ImGuiSelectableFlags_AllowItemOverlap;
-          ImGui::Selectable(row.level, false, kFlags);
-          if (ImGui::BeginPopupContextItem()) {
-            UpdateRowMenu(row);
-            ImGui::EndPopup();
-          }
-        }
-        // msg column
-        if (ImGui::TableNextColumn()) {
-          ImGui::TextUnformatted(row.msg.c_str());
-          if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(row.msg.c_str());
-          }
-        }
-        // path column
-        if (ImGui::TableNextColumn()) {
-          ImGui::TextUnformatted(row.path.c_str());
-          if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(row.path.c_str());
-          }
-        }
-        // location column
-        if (ImGui::TableNextColumn()) {
-          ImGui::TextUnformatted(row.location.c_str());
-          if (ImGui::IsItemHovered()) {
-            ImGui::BeginTooltip();
-            ImGui::Text(row.location.c_str());
-            for (auto ptr = row.ex; ptr;)
-            try {
-              ImGui::Bullet();
-              std::rethrow_exception(ptr);
-            } catch (Exception& e) {
-              e.UpdatePanic();
-              ImGui::Spacing();
-              ptr = e.reason();
-            } catch (std::exception& e) {
-              ImGui::Text("std::exception (%s)", e.what());
-              ptr = nullptr;
-            }
-            ImGui::EndTooltip();
-          }
-        }
-        ImGui::PopID();
-      }
-      ImGui::EndTable();
-    }
-  }
-  win_.End();
-}
 void Logger::UpdateMenu() noexcept {
   if (ImGui::BeginMenu("config")) {
     nf7::gui::Config(mem_);
     ImGui::EndMenu();
   }
   ImGui::Separator();
-  ImGui::MenuItem("Log View",  nullptr, &win_.shown());
+  win_.MenuItem();
 }
 void Logger::UpdateRowMenu(const Row& row) noexcept {
   if (ImGui::MenuItem("copy as text")) {
@@ -369,6 +291,86 @@ void Logger::UpdateRowMenu(const Row& row) noexcept {
   if (ImGui::MenuItem("clear")) {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this), [this]() { rows_.clear(); });
+  }
+}
+
+void Logger::LogView() noexcept {
+  constexpr auto kTableFlags =
+      ImGuiTableFlags_Resizable         |
+      ImGuiTableFlags_Hideable          |
+      ImGuiTableFlags_RowBg             |
+      ImGuiTableFlags_Borders           |
+      ImGuiTableFlags_ContextMenuInBody |
+      ImGuiTableFlags_SizingStretchProp |
+      ImGuiTableFlags_ScrollY;
+  if (ImGui::BeginTable("logs", 4, kTableFlags, ImGui::GetContentRegionAvail(), 0)) {
+    const bool updated    = store_->MoveItemsTo(*this);
+    const bool autoscroll = updated && ImGui::GetScrollY() == ImGui::GetScrollMaxY();
+
+    ImGui::TableSetupColumn("level");
+    ImGui::TableSetupColumn("msg");
+    ImGui::TableSetupColumn("path");
+    ImGui::TableSetupColumn("location");
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableHeadersRow();
+
+    for (const auto& row : rows_) {
+      ImGui::TableNextRow();
+      ImGui::PushID(&row);
+
+      if (autoscroll && &row == &rows_.back()) {
+        ImGui::SetScrollHereY();
+      }
+
+      // level column
+      if (ImGui::TableSetColumnIndex(0)) {
+        constexpr auto kFlags =
+            ImGuiSelectableFlags_SpanAllColumns |
+            ImGuiSelectableFlags_AllowItemOverlap;
+        ImGui::Selectable(row.level, false, kFlags);
+        if (ImGui::BeginPopupContextItem()) {
+          UpdateRowMenu(row);
+          ImGui::EndPopup();
+        }
+      }
+      // msg column
+      if (ImGui::TableNextColumn()) {
+        ImGui::TextUnformatted(row.msg.c_str());
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip(row.msg.c_str());
+        }
+      }
+      // path column
+      if (ImGui::TableNextColumn()) {
+        ImGui::TextUnformatted(row.path.c_str());
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip(row.path.c_str());
+        }
+      }
+      // location column
+      if (ImGui::TableNextColumn()) {
+        ImGui::TextUnformatted(row.location.c_str());
+        if (ImGui::IsItemHovered()) {
+          ImGui::BeginTooltip();
+          ImGui::Text(row.location.c_str());
+          for (auto ptr = row.ex; ptr;)
+          try {
+            ImGui::Bullet();
+            std::rethrow_exception(ptr);
+          } catch (Exception& e) {
+            e.UpdatePanic();
+            ImGui::Spacing();
+            ptr = e.reason();
+          } catch (std::exception& e) {
+            ImGui::Text("std::exception (%s)", e.what());
+            ptr = nullptr;
+          }
+          ImGui::EndTooltip();
+        }
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
   }
 }
 
