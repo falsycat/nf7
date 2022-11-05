@@ -6,12 +6,15 @@
 
 #include "nf7.hh"
 
+#include "common/history.hh"
+
 
 namespace nf7 {
 
 class Memento : public File::Interface {
  public:
   class Tag;
+  class RestoreCommand;
   class CorruptException;
 
   Memento() = default;
@@ -41,6 +44,33 @@ class Memento::Tag {
 
  private:
   Id id_;
+};
+
+class Memento::RestoreCommand final : public nf7::History::Command {
+ public:
+  RestoreCommand() = delete;
+  RestoreCommand(Memento& mem,
+                 const std::shared_ptr<Tag>& prev,
+                 const std::shared_ptr<Tag>& next) noexcept :
+      mem_(mem), prev_(prev), next_(next) {
+  }
+  RestoreCommand(const RestoreCommand&) = delete;
+  RestoreCommand(RestoreCommand&&) = delete;
+  RestoreCommand& operator=(const RestoreCommand&) = delete;
+  RestoreCommand& operator=(RestoreCommand&&) = delete;
+
+  void Apply() override { Exec(); }
+  void Revert() override { Exec(); }
+
+ private:
+  Memento& mem_;
+  std::shared_ptr<Tag> prev_;
+  std::shared_ptr<Tag> next_;
+
+  void Exec() noexcept {
+    mem_.Restore(next_);
+    std::swap(prev_, next_);
+  }
 };
 
 class Memento::CorruptException : public Exception {

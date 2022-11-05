@@ -23,7 +23,6 @@
 #include "common/generic_watcher.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_node.hh"
-#include "common/gui_popup.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/memento.hh"
@@ -58,34 +57,33 @@ class Ref final : public nf7::FileBase, public nf7::Node {
   };
 
   Ref(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::FileBase(kType, env, {&config_popup_}),
+      nf7::FileBase(kType, env),
       nf7::Node(nf7::Node::kCustomNode | nf7::Node::kMenu),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      mem_(std::move(data), *this),
-      config_popup_(*this) {
+      mem_(std::move(data), *this) {
     nf7::FileBase::Install(*log_);
 
     mem_.onRestore = mem_.onCommit = [this]() { SetUpWatcher(); };
   }
 
   Ref(nf7::Deserializer& ar) : Ref(ar.env()) {
-    ar(data().target, data().inputs, data().outputs);
+    ar(mem_->target, mem_->inputs, mem_->outputs);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(data().target, data().inputs, data().outputs);
+    ar(mem_->target, mem_->inputs, mem_->outputs);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Ref>(env, Data {data()});
+    return std::make_unique<Ref>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::span<const std::string> GetInputs() const noexcept override {
-    return data().inputs;
+    return mem_->inputs;
   }
   std::span<const std::string> GetOutputs() const noexcept override {
-    return data().outputs;
+    return mem_->outputs;
   }
 
   void Handle(const nf7::File::Event& ev) noexcept {
@@ -116,38 +114,19 @@ class Ref final : public nf7::FileBase, public nf7::Node {
   std::optional<nf7::GenericWatcher> watcher_;
 
   nf7::GenericMemento<Data> mem_;
-  const Data& data() const noexcept { return mem_.data(); }
-  Data& data() noexcept { return mem_.data(); }
 
-
-  // GUI popup
-  class ConfigPopup final : public nf7::FileBase::Feature, private nf7::gui::Popup {
-   public:
-    ConfigPopup(Ref& f) noexcept : nf7::gui::Popup("ConfigPopup"), f_(&f) {
-    }
-
-    void Open() noexcept {
-      path_ = f_->data().target.Stringify();
-      nf7::gui::Popup::Open();
-    }
-    void Update() noexcept override;
-
-   private:
-    Ref* const f_;
-    std::string path_;
-  } config_popup_;
 
   // accessors
   nf7::File& target() const {
-    auto& f = ResolveOrThrow(data().target);
+    auto& f = ResolveOrThrow(mem_->target);
     if (&f == this) throw nf7::Exception("self reference");
     return f;
   }
 
   // socket synchronization
   bool SyncQuiet() noexcept {
-    auto& dsti = data().inputs;
-    auto& dsto = data().outputs;
+    auto& dsti = mem_->inputs;
+    auto& dsto = mem_->outputs;
 
     bool mod = false;
     try {
@@ -181,7 +160,7 @@ class Ref final : public nf7::FileBase, public nf7::Node {
 
   // referencee operation
   void ExecChangeTarget(Path&& p) noexcept {
-    auto& target = mem_.data().target;
+    auto& target = mem_->target;
     if (p == target) return;
 
     env().ExecMain(
@@ -277,7 +256,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     ExecSync();
   }
 
-  const auto pathstr = mem_.data().target.Stringify();
+  const auto pathstr = mem_->target.Stringify();
 
   auto w = 6*em;
   {
@@ -285,18 +264,17 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     w = std::max(w, std::min(pw, 8*em));
 
     auto iw = 3*em;
-    for (const auto& v : data().inputs) {
+    for (const auto& v : mem_->inputs) {
       iw = std::max(iw, ImGui::CalcTextSize(v.c_str()).x);
     }
     auto ow = 3*em;
-    for (const auto& v : data().outputs) {
+    for (const auto& v : mem_->outputs) {
       ow = std::max(ow, ImGui::CalcTextSize(v.c_str()).x);
     }
     w = std::max(w, 1*em+style.ItemSpacing.x+iw +1*em+ ow+style.ItemSpacing.x+1*em);
   }
 
   if (ImGui::Button(pathstr.c_str(), {w, 0})) {
-    config_popup_.Open();
   }
   if (ImGui::BeginDragDropTarget()) {
     if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
@@ -307,7 +285,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
 
   const auto right = ImGui::GetCursorPosX() + w;
   ImGui::BeginGroup();
-  for (const auto& name : data().inputs) {
+  for (const auto& name : mem_->inputs) {
     if (ImNodes::BeginInputSlot(name.c_str(), 1)) {
       gui::NodeSocket();
       ImGui::SameLine();
@@ -318,7 +296,7 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
   ImGui::EndGroup();
   ImGui::SameLine();
   ImGui::BeginGroup();
-  for (const auto& name : data().outputs) {
+  for (const auto& name : mem_->outputs) {
     const auto tw = ImGui::CalcTextSize(name.c_str()).x;
     ImGui::SetCursorPosX(right-(tw+style.ItemSpacing.x+em));
 
@@ -330,15 +308,10 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     }
   }
   ImGui::EndGroup();
-
-  config_popup_.Update();
 }
 void Ref::UpdateMenu(nf7::Node::Editor& ed) noexcept {
   if (ImGui::MenuItem("sync")) {
     ExecSync();
-  }
-  if (ImGui::MenuItem("replace target")) {
-    config_popup_.Open();
   }
   try {
     auto& f = target();
@@ -361,37 +334,6 @@ void Ref::UpdateMenu(nf7::Node::Editor& ed) noexcept {
       ImGui::EndMenu();
     }
   } catch (nf7::Exception&) {
-  }
-}
-
-void Ref::ConfigPopup::Update() noexcept {
-  if (nf7::gui::Popup::Begin()) {
-    ImGui::TextUnformatted("Node/Ref: config");
-    const bool submit = ImGui::InputText(
-        "path", &path_, ImGuiInputTextFlags_EnterReturnsTrue);
-
-    bool err = false;
-
-    Path path;
-    try {
-      path = Path::Parse(path_);
-    } catch (nf7::Exception& e) {
-      ImGui::Bullet(); ImGui::Text("invalid path: %s", e.msg().c_str());
-      err = true;
-    }
-    try {
-      f_->ResolveOrThrow(path).interfaceOrThrow<nf7::Node>();
-    } catch (nf7::File::NotFoundException&) {
-      ImGui::Bullet(); ImGui::Text("target seems to be missing");
-    } catch (nf7::File::NotImplementedException&) {
-      ImGui::Bullet(); ImGui::Text("target doesn't seem to have Node interface");
-    }
-
-    if (!err && (ImGui::Button("ok") || submit)) {
-      ImGui::CloseCurrentPopup();
-      f_->ExecChangeTarget(std::move(path));
-    }
-    ImGui::EndPopup();
   }
 }
 

@@ -20,7 +20,6 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_file.hh"
-#include "common/gui_popup.hh"
 #include "common/gui_value.hh"
 #include "common/life.hh"
 #include "common/ptr_selector.hh"

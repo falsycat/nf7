@@ -10,17 +10,22 @@
 #include <utility>
 #include <iostream>
 
+#include <imgui.h>
+
+#include <yaml-cpp/yaml.h>
+
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
 #include "common/generic_context.hh"
+#include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui_config.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger.hh"
 #include "common/logger_ref.hh"
-#include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_std_atomic.hh"
 
@@ -44,8 +49,6 @@ class Logger final : public nf7::File,
         "recorded logs won't be permanentized");
   }
 
-  class Node;
-
   struct Row final {
    public:
     File::Id file;
@@ -66,39 +69,80 @@ class Logger final : public nf7::File,
       return st.str();
     }
   };
-  struct Param final {
-   public:
-    Param(uint32_t mr, bool p, bool f) : max_rows(mr), propagate(p), freeze(f) {
-    }
-    std::atomic<uint32_t> max_rows;
-    std::atomic<bool>     propagate;
-    std::atomic<bool>     freeze;
-  };
-  class ItemStore;
 
-  Logger(nf7::Env& env, uint32_t max_rows = 1024, bool propagate = false, bool freeze = false) noexcept :
+  struct Data {
+    uint32_t max_rows  = 1024;
+    bool     propagate = false;
+    bool     freeze    = false;
+
+    Data() noexcept { }
+    void serialize(auto& ar) {
+      ar(max_rows, propagate, freeze);
+      if (max_rows == 0) {
+        throw DeserializeException("max_rows must be 1 or more");
+      }
+    }
+
+    std::string Stringify() const noexcept {
+      YAML::Emitter st;
+      st << YAML::BeginMap;
+      st << YAML::Key   << "max_rows";
+      st << YAML::Value << max_rows;
+      st << YAML::Key   << "propagate";
+      st << YAML::Value << propagate;
+      st << YAML::Key   << "freeze";
+      st << YAML::Value << freeze;
+      st << YAML::EndMap;
+      return {st.c_str(), st.size()};
+    }
+    void Parse(const std::string& str)
+    try {
+      const auto yaml = YAML::Load(str);
+
+      Data d;
+      d.max_rows  = yaml["max_rows"].as<uint32_t>();
+      d.propagate = yaml["propagate"].as<bool>();
+      d.freeze    = yaml["freeze"].as<bool>();
+
+      *this = std::move(d);
+    } catch (YAML::Exception& e) {
+      throw nf7::Exception {e.what()};
+    }
+  };
+
+  Logger(nf7::Env& env, Data&& d = {}) noexcept :
       File(kType, env), DirItem(DirItem::kMenu),
-      param_(std::make_shared<Param>(max_rows, propagate, freeze)),
-      win_(*this, "LogView") {
+      mem_(std::move(d), *this), win_(*this, "Log View") {
     win_.shown() = true;
+
+    mem_.onCommit = mem_.onRestore = [this]() {
+      store_->param(mem_.data());
+    };
   }
 
   Logger(nf7::Deserializer& ar) : Logger(ar.env()) {
-    ar(win_, param_->max_rows, param_->propagate, param_->freeze);
-
-    if (param_->max_rows == 0) {
-      throw DeserializeException("max_rows must be 1 or more");
-    }
+    ar(win_, mem_.data());
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(win_, param_->max_rows, param_->propagate, param_->freeze);
+    ar(win_, mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Logger>(
-        env, param_->max_rows, param_->propagate, param_->freeze);
+    return std::make_unique<Logger>(env, Data {mem_.data()});
   }
 
-  void Handle(const nf7::File::Event& ev) noexcept override;
+  void Handle(const nf7::File::Event& ev) noexcept override {
+    switch (ev.type) {
+    case Event::kAdd:
+      store_ = std::make_shared<ItemStore>(*this);
+      return;
+    case Event::kRemove:
+      store_ = nullptr;
+      return;
+    default:
+      return;
+    }
+  }
+
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateRowMenu(const Row&) noexcept;
@@ -109,18 +153,18 @@ class Logger final : public nf7::File,
   }
 
  private:
-  std::shared_ptr<Param>     param_;
+  class ItemStore;
   std::shared_ptr<ItemStore> store_;
   std::deque<Row>            rows_;
 
-  const char* popup_ = nullptr;
+  nf7::GenericMemento<Data> mem_;
 
   nf7::gui::Window win_;
 
 
   void DropExceededRows() noexcept {
-    if (rows_.size() <= param_->max_rows) return;
-    rows_.erase(rows_.begin(), rows_.end()-param_->max_rows);
+    if (rows_.size() <= mem_->max_rows) return;
+    rows_.erase(rows_.begin(), rows_.end()-mem_->max_rows);
   }
 
   std::string GetPathString(File::Id id) const noexcept
@@ -147,197 +191,85 @@ class Logger final : public nf7::File,
   static std::string GetLocationString(const std::source_location loc) noexcept {
     return loc.file_name()+":"s+std::to_string(loc.line());
   }
-};
-class Logger::ItemStore final : public nf7::Context,
-    public nf7::Logger,
-    public std::enable_shared_from_this<ItemStore> {
- public:
-  ItemStore() = delete;
-  ItemStore(File& owner, const std::shared_ptr<Param>& param) noexcept :
-      Context(owner.env(), owner.id()), param_(param) {
-  }
-  ItemStore(const ItemStore&) = delete;
-  ItemStore(ItemStore&&) = delete;
-  ItemStore& operator=(const ItemStore&) = delete;
-  ItemStore& operator=(ItemStore&&) = delete;
-
-  void Write(nf7::Logger::Item&& item) noexcept override {
-    if (param_->freeze) return;
-    if (param_->propagate) {
-      // TODO propagation
-    }
-
-    std::unique_lock<std::mutex> k(mtx_);
-    if (items_.size() >= param_->max_rows) items_.pop_front();
-    items_.push_back(std::move(item));
-  }
-  bool MoveItemsTo(auto& owner) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
-    if (items_.empty()) return false;
-    auto& rows = owner.rows_;
-
-    auto itr = items_.begin();
-    if (rows.size()+items_.size() > param_->max_rows) {
-      // max_rows may be changed
-      if (items_.size() > param_->max_rows) {
-        itr += static_cast<intmax_t>(param_->max_rows - items_.size());
-      }
-      const auto keep =
-          static_cast<intmax_t>(param_->max_rows) - std::distance(itr, items_.end());
-      rows.erase(rows.begin(), rows.end()-keep);
-    }
-    for (; itr < items_.end(); ++itr) {
-      Row row = {
-        .file     = itr->file,
-        .srcloc   = itr->srcloc,
-        .level    = GetLevelString(itr->level),
-        .msg      = std::move(itr->msg),
-        .path     = owner.GetPathString(itr->file),
-        .location = GetLocationString(itr->srcloc),
-        .ex       = itr->ex,
-      };
-      rows.push_back(std::move(row));
-    }
-    items_.clear();
-    return true;
-  }
-
-  std::string GetDescription() const noexcept override {
-    return "System/Logger shared instance";
-  }
-
-  std::shared_ptr<nf7::Logger> self(nf7::Logger*) noexcept override {
-    return shared_from_this();
-  }
-
- private:
-  std::mutex mtx_;
-  std::deque<nf7::Logger::Item> items_;
-  std::shared_ptr<Param> param_;
-};
 
 
-class Logger::Node final : public nf7::FileBase, public nf7::Node {
- public:
-  static inline const nf7::GenericTypeInfo<Logger::Node> kType = {
-    "System/Logger/Node", {"nf7::Node"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Sends message to logger.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-  }
-
-  Node(nf7::Env& env) noexcept :
-      nf7::FileBase(kType, env, {&logger_}),
-      nf7::Node(nf7::Node::kNone),
-      life_(*this), logger_(*this) {
-  }
-
-  Node(nf7::Deserializer& ar) : Node(ar.env()) {
-  }
-  void Serialize(nf7::Serializer&) const noexcept override {
-  }
-  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Logger::Node>(env);
-  }
-
-  std::shared_ptr<nf7::Node::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept override {
-    return std::make_shared<Logger::Node::Lambda>(*this, parent);
-  }
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"msg"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return {};
-  }
-
-  nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::Node>(t).Select(this);
-  }
-
- private:
-  nf7::Life<Logger::Node> life_;
-
-  nf7::LoggerRef logger_;
-
-
-  class Lambda final : public nf7::Node::Lambda {
+  class ItemStore final : public nf7::Context,
+      public nf7::Logger,
+      public std::enable_shared_from_this<ItemStore> {
    public:
-    Lambda(Logger::Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-        nf7::Node::Lambda(f, parent), f_(f.life_) {
+    ItemStore() = delete;
+    ItemStore(File& f) noexcept : nf7::Context(f) {
+    }
+    ItemStore(const ItemStore&) = delete;
+    ItemStore(ItemStore&&) = delete;
+    ItemStore& operator=(const ItemStore&) = delete;
+    ItemStore& operator=(ItemStore&&) = delete;
+
+    void Write(nf7::Logger::Item&& item) noexcept override {
+      if (param_.freeze) return;
+      if (param_.propagate) {
+        // TODO propagation
+      }
+
+      std::unique_lock<std::mutex> k(mtx_);
+      if (items_.size() >= param_.max_rows) items_.pop_front();
+      items_.push_back(std::move(item));
     }
 
-    void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
-    try {
-      f_.EnforceAlive();
-      if (in.value.isString()) {
-        f_->logger_.Info(in.value.string());
-      } else {
-        f_->logger_.Info("["s+in.value.typeName()+"]");
+    bool MoveItemsTo(auto& owner) noexcept {
+      std::unique_lock<std::mutex> k(mtx_);
+      if (items_.empty()) return false;
+      auto& rows = owner.rows_;
+
+      auto itr = items_.begin();
+      if (rows.size()+items_.size() > param_.max_rows) {
+        if (items_.size() > param_.max_rows) {
+          itr += static_cast<intmax_t>(param_.max_rows - items_.size());
+        }
+        const auto keep =
+            static_cast<intmax_t>(param_.max_rows) - std::distance(itr, items_.end());
+        rows.erase(rows.begin(), rows.end()-keep);
       }
-    } catch (nf7::Exception&) {
+      for (; itr < items_.end(); ++itr) {
+        Row row = {
+          .file     = itr->file,
+          .srcloc   = itr->srcloc,
+          .level    = GetLevelString(itr->level),
+          .msg      = std::move(itr->msg),
+          .path     = owner.GetPathString(itr->file),
+          .location = GetLocationString(itr->srcloc),
+          .ex       = itr->ex,
+        };
+        rows.push_back(std::move(row));
+      }
+      items_.clear();
+      return true;
+    }
+
+    std::string GetDescription() const noexcept override {
+      return "System/Logger shared instance";
+    }
+    std::shared_ptr<nf7::Logger> self(nf7::Logger*) noexcept override {
+      return shared_from_this();
+    }
+
+    void param(const Data& d) noexcept {
+      std::unique_lock<std::mutex> k(mtx_);
+      param_ = d;
     }
 
    private:
-    nf7::Life<Logger::Node>::Ref f_;
+    std::mutex mtx_;
+    std::deque<nf7::Logger::Item> items_;
+
+    Data param_;
   };
 };
 
 
-void Logger::Handle(const Event& ev) noexcept {
-  switch (ev.type) {
-  case Event::kAdd:
-    store_ = std::make_shared<ItemStore>(*this, param_);
-    return;
-  case Event::kRemove:
-    store_ = nullptr;
-    return;
-  default:
-    return;
-  }
-}
 void Logger::Update() noexcept {
-  if (const auto name = std::exchange(popup_, nullptr)) {
-    ImGui::OpenPopup(name);
-  }
-
   const auto em = ImGui::GetFontSize();
 
-  // config popup
-  if (ImGui::BeginPopup("ConfigPopup")) {
-    ImGui::TextUnformatted("System/Logger Config");
-    ImGui::Spacing();
-
-    static const uint32_t kMinRows = 1, kMaxRows = 1024*1024;
-    uint32_t max_rows = param_->max_rows;
-    if (ImGui::DragScalar("max rows", ImGuiDataType_U32, &max_rows, 1, &kMinRows, &kMaxRows)) {
-      param_->max_rows = max_rows;
-      DropExceededRows();
-    }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("the oldest row is dropped when exceed");
-    }
-
-    bool propagate = param_->propagate;
-    if (ImGui::Checkbox("propagate", &propagate)) {
-      param_->propagate = propagate;
-    }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("after handling, passes the msg to outer logger if exists");
-    }
-
-    bool freeze = param_->freeze;
-    if (ImGui::Checkbox("freeze", &freeze)) {
-      param_->freeze = freeze;
-    }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("stop handling except propagation");
-    }
-    ImGui::EndPopup();
-  }
-
-  // LogView
   if (win_.shownInCurrentFrame()) {
     ImGui::SetNextWindowSize({48*em, 16*em}, ImGuiCond_FirstUseEver);
   }
@@ -423,11 +355,12 @@ void Logger::Update() noexcept {
   win_.End();
 }
 void Logger::UpdateMenu() noexcept {
-  ImGui::MenuItem("shown",  nullptr, &win_.shown());
-
-  if (ImGui::MenuItem("config")) {
-    popup_ = "ConfigPopup";
+  if (ImGui::BeginMenu("config")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndMenu();
   }
+  ImGui::Separator();
+  ImGui::MenuItem("Log View",  nullptr, &win_.shown());
 }
 void Logger::UpdateRowMenu(const Row& row) noexcept {
   if (ImGui::MenuItem("copy as text")) {

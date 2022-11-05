@@ -29,6 +29,17 @@ class Node : public File::Interface {
   };
   using Flags = uint8_t;
 
+  static void ValidateSockets(std::span<const std::string> v) {
+    for (auto itr = v.begin(); itr < v.end(); ++itr) {
+      if (v.end() != std::find(itr+1, v.end(), *itr)) {
+        throw nf7::Exception {"name duplication: "+*itr};
+      }
+    }
+    for (auto& s : v) {
+      nf7::File::Path::ValidateTerm(s);
+    }
+  }
+
   Node(Flags f) noexcept : flags_(f) { }
   Node(const Node&) = default;
   Node(Node&&) = default;

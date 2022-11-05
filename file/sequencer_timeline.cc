@@ -27,7 +27,6 @@
 #include "common/generic_type_info.hh"
 #include "common/gui_context.hh"
 #include "common/gui_file.hh"
-#include "common/gui_popup.hh"
 #include "common/gui_timeline.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
@@ -64,60 +63,47 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   class Session;
   class Lambda;
 
-  class ConfigModifyCommand;
-
   using ItemId = uint64_t;
 
   TL(nf7::Env& env,
      std::vector<std::unique_ptr<Layer>>&& layers = {},
      ItemId                                next   = 1,
      const nf7::gui::Window*               win    = nullptr) noexcept :
-      nf7::FileBase(kType, env, {&log_, &popup_socket_, &popup_add_item_}),
+      nf7::FileBase(kType, env, {&log_}),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this), log_(*this),
       layers_(std::move(layers)), next_(next),
-      win_(*this, "Timeline Editor", win), tl_("timeline"),
-      popup_add_item_(*this) {
-    ApplySeqSocketChanges();
-
-    popup_socket_.onSubmit = [this](auto&& i, auto&& o) {
-      ExecChangeSeqSocket(std::move(i), std::move(o));
-    };
+      win_(*this, "Timeline Editor", win), tl_("timeline") {
   }
   ~TL() noexcept {
     history_.Clear();
   }
 
   TL(nf7::Deserializer& ar) : TL(ar.env()) {
-    ar(seq_inputs_, seq_outputs_, win_, tl_, layers_);
+    ar(win_, tl_, layers_);
     AssignId();
-    ApplySeqSocketChanges();
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(seq_inputs_, seq_outputs_, win_, tl_, layers_);
+    ar(win_, tl_, layers_);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override;
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
   std::span<const std::string> GetInputs() const noexcept override {
-    return inputs_;
+    static const std::vector<std::string> kInputs = {"exec"};
+    return kInputs;
   }
   std::span<const std::string> GetOutputs() const noexcept override {
-    return outputs_;
+    static const std::vector<std::string> kOutputs = {"result"};
+    return kOutputs;
   }
 
   void Handle(const nf7::File::Event& ev) noexcept;
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateWidget() noexcept override;
-
-  void UpdateEditorWindow() noexcept;
-  void UpdateLambdaSelector() noexcept;
-  void HandleTimelineAction() noexcept;
-
-  void UpdateParamPanelWindow() noexcept;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -132,8 +118,6 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   std::shared_ptr<TL::Lambda> lambda_;
   std::vector<std::weak_ptr<TL::Lambda>> lambdas_running_;
 
-  std::vector<std::string> inputs_, outputs_;  // for GetInputs/GetOutputs
-
   uint64_t action_time_;
   uint64_t action_layer_;
 
@@ -141,42 +125,10 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   uint64_t cursor_ = 0;
   std::vector<std::unique_ptr<Layer>> layers_;
 
-  std::vector<std::string> seq_inputs_;
-  std::vector<std::string> seq_outputs_;
-
   ItemId next_;
 
   nf7::gui::Window   win_;
   nf7::gui::Timeline tl_;
-
-
-  // GUI popup
-  nf7::gui::IOSocketListPopup popup_socket_;
-
-  struct AddItemPopup final :
-      public nf7::FileBase::Feature, private nf7::gui::Popup {
-   public:
-    AddItemPopup(TL& f) noexcept :
-        Popup("AddItemPopup"),
-        owner_(&f),
-        factory_(f, [](auto& t) { return t.flags().contains("nf7::Sequencer"); }) {
-    }
-
-    void Open(uint64_t t, TL::Layer& l) noexcept {
-      target_time_  = t;
-      target_layer_ = &l;
-      Popup::Open();
-    }
-    void Update() noexcept override;
-
-   private:
-    TL* const owner_;
-
-    uint64_t   target_time_  = 0;
-    TL::Layer* target_layer_ = nullptr;
-
-    nf7::gui::FileFactory factory_;
-  } popup_add_item_;
 
 
   // GUI temporary params
@@ -206,7 +158,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
   void ExecApplyLayerOfSelected() noexcept;
   void MoveDisplayLayerOfSelected(int64_t diff) noexcept;
 
-  // history
+  // history operation
   void ExecUnDo() noexcept {
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "reverting commands to undo"),
@@ -218,19 +170,17 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
         [this]() { history_.ReDo(); });
   }
 
-
   // instant running
   void MoveCursorTo(uint64_t t) noexcept;
   void AttachLambda(const std::shared_ptr<TL::Lambda>&) noexcept;
 
-  // socket operation
-  void ExecChangeSeqSocket(std::vector<std::string>&&, std::vector<std::string>&&) noexcept;
-  void ApplySeqSocketChanges() noexcept {
-    inputs_ = seq_inputs_;
-    inputs_.push_back("_exec");
+  // gui
+  void EditorWindow() noexcept;
+  void ParamPanelWindow() noexcept;
+  void LambdaSelector() noexcept;
+  void ItemAdder() noexcept;
 
-    outputs_ = seq_outputs_;
-  }
+  void HandleTimelineAction() noexcept;
 };
 
 
@@ -633,11 +583,11 @@ class TL::Lambda final : public Node::Lambda,
     auto caller = parent();
     if (!caller) return;
 
-    for (const auto& name : owner_->seq_outputs_) {
-      auto itr = vars.find(name);
-      if (itr == vars.end()) continue;
-      caller->Handle(name, itr->second, shared_from_this());
+    std::vector<nf7::Value::TuplePair> tup;
+    for (auto& p : vars) {
+      tup.emplace_back(p.first, p.second);
     }
+    caller->Handle("result", nf7::Value {std::move(tup)}, shared_from_this());
   }
 
   void Abort() noexcept {
@@ -1135,65 +1085,6 @@ void TL::MoveDisplayLayerOfSelected(int64_t diff) noexcept {
 }
 
 
-class TL::ConfigModifyCommand final : public nf7::History::Command {
- public:
-  struct Builder final {
-   public:
-    Builder(TL& f) noexcept :
-        prod_(std::make_unique<ConfigModifyCommand>(f)) {
-    }
-
-    Builder& inputs(std::vector<std::string>&& v) noexcept {
-      prod_->seq_inputs_ = std::move(v);
-      return *this;
-    }
-    Builder& outputs(std::vector<std::string>&& v) noexcept {
-      prod_->seq_outputs_ = std::move(v);
-      return *this;
-    }
-
-    std::unique_ptr<ConfigModifyCommand> Build() noexcept {
-      return std::move(prod_);
-    }
-
-   private:
-    std::unique_ptr<ConfigModifyCommand> prod_;
-  };
-
-  ConfigModifyCommand(TL& f) noexcept : owner_(&f) {
-  }
-
-  void Apply() override { Exec(); }
-  void Revert() override { Exec(); }
-
- private:
-  TL* const owner_;
-
-  std::optional<std::vector<std::string>> seq_inputs_, seq_outputs_;
-
-  void Exec() noexcept {
-    if (seq_inputs_) {
-      std::swap(owner_->seq_inputs_, *seq_inputs_);
-    }
-    if (seq_outputs_) {
-      std::swap(owner_->seq_outputs_, *seq_outputs_);
-    }
-
-    if (seq_inputs_ || seq_outputs_) {
-      owner_->ApplySeqSocketChanges();
-    }
-  }
-};
-void TL::ExecChangeSeqSocket(std::vector<std::string>&& i, std::vector<std::string>&& o) noexcept {
-  auto cmd = ConfigModifyCommand::Builder {*this}.
-      inputs(std::move(i)).
-      outputs(std::move(o)).
-      Build();
-  auto ctx = std::make_shared<nf7::GenericContext>(*this, "updating I/O socket list");
-  history_.Add(std::move(cmd)).ExecApply(ctx);
-}
-
-
 std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   std::vector<std::unique_ptr<TL::Layer>> layers;
   layers.reserve(layers_.size());
@@ -1242,8 +1133,8 @@ void TL::Update() noexcept {
     }
   }
 
-  UpdateEditorWindow();
-  UpdateParamPanelWindow();
+  EditorWindow();
+  ParamPanelWindow();
 
   if (history_.Squash()) {
     env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
@@ -1254,30 +1145,21 @@ void TL::UpdateMenu() noexcept {
   if (ImGui::MenuItem("editor", nullptr, &win_.shown()) && win_.shown()) {
     win_.SetFocus();
   }
-  if (ImGui::MenuItem("I/O list")) {
-    popup_socket_.Open(seq_inputs_, seq_outputs_);
-  }
 }
 void TL::UpdateWidget() noexcept {
   ImGui::TextUnformatted("Sequencer/Timeline");
-
-
   if (ImGui::Button("Editor")) {
     win_.SetFocus();
   }
-  if (ImGui::Button("I/O list")) {
-    popup_socket_.Open(seq_inputs_, seq_outputs_);
-  }
-
-  popup_socket_.Update();
 }
-void TL::UpdateEditorWindow() noexcept {
+
+void TL::EditorWindow() noexcept {
   if (win_.shownInCurrentFrame()) {
     const auto em = ImGui::GetFontSize();
     ImGui::SetNextWindowSizeConstraints({32*em, 16*em}, {1e8, 1e8});
   }
   if (win_.Begin()) {
-    UpdateLambdaSelector();
+    LambdaSelector();
 
     // timeline
     if (tl_.Begin()) {
@@ -1300,9 +1182,10 @@ void TL::UpdateEditorWindow() noexcept {
               action_layer_ = layer->index();
             }
           }
-          if (ImGui::MenuItem("add new item")) {
-            if (action_layer_ < layers_.size()) {
-              popup_add_item_.Open(action_time_, *layers_[action_layer_]);
+          if (action_layer_ < layers_.size()) {
+            if (ImGui::BeginMenu("add new item")) {
+              ItemAdder();
+              ImGui::EndMenu();
             }
           }
           if (selected_.size()) {
@@ -1317,10 +1200,6 @@ void TL::UpdateEditorWindow() noexcept {
           }
           if (ImGui::MenuItem("redo", nullptr, false, !!history_.next())) {
             ExecReDo();
-          }
-          ImGui::Separator();
-          if (ImGui::MenuItem("I/O socket list")) {
-            popup_socket_.Open(seq_inputs_, seq_outputs_);
           }
           ImGui::EndPopup();
         }
@@ -1405,7 +1284,33 @@ void TL::UpdateEditorWindow() noexcept {
   }
   win_.End();
 }
-void TL::UpdateLambdaSelector() noexcept {
+void TL::ParamPanelWindow() noexcept {
+  if (!win_.shown()) return;
+
+  const auto name = abspath().Stringify() + " | Parameter Panel";
+
+  if (std::exchange(param_panel_request_focus_, false)) {
+    ImGui::SetNextWindowFocus();
+  }
+
+  const auto em = ImGui::GetFontSize();
+  ImGui::SetNextWindowSize({16*em, 16*em}, ImGuiCond_FirstUseEver);
+
+  if (ImGui::Begin(name.c_str())) {
+    if (auto item = param_panel_target_) {
+      if (item->seq().flags() & Sequencer::kParamPanel) {
+        TL::Editor ed {*item};
+        item->seq().UpdateParamPanel(ed);
+      } else {
+        ImGui::TextUnformatted("item doesn't have parameter panel");
+      }
+    } else {
+      ImGui::TextUnformatted("no item selected");
+    }
+  }
+  ImGui::End();
+}
+void TL::LambdaSelector() noexcept {
   const auto current_lambda =
       lambda_? nf7::gui::GetParentContextDisplayName(*lambda_): "(unselected)";
   if (ImGui::BeginCombo("##lambda", current_lambda.c_str())) {
@@ -1435,6 +1340,84 @@ void TL::UpdateLambdaSelector() noexcept {
     ImGui::EndCombo();
   }
 }
+void TL::ItemAdder() noexcept {
+  // parameters
+  auto& layer = *layers_[action_layer_];
+  auto  time  = action_time_;
+
+  uint64_t dur = static_cast<uint64_t>(4.f / tl_.zoom());
+  if (auto item = layer.FindItemAfter(time)) {
+    dur = std::min(dur, item->timing().begin() - time);
+  }
+
+  // header and initialization
+  static const nf7::File::TypeInfo* type;
+  if (ImGui::IsWindowAppearing()) {
+    type = nullptr;
+  }
+  ImGui::TextUnformatted("Sequencer/Timeline: adding new item...");
+
+  const auto em = ImGui::GetFontSize();
+
+  // type list
+  bool exec = false;
+  if (ImGui::BeginListBox("type", {16*em, 8*em})) {
+    for (auto& p : nf7::File::registry()) {
+      const auto& t = *p.second;
+      if (!t.flags().contains("nf7::Sequencer")) {
+        continue;
+      }
+
+      constexpr auto kFlags =
+          ImGuiSelectableFlags_SpanAllColumns |
+          ImGuiSelectableFlags_AllowItemOverlap;
+      if (ImGui::Selectable(t.name().c_str(), type == &t, kFlags)) {
+        type = &t;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        t.UpdateTooltip();
+        ImGui::EndTooltip();
+
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+          exec = true;
+        }
+      }
+    }
+    ImGui::EndListBox();
+  }
+
+  // validation
+  bool valid = true;
+  if (type == nullptr) {
+    ImGui::Bullet(); ImGui::TextUnformatted("type not selected");
+    valid = false;
+  }
+  if (dur == 0) {
+    ImGui::Bullet(); ImGui::TextUnformatted("no space to insert new item");
+    valid = false;
+  }
+
+  // ok button
+  ImGui::BeginDisabled(!valid);
+  if (ImGui::Button("ok")) {
+    exec = true;
+  }
+  ImGui::EndDisabled();
+
+  // adding
+  if (exec && valid) {
+    ImGui::CloseCurrentPopup();
+
+    auto  file   = type->Create(env());
+    auto  timing = TL::Timing::BeginDur(time, dur);
+    auto  item   = std::make_unique<TL::Item>(next_++, std::move(file), timing);
+    auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
+    auto  ctx    = std::make_shared<nf7::GenericContext>(*this, "adding new item");
+    history_.Add(std::move(cmd)).ExecApply(ctx);
+  }
+}
+
 void TL::HandleTimelineAction() noexcept {
   auto       item          = reinterpret_cast<TL::Item*>(tl_.actionTarget());
   const auto action_time   = tl_.actionTime();
@@ -1497,32 +1480,6 @@ void TL::HandleTimelineAction() noexcept {
   }
 }
 
-void TL::UpdateParamPanelWindow() noexcept {
-  if (!win_.shown()) return;
-
-  const auto name = abspath().Stringify() + " | Parameter Panel";
-
-  if (std::exchange(param_panel_request_focus_, false)) {
-    ImGui::SetNextWindowFocus();
-  }
-
-  const auto em = ImGui::GetFontSize();
-  ImGui::SetNextWindowSize({16*em, 16*em}, ImGuiCond_FirstUseEver);
-
-  if (ImGui::Begin(name.c_str())) {
-    if (auto item = param_panel_target_) {
-      if (item->seq().flags() & Sequencer::kParamPanel) {
-        TL::Editor ed {*item};
-        item->seq().UpdateParamPanel(ed);
-      } else {
-        ImGui::TextUnformatted("item doesn't have parameter panel");
-      }
-    } else {
-      ImGui::TextUnformatted("no item selected");
-    }
-  }
-  ImGui::End();
-}
 
 void TL::Layer::UpdateHeader(size_t idx) noexcept {
   index_    = idx;
@@ -1574,6 +1531,7 @@ void TL::Layer::UpdateHeader(size_t idx) noexcept {
     }
   }
 }
+
 void TL::Item::Update() noexcept {
   assert(owner_);
   assert(layer_);
@@ -1612,33 +1570,6 @@ void TL::Item::Update() noexcept {
       seq_->UpdateTooltip(ed);
       ImGui::EndTooltip();
     }
-  }
-}
-
-
-void TL::AddItemPopup::Update() noexcept {
-  if (Popup::Begin()) {
-    ImGui::TextUnformatted("Sequencer/Timeline: adding new item...");
-    if (factory_.Update()) {
-      auto& layer = *target_layer_;
-      auto  time  = target_time_;
-
-      uint64_t dur = static_cast<uint64_t>(4.f / owner_->tl_.zoom());
-      if (auto item = layer.FindItemAfter(time)) {
-        dur = std::min(dur, item->timing().begin() - time);
-      }
-      if (dur > 0) {
-        ImGui::CloseCurrentPopup();
-
-        auto  file   = factory_.type().Create(owner_->env());
-        auto  timing = TL::Timing::BeginDur(time, dur);
-        auto  item   = std::make_unique<TL::Item>(owner_->next_++, std::move(file), timing);
-        auto  cmd    = std::make_unique<TL::Layer::ItemSwapCommand>(layer, std::move(item));
-        auto  ctx    = std::make_shared<nf7::GenericContext>(*owner_, "adding new item");
-        owner_->history_.Add(std::move(cmd)).ExecApply(ctx);
-      }
-    }
-    ImGui::EndPopup();
   }
 }
 

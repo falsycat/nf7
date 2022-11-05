@@ -33,7 +33,6 @@
 #include "common/memento.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
-#include "common/util_algorithm.hh"
 
 
 using namespace std::literals;
@@ -79,8 +78,8 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   Node(nf7::Deserializer& ar) : Node(ar.env()) {
     ar(mem_->script, mem_->inputs, mem_->outputs);
-    nf7::util::Uniq(mem_->inputs);
-    nf7::util::Uniq(mem_->outputs);
+    nf7::Node::ValidateSockets(mem_->inputs);
+    nf7::Node::ValidateSockets(mem_->outputs);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
     ar(mem_->script, mem_->inputs, mem_->outputs);
@@ -295,20 +294,16 @@ std::string Node::Data::Stringify() const noexcept {
 void Node::Data::Parse(const std::string& str)
 try {
   const auto yaml = YAML::Load(str);
-  auto new_inputs  = yaml["inputs"] .as<std::vector<std::string>>();
-  auto new_outputs = yaml["outputs"].as<std::vector<std::string>>();
-  auto new_script  = yaml["script"].as<std::string>();
 
-  if (nf7::util::Uniq(new_inputs) > 0) {
-    throw nf7::Exception {"duplicated inputs"};
-  }
-  if (nf7::util::Uniq(new_outputs) > 0) {
-    throw nf7::Exception {"duplicated outputs"};
-  }
+  Data d;
+  d.inputs  = yaml["inputs"].as<std::vector<std::string>>();
+  d.outputs = yaml["outputs"].as<std::vector<std::string>>();
+  d.script  = yaml["script"].as<std::string>();
 
-  inputs  = std::move(new_inputs);
-  outputs = std::move(new_outputs);
-  script  = std::move(new_script);
+  nf7::Node::ValidateSockets(d.inputs);
+  nf7::Node::ValidateSockets(d.outputs);
+
+  *this = std::move(d);
 } catch (YAML::Exception& e) {
   throw nf7::Exception {e.what()};
 }

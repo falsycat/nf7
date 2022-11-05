@@ -60,8 +60,6 @@ class AudioContext final : public nf7::File, public nf7::DirItem {
 
  private:
   std::shared_ptr<Queue> q_;
-
-  const char* popup_ = nullptr;
 };
 
 class AudioContext::Queue final : public nf7::audio::Queue,
