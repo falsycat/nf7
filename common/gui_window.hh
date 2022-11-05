@@ -5,8 +5,6 @@
 #include <string_view>
 #include <utility>
 
-#include <imgui.h>
-
 #include <yas/serialize.hpp>
 #include <yas/types/utility/usertype.hpp>
 
@@ -43,9 +41,8 @@ class Window : public nf7::FileBase::Feature {
     shown_     = true;
     set_focus_ = true;
   }
-  bool MenuItem() noexcept {
-    return ImGui::MenuItem(title_.c_str(), nullptr, &shown_);
-  }
+
+  bool MenuItem() noexcept;
 
   std::string id() const noexcept { return ConcatId(*owner_, title_); }
   bool shown() const noexcept { return shown_; }
@@ -64,29 +61,8 @@ class Window : public nf7::FileBase::Feature {
   bool shown_;
 
 
-  void Handle(const nf7::File::Event& e) noexcept override {
-    switch (e.type) {
-    case nf7::File::Event::kReqFocus:
-      SetFocus();
-      return;
-    default:
-      return;
-    }
-  }
-
-  void Update() noexcept override {
-    if (std::exchange(set_focus_, false)) {
-      ImGui::SetNextWindowFocus();
-      shown_ = true;
-    }
-    if (!shown_) return;
-
-    onConfig();
-    if (ImGui::Begin(id().c_str(), &shown_)) {
-      onUpdate();
-    }
-    ImGui::End();
-  }
+  void Handle(const nf7::File::Event&) noexcept override;
+  void Update() noexcept override;
 };
 
 }  // namespace nf7::gui

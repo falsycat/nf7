@@ -96,6 +96,7 @@ target_sources(nf7
     common/gui_value.hh
     common/gui_value.cc
     common/gui_window.hh
+    common/gui_window.cc
     common/history.hh
     common/life.hh
     common/logger.hh

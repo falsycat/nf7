@@ -237,6 +237,11 @@ void Dir::UpdateTree() noexcept {
       ImGui::EndTooltip();
     }
 
+    // send nf7::File::Event::kReqFocus on double click
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      env().Handle({.id = file.id(), .type = nf7::File::Event::kReqFocus});
+    }
+
     // context menu
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("copy path")) {
