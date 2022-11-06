@@ -151,11 +151,11 @@ class Network final : public nf7::FileBase,
         env, std::move(items), NodeLinkStore(links_));
   }
 
-  File* Find(std::string_view name) const noexcept;
+  File* PreFind(std::string_view name) const noexcept override;
 
-  void Handle(const Event& ev) noexcept override;
+  void PostHandle(const Event& ev) noexcept override;
 
-  void Update() noexcept override;
+  void PostUpdate() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateWidget() noexcept override;
@@ -873,7 +873,7 @@ void Network::Sanitize() {
     }
   }
 }
-File* Network::Find(std::string_view name) const noexcept
+File* Network::PreFind(std::string_view name) const noexcept
 try {
   size_t idx;
   const auto id = std::stol(std::string(name), &idx);
@@ -891,9 +891,7 @@ std::shared_ptr<Node::Lambda> Network::CreateLambda(
   lambdas_running_.emplace_back(ret);
   return ret;
 }
-void Network::Handle(const Event& ev) noexcept {
-  nf7::FileBase::Handle(ev);
-
+void Network::PostHandle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
     for (const auto& item : items_) item->Attach(*this);
@@ -969,9 +967,7 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
 }
 
 
-void Network::Update() noexcept {
-  nf7::FileBase::Update();
-
+void Network::PostUpdate() noexcept {
   // forget expired lambdas
   lambdas_running_.erase(
       std::remove_if(lambdas_running_.begin(), lambdas_running_.end(),

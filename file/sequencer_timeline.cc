@@ -99,8 +99,8 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
     return kOutputs;
   }
 
-  void Handle(const nf7::File::Event& ev) noexcept;
-  void Update() noexcept override;
+  void PostHandle(const nf7::File::Event& ev) noexcept;
+  void PostUpdate() noexcept override;
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
@@ -1092,9 +1092,7 @@ std::unique_ptr<nf7::File> TL::Clone(nf7::Env& env) const noexcept {
   }
   return std::make_unique<TL>(env, std::move(layers), next);
 }
-void TL::Handle(const Event& ev) noexcept {
-  nf7::FileBase::Handle(ev);
-
+void TL::PostHandle(const Event& ev) noexcept {
   switch (ev.type) {
   case Event::kAdd:
     if (layers_.size() == 0) {
@@ -1124,9 +1122,7 @@ void TL::Handle(const Event& ev) noexcept {
   }
 }
 
-void TL::Update() noexcept {
-  nf7::FileBase::Update();
-
+void TL::PostUpdate() noexcept {
   // display param panel window
   if (win_.shown()) {
     const auto em = ImGui::GetFontSize();

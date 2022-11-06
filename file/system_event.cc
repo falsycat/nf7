@@ -100,7 +100,7 @@ class Event final : public nf7::FileBase,
     return {};
   }
 
-  void Update() noexcept override;
+  void PostUpdate() noexcept override;
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
@@ -178,9 +178,7 @@ std::shared_ptr<nf7::Node::Lambda> Event::CreateLambda(
 }
 
 
-void Event::Update() noexcept {
-  nf7::FileBase::Update();
-
+void Event::PostUpdate() noexcept {
   const auto& io = ImGui::GetIO();
   const auto  in = GetHandlerInputs();
 

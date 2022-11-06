@@ -138,8 +138,7 @@ class Logger final : public nf7::FileBase,
     return std::make_unique<Logger>(env, Data {mem_.data()});
   }
 
-  void Handle(const nf7::File::Event& ev) noexcept override {
-    nf7::FileBase::Handle(ev);
+  void PostHandle(const nf7::File::Event& ev) noexcept override {
     switch (ev.type) {
     case Event::kAdd:
       store_ = std::make_shared<ItemStore>(*this);

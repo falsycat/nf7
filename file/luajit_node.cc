@@ -99,7 +99,7 @@ class Node final : public nf7::FileBase,
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept;
 
-  void Update() noexcept override;
+  void PostUpdate() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -228,9 +228,7 @@ try {
 }
 
 
-void Node::Update() noexcept {
-  nf7::FileBase::Update();
-
+void Node::PostUpdate() noexcept {
   if (last_build_ < importer_->GetLatestMod()) {
     cache_ = std::nullopt;
   }

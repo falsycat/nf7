@@ -87,7 +87,7 @@ class Dir final : public nf7::FileBase,
     return std::make_unique<Dir>(env, std::move(items));
   }
 
-  File* Find(std::string_view name) const noexcept override {
+  File* PreFind(std::string_view name) const noexcept override {
     auto itr = items_.find(std::string(name));
     if (itr == items_.end()) return nullptr;
     return itr->second.get();
@@ -113,15 +113,15 @@ class Dir final : public nf7::FileBase,
     return ret;
   }
 
-  void Update() noexcept override;
+  void UpdateChildren(bool early) noexcept;
+  void PreUpdate() noexcept override { UpdateChildren(true); }
+  void PostUpdate() noexcept override { UpdateChildren(false); }
   void UpdateTree() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateDragDropTarget() noexcept override;
 
-  void Handle(const Event& ev) noexcept override {
-    nf7::FileBase::Handle(ev);
-
+  void PostHandle(const Event& ev) noexcept override {
     switch (ev.type) {
     case Event::kAdd:
       // force to show window if this is the root
@@ -173,28 +173,14 @@ class Dir final : public nf7::FileBase,
   bool ValidateName(const std::string& name) noexcept;
 };
 
-void Dir::Update() noexcept {
-  // update children flagged as kEarlyUpdate
-  std::vector<nf7::File*> later;
-  later.reserve(items_.size());
+void Dir::UpdateChildren(bool early) noexcept {
   for (const auto& item : items_) {
     auto& f = *item.second;
-    if (TestFlags(f, nf7::DirItem::kEarlyUpdate)) {
+    if (early == TestFlags(f, nf7::DirItem::kEarlyUpdate)) {
       ImGui::PushID(&f);
       f.Update();
       ImGui::PopID();
-    } else {
-      later.push_back(&f);
     }
-  }
-
-  nf7::FileBase::Update();
-
-  // update children
-  for (auto f : later) {
-    ImGui::PushID(f);
-    f->Update();
-    ImGui::PopID();
   }
 }
 void Dir::UpdateTree() noexcept {

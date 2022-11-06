@@ -97,7 +97,7 @@ class ImGui_ final : public nf7::FileBase,
     return std::make_unique<ImGui_>(env);
   }
 
-  void Update() noexcept override;
+  void PostUpdate() noexcept override;
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
@@ -110,7 +110,7 @@ class ImGui_ final : public nf7::FileBase,
 };
 
 
-void ImGui_::Update() noexcept {
+void ImGui_::PostUpdate() noexcept {
   const auto em = ImGui::GetFontSize();
 
   ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
