@@ -279,12 +279,6 @@ class Logger final : public nf7::FileBase,
 
 
 void Logger::UpdateMenu() noexcept {
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
-  ImGui::Separator();
   win_.MenuItem();
 }
 void Logger::UpdateRowMenu(const Row& row) noexcept {

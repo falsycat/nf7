@@ -14,11 +14,13 @@
 
 #include "nf7.hh"
 
+#include "common/config.hh"
 #include "common/dir.hh"
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui.hh"
 #include "common/gui_dnd.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
@@ -226,14 +228,7 @@ void Dir::UpdateTree() noexcept {
     // tooltip
     if (ImGui::IsItemHovered()) {
       ImGui::BeginTooltip();
-      ImGui::TextUnformatted(file.type().name().c_str());
-      ImGui::SameLine();
-      ImGui::TextDisabled(file.abspath().Stringify().c_str());
-      if (ditem && (ditem->flags() & DirItem::kTooltip)) {
-        ImGui::Indent();
-        ditem->UpdateTooltip();
-        ImGui::Unindent();
-      }
+      nf7::gui::FileTooltip(file);
       ImGui::EndTooltip();
     }
 
@@ -244,11 +239,6 @@ void Dir::UpdateTree() noexcept {
 
     // context menu
     if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("copy path")) {
-        ImGui::SetClipboardText(file.abspath().Stringify().c_str());
-      }
-
-      ImGui::Separator();
       if (ImGui::MenuItem("remove")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "removing item"),
@@ -274,10 +264,9 @@ void Dir::UpdateTree() noexcept {
         ImGui::EndMenu();
       }
 
-      if (ditem && (ditem->flags() & DirItem::kMenu)) {
-        ImGui::Separator();
-        ditem->UpdateMenu();
-      }
+      ImGui::Separator();
+      nf7::gui::FileMenuItems(file);
+
       ImGui::EndPopup();
     }
 

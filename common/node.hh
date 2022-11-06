@@ -22,10 +22,9 @@ class Node : public File::Interface {
   class Lambda;
 
   enum Flag : uint8_t {
-    kNone = 0,
-    kCustomNode   = 1 << 0,
-    kMenu         = 1 << 1,
-    kMenu_DirItem = 1 << 2,  // use DirItem::UpdateMenu() method instead of Node's
+    kNone       = 0,
+    kCustomNode = 1 << 0,
+    kMenu       = 1 << 1,
   };
   using Flags = uint8_t;
 

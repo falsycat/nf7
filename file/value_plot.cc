@@ -24,7 +24,6 @@
 #include "common/generic_config.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
@@ -242,12 +241,6 @@ std::shared_ptr<nf7::Node::Lambda> Plot::CreateLambda(
 
 void Plot::UpdateMenu() noexcept {
   win_.MenuItem();
-
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
 }
 
 void Plot::PlotGraph() noexcept {

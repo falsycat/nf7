@@ -69,7 +69,7 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
      ItemId                                next   = 1) noexcept :
       nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu),
-      nf7::Node(nf7::Node::kMenu_DirItem),
+      nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this),
       layers_(std::move(layers)), next_(next),
       win_(*this, "Timeline Editor"), tl_("timeline") {
@@ -1533,6 +1533,8 @@ void TL::Item::Update() noexcept {
     if (ImGui::MenuItem("remove")) {
       layer_->ExecRemoveItem(*this);
     }
+    nf7::gui::FileMenuItems(*file_);
+
     if (seq_->flags() & nf7::Sequencer::kMenu) {
       ImGui::Separator();
       seq_->UpdateMenu(ed);

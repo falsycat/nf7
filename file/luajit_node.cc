@@ -64,7 +64,7 @@ class Node final : public nf7::FileBase,
   Node(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
-      nf7::DirItem(nf7::DirItem::kMenu),
+      nf7::DirItem(nf7::DirItem::kNone),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
@@ -100,7 +100,6 @@ class Node final : public nf7::FileBase,
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept;
 
   void Update() noexcept override;
-  void UpdateMenu() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -237,13 +236,6 @@ void Node::Update() noexcept {
   }
 }
 
-void Node::UpdateMenu() noexcept {
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
-}
 void Node::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 

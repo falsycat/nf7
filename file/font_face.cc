@@ -230,11 +230,6 @@ void FontFace::UpdateMenu() noexcept {
   if (ImGui::MenuItem("load")) {
     Create();
   }
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
 }
 void FontFace::UpdateTooltip() noexcept {
   ImGui::Text("npath : %s", mem_->npath.generic_string().c_str());

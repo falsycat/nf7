@@ -13,6 +13,9 @@
 namespace nf7::gui {
 
 // widgets
+void FileMenuItems(nf7::File& f) noexcept;
+void FileTooltip(nf7::File& f) noexcept;
+
 bool PathButton(const char* id, nf7::File::Path&, nf7::File&) noexcept;
 void ContextStack(const nf7::Context&) noexcept;
 

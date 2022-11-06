@@ -402,11 +402,6 @@ try {
 
 
 void Device::UpdateMenu() noexcept {
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
   if (ImGui::MenuItem("build")) {
     Build();
   }

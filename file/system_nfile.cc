@@ -115,9 +115,8 @@ class NFile final : public nf7::FileBase,
   NFile(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
-      nf7::DirItem(nf7::DirItem::kMenu |
-                   nf7::DirItem::kTooltip),
-      nf7::Node(nf7::Node::kMenu_DirItem),
+      nf7::DirItem(nf7::DirItem::kTooltip),
+      nf7::Node(nf7::Node::kNone),
       life_(*this), nwatch_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
@@ -154,7 +153,6 @@ class NFile final : public nf7::FileBase,
     return kOutputs;
   }
 
-  void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -275,13 +273,6 @@ std::shared_ptr<nf7::Node::Lambda> NFile::CreateLambda(
 }
 
 
-void NFile::UpdateMenu() noexcept {
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
-}
 void NFile::UpdateTooltip() noexcept {
   ImGui::Text("npath: %s", mem_->npath.generic_string().c_str());
   ImGui::Text("mode : %s", mem_->mode.c_str());

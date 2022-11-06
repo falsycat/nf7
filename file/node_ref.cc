@@ -254,13 +254,8 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     ExecSync();
   }
 
-  const auto pathstr = mem_->target.Stringify();
-
   auto w = 6*em;
   {
-    auto pw = ImGui::CalcTextSize(pathstr.c_str()).x+style.FramePadding.x*2;
-    w = std::max(w, std::min(pw, 8*em));
-
     auto iw = 3*em;
     for (const auto& v : mem_->inputs) {
       iw = std::max(iw, ImGui::CalcTextSize(v.c_str()).x);
@@ -272,7 +267,10 @@ void Ref::UpdateNode(Node::Editor&) noexcept {
     w = std::max(w, 1*em+style.ItemSpacing.x+iw +1*em+ ow+style.ItemSpacing.x+1*em);
   }
 
-  if (ImGui::Button(pathstr.c_str(), {w, 0})) {
+  auto newpath = mem_->target;
+  ImGui::SetNextItemWidth(w);
+  if (nf7::gui::PathButton("##target", newpath, *this)) {
+    ExecChangeTarget(std::move(newpath));
   }
   if (ImGui::BeginDragDropTarget()) {
     if (auto p = gui::dnd::Accept<Path>(gui::dnd::kFilePath)) {
@@ -314,18 +312,10 @@ void Ref::UpdateMenu(nf7::Node::Editor& ed) noexcept {
   try {
     auto& f = target();
     auto& n = f.interfaceOrThrow<nf7::Node>();
-    auto  d = f.interface<nf7::DirItem>();
 
-    const bool dmenu = n.flags() & nf7::Node::kMenu_DirItem;
-    const bool menu  = n.flags() & nf7::Node::kMenu;
-
-    if ((dmenu || menu) && ImGui::BeginMenu("target")) {
-      if (dmenu) {
-        assert(d);
-        ImGui::Separator();
-        d->UpdateMenu();
-      }
-      if (menu) {
+    if (ImGui::BeginMenu("target")) {
+      nf7::gui::FileMenuItems(f);
+      if (n.flags() & nf7::Node::kMenu) {
         ImGui::Separator();
         n.UpdateMenu(ed);
       }

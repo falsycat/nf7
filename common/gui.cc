@@ -10,31 +10,102 @@
 
 #include "nf7.hh"
 
+#include "common/config.hh"
+#include "common/dir_item.hh"
 #include "common/gui_dnd.hh"
 
 
 namespace nf7::gui {
 
-bool PathButton(const char* id, nf7::File::Path& p, nf7::File&) noexcept {
+void FileMenuItems(nf7::File& f) noexcept {
+  auto ditem  = f.interface<nf7::DirItem>();
+  auto config = f.interface<nf7::Config>();
+
+  if (ImGui::MenuItem("request focus")) {
+    f.env().Handle({.id = f.id(), .type = nf7::File::Event::kReqFocus});
+  }
+  if (ImGui::MenuItem("copy path")) {
+    ImGui::SetClipboardText(f.abspath().Stringify().c_str());
+  }
+
+  if (ditem && (ditem->flags() & nf7::DirItem::kMenu)) {
+    ImGui::Separator();
+    ditem->UpdateMenu();
+  }
+  if (config) {
+    ImGui::Separator();
+    if (ImGui::BeginMenu("config")) {
+      static nf7::gui::ConfigEditor ed;
+      ed(*config);
+      ImGui::EndMenu();
+    }
+  }
+}
+
+void FileTooltip(nf7::File& f) noexcept {
+  auto ditem = f.interface<nf7::DirItem>();
+
+  ImGui::TextUnformatted(f.type().name().c_str());
+  ImGui::SameLine();
+  ImGui::TextDisabled(f.abspath().Stringify().c_str());
+  if (ditem && (ditem->flags() & nf7::DirItem::kTooltip)) {
+    ImGui::Indent();
+    ditem->UpdateTooltip();
+    ImGui::Unindent();
+  }
+}
+
+bool PathButton(const char* id, nf7::File::Path& p, nf7::File& base) noexcept {
   bool ret = false;
 
-  const auto w = ImGui::CalcItemWidth();
+  const auto pstr = p.Stringify();
+  const auto w    = ImGui::CalcItemWidth();
   ImGui::PushID(id);
 
-  const auto pstr = p.Stringify();
-  if (ImGui::Button(pstr.c_str(), {w, 0})) {
-    ImGui::OpenPopup("editor");
-  }
-  if (ImGui::BeginDragDropTarget()) {
-    if (auto dp = nf7::gui::dnd::Accept<nf7::File::Path>(nf7::gui::dnd::kFilePath)) {
-      p   = std::move(*dp);
-      ret = true;
+  // widget body
+  {
+    nf7::File* file = nullptr;
+    try {
+      file = &base.ResolveOrThrow(p);
+    } catch (nf7::Exception&) {
     }
-    ImGui::EndDragDropTarget();
-  }
-  ImGui::SameLine();
-  ImGui::TextUnformatted(id);
 
+    const auto display = pstr.empty()? "(empty)": pstr;
+    if (ImGui::Button(display.c_str(), {w, 0})) {
+      ImGui::OpenPopup("editor");
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      if (file) {
+        FileTooltip(*file);
+      } else {
+        ImGui::TextDisabled("(file missing)");
+      }
+      ImGui::EndTooltip();
+    }
+    if (ImGui::BeginPopupContextItem()) {
+      if (file) {
+        nf7::gui::FileMenuItems(*file);
+      } else {
+        ImGui::TextDisabled("(file missing)");
+      }
+      ImGui::EndPopup();
+    }
+    if (ImGui::BeginDragDropTarget()) {
+      if (auto dp = nf7::gui::dnd::Accept<nf7::File::Path>(nf7::gui::dnd::kFilePath)) {
+        p   = std::move(*dp);
+        ret = true;
+      }
+      ImGui::EndDragDropTarget();
+    }
+
+    if (id[0] != '#') {
+      ImGui::SameLine();
+      ImGui::TextUnformatted(id);
+    }
+  }
+
+  // editor popup
   if (ImGui::BeginPopup("editor")) {
     static std::string editing_str;
     if (ImGui::IsWindowAppearing()) {
@@ -134,6 +205,8 @@ void NodeOutputSockets(std::span<const std::string> names) noexcept {
 }
 
 void ConfigEditor::operator()(nf7::Config& config) noexcept {
+  ImGui::PushID(this);
+
   if (ImGui::IsWindowAppearing()) {
     text_ = config.Stringify();
     msg_  = "";
@@ -166,6 +239,8 @@ void ConfigEditor::operator()(nf7::Config& config) noexcept {
     ImGui::Bullet();
     ImGui::TextUnformatted(msg_.c_str());
   }
+
+  ImGui::PopID();
 }
 
 }  // namespace nf7::gui

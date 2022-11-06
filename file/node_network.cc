@@ -990,10 +990,6 @@ void Network::Update() noexcept {
 }
 void Network::UpdateMenu() noexcept {
   win_.MenuItem();
-  if (ImGui::BeginMenu("config")) {
-    Config();
-    ImGui::EndMenu();
-  }
 }
 void Network::UpdateTooltip() noexcept {
   ImGui::Text("nodes active: %zu", items_.size());
@@ -1231,12 +1227,10 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
       owner_->ExecAddItem(
           std::make_unique<Item>(owner_->next_++, file_->Clone(env())), pos);
     }
-    if (node_->flags() & nf7::Node::kMenu_DirItem) {
-      ImGui::Separator();
-      auto dir = file_->interface<nf7::DirItem>();
-      assert(dir);
-      dir->UpdateMenu();
-    }
+
+    ImGui::Separator();
+    nf7::gui::FileMenuItems(*file_);
+
     if (node_->flags() & nf7::Node::kMenu) {
       ImGui::Separator();
       node_->UpdateMenu(ed);

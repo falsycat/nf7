@@ -194,11 +194,6 @@ class ObjBase : public nf7::FileBase,
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("these actions can cause CORRUPTION of running lambdas");
     }
-    if (ImGui::BeginMenu("config")) {
-      static nf7::gui::ConfigEditor ed;
-      ed(*this);
-      ImGui::EndMenu();
-    }
     if constexpr (HasWindow<T>) {
       ImGui::Separator();
       win_->MenuItem();

@@ -155,11 +155,6 @@ void ImGui_::UpdateMenu() noexcept {
       }
     }
   }
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
-  }
 }
 
 }

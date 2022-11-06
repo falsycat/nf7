@@ -74,7 +74,7 @@ class Event final : public nf7::FileBase,
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu),
-      nf7::Node(nf7::Node::kMenu_DirItem),
+      nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this),
       la_root_(std::make_shared<nf7::Node::Lambda>(*this)),
       mem_(std::move(d), *this) {
@@ -203,12 +203,6 @@ void Event::Update() noexcept {
 void Event::UpdateMenu() noexcept {
   if (ImGui::MenuItem("drop handler's lambda")) {
     la_ = nullptr;
-  }
-  ImGui::Separator();
-  if (ImGui::BeginMenu("config")) {
-    static nf7::gui::ConfigEditor ed;
-    ed(*this);
-    ImGui::EndMenu();
   }
 }
 
