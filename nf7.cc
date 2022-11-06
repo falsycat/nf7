@@ -120,6 +120,10 @@ File& File::ResolveOrThrow(const Path& p) const
 try {
   assert(id_ != 0);
 
+  if (p.terms().empty()) {
+    throw nf7::Exception {"empty path"};
+  }
+
   auto ret = const_cast<File*>(this);
   for (const auto& term : p.terms()) {
     if (term == "..") {

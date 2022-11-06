@@ -15,11 +15,10 @@
 #include <yas/types/std/vector.hpp>
 
 #include "common/file_base.hh"
-#include "common/file_holder.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_file.hh"
+#include "common/gui.hh"
 #include "common/gui_value.hh"
 #include "common/life.hh"
 #include "common/ptr_selector.hh"
@@ -55,35 +54,32 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
     }
   };
   struct Data {
-    nf7::FileHolder::Tag target;
-
+    nf7::File::Path path;
     std::vector<std::pair<std::string, nf7::gui::Value>> input_imm;
     std::vector<std::pair<std::string, Var>>             input_map;
     std::vector<std::pair<std::string, std::string>>     output_map;
+
+    void serialize(auto& ar) {
+      ar(path, input_imm, input_map, output_map);
+    }
   };
 
-  Adaptor(nf7::Env& env, Data&& data = {}) noexcept :
+  Adaptor(nf7::Env& env, Data&& d = {}) noexcept :
       nf7::FileBase(kType, env),
       Sequencer(Sequencer::kCustomItem |
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
-      life_(*this),
-      target_(*this, "target", mem_),
-      target_editor_(*this, target_,
-                     [](auto& t) { return t.flags().contains("nf7::Sequencer"); }),
-      mem_(std::move(data), *this) {
-    mem_.data().target.SetTarget(target_);
-    mem_.CommitAmend();
+      life_(*this), mem_(std::move(d), *this) {
   }
 
   Adaptor(nf7::Deserializer& ar) : Adaptor(ar.env()) {
-    ar(target_, data().input_imm, data().input_map, data().output_map);
+    ar(mem_.data());
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(target_, data().input_imm, data().input_map, data().output_map);
+    ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Adaptor>(env, Data {data()});
+    return std::make_unique<Adaptor>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
@@ -100,14 +96,8 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
 
  private:
   nf7::Life<Adaptor> life_;
-  nf7::FileHolder    target_;
-
-  nf7::gui::FileHolderEditor target_editor_;
 
   nf7::GenericMemento<Data> mem_;
-
-  const Data& data() const noexcept { return mem_.data(); }
-  Data& data() noexcept { return mem_.data(); }
 };
 
 
@@ -115,10 +105,10 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
  public:
   // ensure that Adaptor is alive
   Session(Adaptor& f, const std::shared_ptr<nf7::Sequencer::Session>& parent) noexcept : parent_(parent) {
-    for (auto& p : f.data().input_imm) {
+    for (auto& p : f.mem_->input_imm) {
       vars_[p.first] = p.second.entity();
     }
-    for (auto& p : f.data().input_map) {
+    for (auto& p : f.mem_->input_map) {
       if (p.second.name.size() == 0) continue;
       if (p.second.peek) {
         if (const auto ptr = parent->Peek(p.second.name)) {
@@ -130,7 +120,7 @@ class Adaptor::Session final : public nf7::Sequencer::Session {
         }
       }
     }
-    for (auto& p : f.data().output_map) {
+    for (auto& p : f.mem_->output_map) {
       outs_[p.first] = p.second;
     }
   }
@@ -183,7 +173,7 @@ class Adaptor::Lambda final : public nf7::Sequencer::Lambda,
   try {
     f_.EnforceAlive();
 
-    auto& target = f_->target_.GetFileOrThrow();
+    auto& target = f_->ResolveOrThrow(f_->mem_->path);
     auto& seq    = target.interfaceOrThrow<nf7::Sequencer>();
     if (!la_ || target.id() != cached_id_) {
       la_        = seq.CreateLambda(shared_from_this());
@@ -214,25 +204,29 @@ class Adaptor::Editor final : public nf7::Sequencer::Editor {
 
 void Adaptor::UpdateItem(Sequencer::Editor&) noexcept {
   try {
-    auto& seq = target_.GetFileOrThrow().interfaceOrThrow<nf7::Sequencer>();
+    auto& seq = ResolveOrThrow(mem_->path).interfaceOrThrow<nf7::Sequencer>();
     if (seq.flags() & nf7::Sequencer::kCustomItem) {
       Adaptor::Editor ed;
       seq.UpdateItem(ed);
     }
-  } catch (nf7::Exception&) {
-    ImGui::Text("%s", target_editor_.GetDisplayText().c_str());
+  } catch (nf7::File::NotFoundException&) {
+    ImGui::TextUnformatted("file missing");
+  } catch (nf7::File::NotImplementedException&) {
+    ImGui::TextUnformatted("file does not have Sequencer interface");
   }
 }
 void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
   bool commit = false;
 
-  auto& imm     = data().input_imm;
-  auto& inputs  = data().input_map;
-  auto& outputs = data().output_map;
+  auto& imm     = mem_->input_imm;
+  auto& inputs  = mem_->input_map;
+  auto& outputs = mem_->output_map;
 
   const auto em = ImGui::GetFontSize();
   if (ImGui::CollapsingHeader("Sequencer/Adaptor", ImGuiTreeNodeFlags_DefaultOpen)) {
-    target_editor_.ButtonWithLabel("target");
+    if (nf7::gui::PathButton("path", mem_->path, *this)) {
+      commit = true;
+    }
 
     if (ImGui::BeginTable("table", 3)) {
       ImGui::TableSetupColumn("left", ImGuiTableColumnFlags_WidthStretch, 1.f);
@@ -389,7 +383,7 @@ void Adaptor::UpdateParamPanel(Sequencer::Editor&) noexcept {
 
   ImGui::Spacing();
   try {
-    auto& seq = target_.GetFileOrThrow().interfaceOrThrow<nf7::Sequencer>();
+    auto& seq = ResolveOrThrow(mem_->path).interfaceOrThrow<nf7::Sequencer>();
     if (seq.flags() & nf7::Sequencer::kParamPanel) {
       Adaptor::Editor ed;
       seq.UpdateParamPanel(ed);
@@ -405,4 +399,3 @@ void Adaptor::UpdateTooltip(Sequencer::Editor&) noexcept {
 
 }
 }  // namespace nf7
-

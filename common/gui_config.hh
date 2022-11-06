@@ -40,6 +40,8 @@ void Config(nf7::GenericMemento<T>& mem) noexcept {
       mod_  = false;
     } catch (nf7::Exception& e) {
       msg_ = e.msg();
+    } catch (std::exception& e) {
+      msg_ = e.what();
     }
   }
   ImGui::EndDisabled();

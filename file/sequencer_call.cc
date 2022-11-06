@@ -12,7 +12,7 @@
 #include <yas/types/std/vector.hpp>
 
 #include "common/file_base.hh"
-#include "common/file_holder.hh"
+#include "common/gui.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -42,9 +42,13 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   class SessionLambda;
 
   struct Data {
-    nf7::FileHolder::Tag callee;
-    std::string          expects;
-    bool pure;
+    nf7::File::Path callee;
+    std::string     expects;
+    bool            pure;
+
+    void serialize(auto& ar) {
+      ar(callee, expects, pure);
+    }
   };
 
   Call(nf7::Env& env, Data&& data = {}) noexcept :
@@ -53,22 +57,17 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      callee_(*this, "callee", mem_),
-      callee_editor_(*this, callee_,
-                     [](auto& t) { return t.flags().contains("nf7::Node"); }),
       mem_(std::move(data), *this) {
-    mem_.data().callee.SetTarget(callee_);
-    mem_.CommitAmend();
   }
 
   Call(nf7::Deserializer& ar) : Call(ar.env()) {
-    ar(callee_, data().expects, data().pure);
+    ar(mem_.data());
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(callee_, data().expects, data().pure);
+    ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Call>(env, Data {data()});
+    return std::make_unique<Call>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
@@ -79,20 +78,14 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
   void UpdateTooltip(nf7::Sequencer::Editor&) noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<
+    return nf7::InterfaceSelector<
         nf7::Memento, nf7::Sequencer>(t).Select(this, &mem_);
   }
 
  private:
   nf7::Life<Call> life_;
-  nf7::FileHolder callee_;
-
-  nf7::gui::FileHolderEditor callee_editor_;
 
   nf7::GenericMemento<Data> mem_;
-
-  Data& data() noexcept { return mem_.data(); }
-  const Data& data() const noexcept { return mem_.data(); }
 };
 
 
@@ -126,7 +119,7 @@ class Call::SessionLambda final : public nf7::Node::Lambda {
     assert(!ss_);
     ss_ = ss;
 
-    const auto ex = f.data().expects;
+    const auto ex = f.mem_->expects;
     size_t begin = 0;
     for (size_t i = 0; i <= ex.size(); ++i) {
       if (i == ex.size() || ex[i] == '\n') {
@@ -174,8 +167,8 @@ try {
   if (abort_) return;
   file_.EnforceAlive();
 
-  auto& data   = file_->data();
-  auto& callee = file_->callee_.GetFileOrThrow();
+  auto& data   = file_->mem_.data();
+  auto& callee = file_->ResolveOrThrow(data.callee);
   auto& node   = callee.interfaceOrThrow<nf7::Node>();
 
   if (!ssla_) {
@@ -218,30 +211,35 @@ void Call::Lambda::Abort() noexcept {
 
 
 void Call::UpdateItem(Sequencer::Editor&) noexcept {
-  ImGui::Text("%s", callee_editor_.GetDisplayText().c_str());
+  ImGui::Text("%s", mem_->callee.Stringify().c_str());
 }
 void Call::UpdateParamPanel(Sequencer::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
 
+  bool commit = false;
   if (ImGui::CollapsingHeader("Sequencer/Call", ImGuiTreeNodeFlags_DefaultOpen)) {
-    callee_editor_.ButtonWithLabel("callee");
+    if (nf7::gui::PathButton("callee", mem_->callee, *this)) {
+      commit = true;
+    }
 
-    ImGui::InputTextMultiline("expects", &data().expects, {0, 4.f*em});
+    ImGui::InputTextMultiline("expects", &mem_->expects, {0, 4.f*em});
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      mem_.Commit();
+      commit = true;
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("session ends right after receiving these outputs");
     }
 
-    if (ImGui::Checkbox("pure", &data().pure)) {
-      mem_.Commit();
+    if (ImGui::Checkbox("pure", &mem_->pure)) {
+      commit = true;
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("callee's lambda is created for each session");
     }
-    ImGui::Spacing();
-    callee_editor_.ItemWidget("callee");
+  }
+
+  if (commit) {
+    mem_.Commit();
   }
 }
 void Call::UpdateTooltip(Sequencer::Editor&) noexcept {

@@ -85,6 +85,8 @@ target_sources(nf7
     common/gl_obj.hh
     common/gl_obj.cc
     common/gl_shader_preproc.hh
+    common/gui.hh
+    common/gui.cc
     common/gui_config.hh
     common/gui_context.hh
     common/gui_dnd.hh

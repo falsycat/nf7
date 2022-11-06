@@ -8,12 +8,16 @@
 
 #include <imgui.h>
 
+#include <yaml-cpp/yaml.h>
+
+#include <yas/serialize.hpp>
+
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
-#include "common/file_holder.hh"
-#include "common/gui_file.hh"
+#include "common/gui.hh"
+#include "common/gui_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -23,6 +27,7 @@
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/value.hh"
+#include "common/yas_nf7.hh"
 
 
 namespace nf7 {
@@ -39,31 +44,48 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
 
   class Lambda;
 
-  struct Data final {
-    nf7::FileHolder::Tag handler;
+  struct Data {
+    nf7::File::Path handler;
+
+    void serialize(auto& ar) {
+      ar(handler);
+    }
+
+    std::string Stringify() const noexcept {
+      YAML::Emitter st;
+      st << YAML::BeginMap;
+      st << YAML::Key   << "handler";
+      st << YAML::Value << handler.Stringify();
+      st << YAML::EndMap;
+      return {st.c_str(), st.size()};
+    }
+    void Parse(const std::string& str) {
+      const auto yaml = YAML::Load(str);
+
+      Data d;
+      d.handler = nf7::File::Path::Parse(yaml["handler"].as<std::string>());
+
+      *this = std::move(d);
+    }
   };
 
-  Event(nf7::Env& env, Data&& data = {}) noexcept :
+  Event(nf7::Env& env, Data&& d = {}) noexcept :
       nf7::FileBase(kType, env),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kMenu_DirItem),
-      life_(*this), logger_(*this),
-      handler_(*this, "handler", mem_),
-      handler_editor_(*this, handler_,
-                      [](auto& t) { return t.flags().contains("nf7::Node"); }),
+      life_(*this), log_(*this),
       la_root_(std::make_shared<nf7::Node::Lambda>(*this)),
-      mem_(std::move(data)) {
-    handler_.onEmplace = [this]() { la_ = nullptr; };
+      mem_(std::move(d), *this) {
   }
 
   Event(nf7::Deserializer& ar) : Event(ar.env()) {
-    ar(handler_);
+    ar(mem_.data());
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(handler_);
+    ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Event>(env, Data {data()});
+    return std::make_unique<Event>(env, Data {mem_.data()});
   }
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
@@ -78,7 +100,6 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
 
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
-  void UpdateWidget() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
@@ -86,35 +107,31 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
 
  private:
   nf7::Life<Event> life_;
-
-  nf7::LoggerRef logger_;
-
-  nf7::FileHolder handler_;
-  nf7::gui::FileHolderEditor handler_editor_;
+  nf7::LoggerRef   log_;
 
   std::shared_ptr<nf7::Node::Lambda> la_root_;
   std::shared_ptr<nf7::Node::Lambda> la_;
 
   nf7::GenericMemento<Data> mem_;
-  Data& data() noexcept { return mem_.data(); }
-  const Data& data() const noexcept { return mem_.data(); }
 
 
-  std::span<const std::string> GetHandlerInputs() noexcept
+  nf7::Node& GetHandler() const {
+    return ResolveOrThrow(mem_->handler).interfaceOrThrow<nf7::Node>();
+  }
+  std::span<const std::string> GetHandlerInputs() const noexcept
   try {
-    return handler_.GetFileOrThrow().interfaceOrThrow<nf7::Node>().GetInputs();
+    return GetHandler().GetInputs();
   } catch (nf7::Exception&) {
     return {};
   }
   std::shared_ptr<nf7::Node::Lambda> CreateLambdaIf() noexcept {
     try {
       if (!la_) {
-        auto& n = handler_.GetFileOrThrow().interfaceOrThrow<nf7::Node>();
-        la_ = n.CreateLambda(la_root_);
+        la_ = GetHandler().CreateLambda(la_root_);
       }
       return la_;
     } catch (nf7::Exception& e) {
-      logger_.Warn("failed to create handler's lambda: "+e.msg());
+      log_.Warn("failed to create handler's lambda: "+e.msg());
       la_ = nullptr;
       return nullptr;
     }
@@ -184,13 +201,11 @@ void Event::UpdateMenu() noexcept {
   if (ImGui::MenuItem("drop handler's lambda")) {
     la_ = nullptr;
   }
-}
-void Event::UpdateWidget() noexcept {
-  ImGui::TextUnformatted("System/Event");
-
-  handler_editor_.ButtonWithLabel("handler");
-  handler_editor_.ItemWidget("handler");
-  handler_editor_.Update();
+  ImGui::Separator();
+  if (ImGui::BeginMenu("config")) {
+    nf7::gui::Config(mem_);
+    ImGui::EndMenu();
+  }
 }
 
 }  // namespace
