@@ -32,7 +32,8 @@ using namespace std::literals;
 
 namespace {
 
-constexpr size_t kSubTaskUnit = 64;
+constexpr size_t      kSubTaskUnit = 64;
+constexpr const char* kFontPath    = "./nf7.ttf";
 
 
 std::atomic<bool> alive_ = true;
@@ -390,6 +391,12 @@ int main(int, char**) {
   SetUpImGuiStyle();
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init("#version 130");
+
+  // load GUI font
+  if (std::filesystem::exists(kFontPath)) {
+    io.Fonts->AddFontFromFileTTF(
+        kFontPath, 16.f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+  }
 
   // main loop
   ::Env env;
