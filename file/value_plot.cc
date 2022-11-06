@@ -114,7 +114,8 @@ class Plot final : public nf7::FileBase,
       nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kNone),
-      life_(*this), log_(*this), win_(*this, "Plot"), mem_(std::move(data)) {
+      life_(*this), log_(*this), win_(*this, "Plot"),
+      mem_(*this, std::move(data)) {
     win_.onUpdate = [this]() { PlotGraph(); };
     mem_.onRestore = mem_.onCommit = [this]() { BuildInputList(); };
     Sanitize();

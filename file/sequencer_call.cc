@@ -56,7 +56,7 @@ class Call final : public nf7::FileBase, public nf7::Sequencer {
                 Sequencer::kTooltip |
                 Sequencer::kParamPanel),
       life_(*this),
-      mem_(std::move(data), *this) {
+      mem_(*this, std::move(data)) {
   }
 
   Call(nf7::Deserializer& ar) : Call(ar.env()) {

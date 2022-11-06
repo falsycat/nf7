@@ -68,7 +68,7 @@ class Node final : public nf7::FileBase,
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      mem_(std::move(data), *this),
+      mem_(*this, std::move(data)),
       importer_(std::make_shared<nf7::luajit::NFileImporter>(env.npath())) {
     mem_.onCommit = mem_.onRestore = [this]() {
       cache_ = std::nullopt;

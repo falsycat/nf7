@@ -17,6 +17,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
@@ -30,7 +31,8 @@
 namespace nf7 {
 namespace {
 
-class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
+class Imm final : public nf7::FileBase,
+    public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Imm> kType =
       {"Node/Imm", {"nf7::DirItem", "nf7::Node"}};
@@ -45,10 +47,10 @@ class Imm final : public nf7::File, public nf7::DirItem, public nf7::Node {
   class Lambda;
 
   Imm(nf7::Env& env, nf7::gui::Value&& v = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
-      life_(*this), mem_(std::move(v), *this) {
+      life_(*this), mem_(*this, std::move(v)) {
   }
 
   Imm(nf7::Deserializer& ar) : Imm(ar.env()) {

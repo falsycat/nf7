@@ -120,7 +120,7 @@ class NFile final : public nf7::FileBase,
       life_(*this), nwatch_(*this),
       shared_(std::make_shared<SharedData>(*this)),
       th_(std::make_shared<Thread>(*this, Runner {shared_})),
-      mem_(std::move(data), *this) {
+      mem_(*this, std::move(data)) {
     mtx_.onLock   = [this]() { SetUp(); };
     mtx_.onUnlock = [this]() { shared_->nfile.reset(); };
 

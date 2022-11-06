@@ -78,9 +78,10 @@ class FontFace final : public nf7::FileBase,
       life_(*this),
       nwatch_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      mem_(std::move(d), *this) {
+      mem_(*this, std::move(d)) {
     mem_.onCommit = mem_.onRestore = nwatch_.onMod = [this]() {
       cache_ = std::nullopt;
+      Touch();
     };
   }
 

@@ -121,7 +121,7 @@ class Network final : public nf7::FileBase,
       life_(*this),
       win_(*this, "Editor Node/Network"),
       items_(std::move(items)), links_(std::move(links)),
-      mem_(std::move(d), *this) {
+      mem_(*this, std::move(d)) {
     win_.onConfig = []() {
       const auto em = ImGui::GetFontSize();
       ImGui::SetNextWindowSize({36*em, 36*em}, ImGuiCond_FirstUseEver);
@@ -736,7 +736,7 @@ class Network::Initiator final : public nf7::File,
 };
 
 // Node that emits/receives input or output.
-class Network::Terminal : public nf7::File,
+class Network::Terminal : public nf7::FileBase,
     public nf7::Node,
     public Network::InternalNode {
  public:
@@ -750,9 +750,9 @@ class Network::Terminal : public nf7::File,
   };
 
   Terminal(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::Node(nf7::Node::kCustomNode),
-      life_(*this), mem_(std::move(data), *this) {
+      life_(*this), mem_(*this, std::move(data)) {
   }
 
   Terminal(nf7::Deserializer& ar) : Terminal(ar.env()) {
@@ -799,7 +799,7 @@ class Network::Terminal : public nf7::File,
     }
   }
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<
+    return nf7::InterfaceSelector<
         Network::InternalNode, nf7::Node, nf7::Memento>(t).Select(this, &mem_);
   }
 

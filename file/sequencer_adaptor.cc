@@ -70,7 +70,7 @@ class Adaptor final : public nf7::FileBase,
       nf7::Sequencer(Sequencer::kCustomItem |
                      Sequencer::kTooltip |
                      Sequencer::kParamPanel),
-      life_(*this), mem_(std::move(d), *this) {
+      life_(*this), mem_(*this, std::move(d)) {
   }
 
   Adaptor(nf7::Deserializer& ar) : Adaptor(ar.env()) {

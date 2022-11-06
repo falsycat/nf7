@@ -15,6 +15,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
@@ -29,7 +30,7 @@
 namespace nf7 {
 namespace {
 
-class Curve final : public nf7::File,
+class Curve final : public nf7::FileBase,
     public nf7::DirItem,
     public nf7::Node,
     public nf7::Sequencer {
@@ -69,12 +70,12 @@ class Curve final : public nf7::File,
   };
 
   Curve(nf7::Env& env, Data&& data = {}) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
       nf7::Sequencer(nf7::Sequencer::kCustomItem |
                      nf7::Sequencer::kParamPanel),
-      life_(*this), mem_(std::move(data), *this) {
+      life_(*this), mem_(*this, std::move(data)) {
     AssignId();
     Sanitize();
   }

@@ -61,7 +61,7 @@ class Ref final : public nf7::FileBase, public nf7::Node {
       nf7::Node(nf7::Node::kCustomNode | nf7::Node::kMenu),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
-      mem_(std::move(data), *this) {
+      mem_(*this, std::move(data)) {
     mem_.onRestore = mem_.onCommit = [this]() { SetUpWatcher(); };
   }
 
@@ -82,19 +82,6 @@ class Ref final : public nf7::FileBase, public nf7::Node {
   }
   std::span<const std::string> GetOutputs() const noexcept override {
     return mem_->outputs;
-  }
-
-  void Handle(const nf7::File::Event& ev) noexcept {
-    nf7::FileBase::Handle(ev);
-
-    switch (ev.type) {
-    case nf7::File::Event::kAdd:
-      env().ExecMain(std::make_shared<nf7::GenericContext>(*this),
-                     std::bind(&Ref::SetUpWatcher, this));
-      break;
-    default:
-      break;
-    }
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;

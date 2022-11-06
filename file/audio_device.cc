@@ -106,7 +106,7 @@ class Device final : public nf7::FileBase,
       nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
-      life_(*this), log_(*this), mem_(std::move(data), *this) {
+      life_(*this), log_(*this), mem_(*this, std::move(data)) {
     mem_.onCommit = mem_.onRestore = [this]() { cache_ = std::nullopt; };
   }
 

@@ -77,7 +77,7 @@ class Event final : public nf7::FileBase,
       nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this),
       la_root_(std::make_shared<nf7::Node::Lambda>(*this)),
-      mem_(std::move(d), *this) {
+      mem_(*this, std::move(d)) {
   }
 
   Event(nf7::Deserializer& ar) : Event(ar.env()) {

@@ -115,7 +115,8 @@ class Logger final : public nf7::FileBase,
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
       nf7::DirItem(DirItem::kMenu),
-      mem_(std::move(d), *this), win_(*this, "Log View") {
+      mem_(*this, std::move(d)),
+      win_(*this, "Log View") {
     mem_.onCommit = mem_.onRestore = [this]() {
       store_->param(mem_.data());
     };
@@ -138,12 +139,10 @@ class Logger final : public nf7::FileBase,
   }
 
   void Handle(const nf7::File::Event& ev) noexcept override {
+    nf7::FileBase::Handle(ev);
     switch (ev.type) {
     case Event::kAdd:
       store_ = std::make_shared<ItemStore>(*this);
-      return;
-    case Event::kRemove:
-      store_ = nullptr;
       return;
     default:
       return;

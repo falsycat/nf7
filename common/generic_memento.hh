@@ -7,21 +7,21 @@
 
 #include "nf7.hh"
 
+#include "common/file_base.hh"
+#include "common/generic_context.hh"
 #include "common/memento.hh"
 
 
 namespace nf7 {
 
 template <typename T>
-class GenericMemento : public nf7::Memento {
+class GenericMemento : public nf7::FileBase::Feature, public nf7::Memento {
  public:
   class CustomTag;
 
-  GenericMemento(T&& data, nf7::File* f = nullptr) noexcept :
+  GenericMemento(nf7::FileBase& f, T&& data) noexcept :
+      nf7::FileBase::Feature(f),
       file_(f), initial_(T(data)), data_(std::move(data)) {
-  }
-  GenericMemento(T&& data, nf7::File& f) noexcept :
-      GenericMemento(std::move(data), &f) {
   }
   ~GenericMemento() noexcept {
     tag_  = nullptr;
@@ -50,20 +50,26 @@ class GenericMemento : public nf7::Memento {
     tag_  = tag;
     last_ = tag;
     onRestore();
-    if (file_) file_->Touch();
+    file_.Touch();
   }
-  void Commit() noexcept {
+  void Commit(bool quiet = false) noexcept {
     tag_ = nullptr;
     onCommit();
-    if (file_) file_->Touch();
+    if (!quiet) file_.Touch();
   }
-  void CommitAmend() noexcept {
+  void CommitQuiet() noexcept {
+    Commit(true);
+  }
+  void CommitAmend(bool quiet = false) noexcept {
     if (!tag_) return;
     auto itr = map_.find(tag_->id());
     assert(itr != map_.end());
     itr->second = data_;
     onCommit();
-    if (file_) file_->Touch();
+    if (!quiet) file_.Touch();
+  }
+  void CommitAmendQuiet() noexcept {
+    CommitAmend(true);
   }
 
   T& data() noexcept { return data_; }
@@ -81,7 +87,7 @@ class GenericMemento : public nf7::Memento {
   std::function<void()> onCommit  = [](){};
 
  private:
-  nf7::File* const file_;
+  nf7::File& file_;
 
   const T initial_;
   T data_;
@@ -91,6 +97,19 @@ class GenericMemento : public nf7::Memento {
 
   std::shared_ptr<nf7::Memento::Tag> tag_;
   std::shared_ptr<nf7::Memento::Tag> last_;
+
+
+  void Handle(const nf7::File::Event& e) noexcept override {
+    switch (e.type) {
+    case nf7::File::Event::kAdd:
+      file_.env().ExecMain(
+          std::make_shared<nf7::GenericContext>(file_),
+          [this]() { CommitQuiet(); });
+      return;
+    default:
+      return;
+    }
+  }
 };
 
 template <typename T>

@@ -104,9 +104,10 @@ class ObjBase : public nf7::FileBase,
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       nwatch_(std::make_shared<nf7::NFileWatcher>(*this)),
-      mem_(std::move(data), *this) {
+      mem_(*this, std::move(data)) {
     nwatch_->onMod = mem_.onRestore = mem_.onCommit = [this]() {
-      Drop();
+      Drop(true  /* = quiet */);
+      Touch();
     };
 
     if constexpr (HasWindow<T>) {
@@ -239,12 +240,12 @@ class ObjBase : public nf7::FileBase,
   std::optional<nf7::gui::Window> win_;
 
 
-  void Drop() noexcept {
+  void Drop(bool quiet = false) noexcept {
     auto ctx = std::make_shared<nf7::GenericContext>(*this, "dropping OpenGL obj");
     mtx_.AcquireLock(ctx, true  /* = exclusive */).
-        ThenIf([this](auto&) {
+        ThenIf([this, quiet](auto&) {
           fu_ = std::nullopt;
-          Touch();
+          if (!quiet) Touch();
         });
   }
 
