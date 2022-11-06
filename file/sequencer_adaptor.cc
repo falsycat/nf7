@@ -29,7 +29,8 @@
 namespace nf7 {
 namespace {
 
-class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
+class Adaptor final : public nf7::FileBase,
+    public nf7::Sequencer {
  public:
   static inline const nf7::GenericTypeInfo<Adaptor> kType =
       {"Sequencer/Adaptor", {"nf7::Sequencer"}};
@@ -66,9 +67,9 @@ class Adaptor final : public nf7::FileBase, public nf7::Sequencer {
 
   Adaptor(nf7::Env& env, Data&& d = {}) noexcept :
       nf7::FileBase(kType, env),
-      Sequencer(Sequencer::kCustomItem |
-                Sequencer::kTooltip |
-                Sequencer::kParamPanel),
+      nf7::Sequencer(Sequencer::kCustomItem |
+                     Sequencer::kTooltip |
+                     Sequencer::kParamPanel),
       life_(*this), mem_(std::move(d), *this) {
   }
 

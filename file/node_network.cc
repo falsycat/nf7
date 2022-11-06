@@ -26,6 +26,7 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
+#include "common/generic_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -49,7 +50,8 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
+class Network final : public nf7::FileBase,
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Network> kType = {
     "Node/Network", {"nf7::DirItem", "nf7::Node"}};
@@ -112,6 +114,7 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
           nf7::NodeLinkStore&& links = {},
           Data&&               d     = {}) :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
                    nf7::DirItem::kWidget),
@@ -170,7 +173,8 @@ class Network final : public nf7::FileBase, public nf7::DirItem, public nf7::Nod
   }
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::Config, nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:

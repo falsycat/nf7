@@ -18,6 +18,7 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
+#include "common/generic_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -37,7 +38,7 @@ namespace nf7 {
 namespace {
 
 class NFile final : public nf7::FileBase,
-    public nf7::DirItem, public nf7::Node {
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<NFile> kType = {
     "System/NFile", {"nf7::DirItem", "nf7::Node"}};
@@ -113,6 +114,7 @@ class NFile final : public nf7::FileBase,
 
   NFile(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kMenu_DirItem),
@@ -156,7 +158,8 @@ class NFile final : public nf7::FileBase,
   void UpdateTooltip() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::Config, nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:

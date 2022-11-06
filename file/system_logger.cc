@@ -18,6 +18,7 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
+#include "common/generic_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -36,7 +37,7 @@ namespace nf7 {
 namespace {
 
 class Logger final : public nf7::FileBase,
-    public nf7::DirItem {
+    public nf7::GenericConfig, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<Logger> kType = {
     "System/Logger", {"nf7::DirItem"}};
@@ -111,7 +112,9 @@ class Logger final : public nf7::FileBase,
   };
 
   Logger(nf7::Env& env, Data&& d = {}) noexcept :
-      nf7::FileBase(kType, env), nf7::DirItem(DirItem::kMenu),
+      nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
+      nf7::DirItem(DirItem::kMenu),
       mem_(std::move(d), *this), win_(*this, "Log View") {
     mem_.onCommit = mem_.onRestore = [this]() {
       store_->param(mem_.data());
@@ -151,7 +154,7 @@ class Logger final : public nf7::FileBase,
   void UpdateRowMenu(const Row&) noexcept;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::DirItem, nf7::Logger>(t).
+    return nf7::InterfaceSelector<nf7::Config, nf7::DirItem, nf7::Logger>(t).
         Select(this, store_.get());
   }
 

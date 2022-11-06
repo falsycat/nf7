@@ -67,12 +67,14 @@ target_sources(nf7
     common/aggregate_command.hh
     common/aggregate_promise.hh
     common/audio_queue.hh
+    common/config.hh
     common/dir.hh
     common/dir_item.hh
     common/factory.hh
     common/file_base.hh
     common/font_queue.hh
     common/future.hh
+    common/generic_config.hh
     common/generic_context.hh
     common/generic_history.hh
     common/generic_memento.hh
@@ -87,7 +89,6 @@ target_sources(nf7
     common/gui.cc
     common/gui_config.hh
     common/gui_dnd.hh
-    common/gui_node.hh
     common/gui_timeline.hh
     common/gui_timeline.cc
     common/gui_value.hh
@@ -107,7 +108,6 @@ target_sources(nf7
     common/luajit_thread.cc
     common/memento.hh
     common/memento_recorder.hh
-    common/mutable_memento.hh
     common/mutex.hh
     common/nfile.hh
     common/nfile_watcher.hh

@@ -16,11 +16,12 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
-#include "common/gui.hh"
-#include "common/gui_config.hh"
+#include "common/generic_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui.hh"
+#include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger.hh"
 #include "common/logger_ref.hh"
@@ -33,7 +34,8 @@
 namespace nf7 {
 namespace {
 
-class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
+class Event final : public nf7::FileBase,
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Event> kType = {
     "System/Event", {"nf7::DirItem"}};
@@ -71,6 +73,7 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
 
   Event(nf7::Env& env, Data&& d = {}) noexcept :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kMenu_DirItem),
       life_(*this), log_(*this),
@@ -102,7 +105,8 @@ class Event final : public nf7::FileBase, public nf7::DirItem, public nf7::Node 
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem, nf7::Node>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::Config, nf7::DirItem, nf7::Node>(t).Select(this);
   }
 
  private:

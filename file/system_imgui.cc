@@ -18,6 +18,7 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/generic_config.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_config.hh"
@@ -32,7 +33,8 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class ImGui_ final : public nf7::File, public nf7::DirItem {
+class ImGui_ final : public nf7::File,
+    public nf7::GenericConfig, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<ImGui_> kType = {"System/ImGui", {}};
 
@@ -71,6 +73,7 @@ class ImGui_ final : public nf7::File, public nf7::DirItem {
 
   ImGui_(nf7::Env& env) noexcept :
       nf7::File(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kEarlyUpdate),
       mem_({}, *this) {
@@ -97,7 +100,8 @@ class ImGui_ final : public nf7::File, public nf7::DirItem {
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return nf7::InterfaceSelector<nf7::DirItem>(t).Select(this);
+    return nf7::InterfaceSelector<
+        nf7::Config, nf7::DirItem>(t).Select(this);
   }
 
  private:

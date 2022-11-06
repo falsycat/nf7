@@ -21,6 +21,7 @@
 #include "common/font_face.hh"
 #include "common/font_queue.hh"
 #include "common/future.hh"
+#include "common/generic_config.hh"
 #include "common/generic_type_info.hh"
 #include "common/generic_memento.hh"
 #include "common/gui_config.hh"
@@ -37,7 +38,7 @@ namespace nf7 {
 namespace {
 
 class FontFace final : public nf7::FileBase,
-    public nf7::DirItem, public nf7::Node,
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node,
     public nf7::AsyncFactory<std::shared_ptr<nf7::font::Face>> {
  public:
   static inline const nf7::GenericTypeInfo<FontFace> kType = {"Font/Face", {"nf7::DirItem",}};
@@ -70,6 +71,7 @@ class FontFace final : public nf7::FileBase,
 
   FontFace(nf7::Env& env, Data&& d = {}) noexcept :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
@@ -119,7 +121,7 @@ class FontFace final : public nf7::FileBase,
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept {
     return nf7::InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
+        nf7::Config, nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:

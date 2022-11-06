@@ -7,13 +7,13 @@
 
 #include "nf7.hh"
 
-#include "common/mutable_memento.hh"
+#include "common/memento.hh"
 
 
 namespace nf7 {
 
 template <typename T>
-class GenericMemento : public nf7::MutableMemento {
+class GenericMemento : public nf7::Memento {
  public:
   class CustomTag;
 
@@ -52,12 +52,12 @@ class GenericMemento : public nf7::MutableMemento {
     onRestore();
     if (file_) file_->Touch();
   }
-  void Commit() noexcept override {
+  void Commit() noexcept {
     tag_ = nullptr;
     onCommit();
     if (file_) file_->Touch();
   }
-  void CommitAmend() noexcept override {
+  void CommitAmend() noexcept {
     if (!tag_) return;
     auto itr = map_.find(tag_->id());
     assert(itr != map_.end());

@@ -19,8 +19,9 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
-#include "common/generic_type_info.hh"
+#include "common/generic_config.hh"
 #include "common/generic_memento.hh"
+#include "common/generic_type_info.hh"
 #include "common/gui.hh"
 #include "common/gui_config.hh"
 #include "common/life.hh"
@@ -40,7 +41,8 @@ using namespace std::literals;
 namespace nf7 {
 namespace {
 
-class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
+class Node final : public nf7::FileBase,
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Node> kType =
       {"LuaJIT/Node", {"nf7::DirItem", "nf7::Node"}};
@@ -62,6 +64,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   Node(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
@@ -104,7 +107,7 @@ class Node final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
+        nf7::Config, nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:

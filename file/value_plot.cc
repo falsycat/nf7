@@ -21,6 +21,7 @@
 
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
+#include "common/generic_config.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_config.hh"
@@ -111,6 +112,7 @@ class Plot final : public nf7::FileBase,
 
   Plot(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kNone),
       life_(*this), log_(*this), win_(*this, "Plot"), mem_(std::move(data)) {
@@ -143,8 +145,8 @@ class Plot final : public nf7::FileBase,
   void UpdateMenu() noexcept override;
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
+    return nf7::InterfaceSelector<
+        nf7::Config, nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:

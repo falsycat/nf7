@@ -30,6 +30,7 @@
 #include "common/dir_item.hh"
 #include "common/factory.hh"
 #include "common/file_base.hh"
+#include "common/generic_config.hh"
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
@@ -78,7 +79,7 @@ concept HasWindow = requires(T& x) {
 
 template <typename T>
 class ObjBase : public nf7::FileBase,
-    public nf7::DirItem, public nf7::Node,
+    public nf7::GenericConfig, public nf7::DirItem, public nf7::Node,
     public nf7::AsyncFactory<nf7::Mutex::Resource<std::shared_ptr<typename T::Product>>> {
  public:
   using ThisObjBase     = ObjBase<T>;
@@ -96,6 +97,7 @@ class ObjBase : public nf7::FileBase,
 
   ObjBase(nf7::Env& env, T&& data = {}) noexcept :
       nf7::FileBase(TypeInfo::kType, env),
+      nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
@@ -225,7 +227,7 @@ class ObjBase : public nf7::FileBase,
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node, ThisFactory>(t).Select(this, &mem_);
+        nf7::Config, nf7::DirItem, nf7::Memento, nf7::Node, ThisFactory>(t).Select(this, &mem_);
   }
 
  private:
