@@ -22,7 +22,7 @@
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_config.hh"
+#include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger.hh"
@@ -280,7 +280,8 @@ class Logger final : public nf7::FileBase,
 
 void Logger::UpdateMenu() noexcept {
   if (ImGui::BeginMenu("config")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndMenu();
   }
   ImGui::Separator();

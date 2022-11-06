@@ -31,7 +31,6 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
-#include "common/gui_config.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/memento.hh"
@@ -1182,8 +1181,10 @@ void Network::ItemAdder(const ImVec2& pos) noexcept {
 }
 
 void Network::Config() noexcept {
+  static nf7::gui::ConfigEditor ed;
+
   auto ptag = mem_.Save();
-  nf7::gui::Config(mem_);
+  ed(*this);
   auto tag = mem_.Save();
 
   if (ptag != tag) {

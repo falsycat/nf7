@@ -24,7 +24,6 @@
 #include "common/generic_config.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_config.hh"
 #include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
@@ -40,6 +39,7 @@ namespace nf7 {
 namespace {
 
 class Plot final : public nf7::FileBase,
+    public nf7::GenericConfig,
     public nf7::DirItem,
     public nf7::Node {
  public:
@@ -244,7 +244,8 @@ void Plot::UpdateMenu() noexcept {
   win_.MenuItem();
 
   if (ImGui::BeginMenu("config")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndMenu();
   }
 }

@@ -133,4 +133,39 @@ void NodeOutputSockets(std::span<const std::string> names) noexcept {
   ImGui::EndGroup();
 }
 
+void ConfigEditor::operator()(nf7::Config& config) noexcept {
+  if (ImGui::IsWindowAppearing()) {
+    text_ = config.Stringify();
+    msg_  = "";
+    mod_  = false;
+  }
+
+  mod_ |= ImGui::InputTextMultiline("##config", &text_);
+
+  ImGui::BeginDisabled(!mod_);
+  if (ImGui::Button("apply")) {
+    try {
+      config.Parse(text_);
+      msg_  = "";
+      mod_  = false;
+    } catch (nf7::Exception& e) {
+      msg_ = e.msg();
+    } catch (std::exception& e) {
+      msg_ = e.what();
+    }
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  if (ImGui::Button("restore")) {
+    text_ = config.Stringify();
+    msg_  = "";
+    mod_  = false;
+  }
+
+  if (msg_.size()) {
+    ImGui::Bullet();
+    ImGui::TextUnformatted(msg_.c_str());
+  }
+}
+
 }  // namespace nf7::gui

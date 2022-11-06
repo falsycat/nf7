@@ -23,7 +23,6 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
-#include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit_nfile_importer.hh"
@@ -65,7 +64,7 @@ class Node final : public nf7::FileBase,
   Node(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
-      nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kWidget),
+      nf7::DirItem(nf7::DirItem::kMenu),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
@@ -103,7 +102,6 @@ class Node final : public nf7::FileBase,
   void Update() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
-  void UpdateWidget() noexcept override;
 
   File::Interface* interface(const std::type_info& t) noexcept override {
     return nf7::InterfaceSelector<
@@ -241,7 +239,8 @@ void Node::Update() noexcept {
 
 void Node::UpdateMenu() noexcept {
   if (ImGui::BeginMenu("config")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndMenu();
   }
 }
@@ -254,7 +253,8 @@ void Node::UpdateNode(nf7::Node::Editor&) noexcept {
     ImGui::OpenPopup("ConfigPopup");
   }
   if (ImGui::BeginPopup("ConfigPopup")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndPopup();
   }
   ImGui::SameLine();
@@ -273,9 +273,6 @@ void Node::UpdateNode(nf7::Node::Editor&) noexcept {
   }
   ImGui::SameLine();
   nf7::gui::NodeOutputSockets(mem_->outputs);
-}
-void Node::UpdateWidget() noexcept {
-  nf7::gui::Config(mem_);
 }
 
 

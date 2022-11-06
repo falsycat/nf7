@@ -21,7 +21,7 @@
 #include "common/generic_config.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_config.hh"
+#include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/ptr_selector.hh"
 #include "common/util_algorithm.hh"
@@ -156,7 +156,8 @@ void ImGui_::UpdateMenu() noexcept {
     }
   }
   if (ImGui::BeginMenu("config")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndMenu();
   }
 }

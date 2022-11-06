@@ -7,6 +7,8 @@
 
 #include "nf7.hh"
 
+#include "common/config.hh"
+
 
 namespace nf7::gui {
 
@@ -17,6 +19,16 @@ void ContextStack(const nf7::Context&) noexcept;
 void NodeSocket() noexcept;
 void NodeInputSockets(std::span<const std::string>) noexcept;
 void NodeOutputSockets(std::span<const std::string>) noexcept;
+
+struct ConfigEditor {
+ public:
+  void operator()(nf7::Config&) noexcept;
+
+ private:
+  std::string text_;
+  std::string msg_;
+  bool        mod_;
+};
 
 
 // stringify utility

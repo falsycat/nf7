@@ -39,7 +39,7 @@
 #include "common/gl_fence.hh"
 #include "common/gl_obj.hh"
 #include "common/gl_shader_preproc.hh"
-#include "common/gui_config.hh"
+#include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"
@@ -194,11 +194,10 @@ class ObjBase : public nf7::FileBase,
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("these actions can cause CORRUPTION of running lambdas");
     }
-    if constexpr (nf7::gui::ConfigData<T>) {
-      if (ImGui::BeginMenu("config")) {
-        nf7::gui::Config(mem_);
-        ImGui::EndMenu();
-      }
+    if (ImGui::BeginMenu("config")) {
+      static nf7::gui::ConfigEditor ed;
+      ed(*this);
+      ImGui::EndMenu();
     }
     if constexpr (HasWindow<T>) {
       ImGui::Separator();

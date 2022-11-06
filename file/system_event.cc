@@ -21,7 +21,6 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
-#include "common/gui_config.hh"
 #include "common/life.hh"
 #include "common/logger.hh"
 #include "common/logger_ref.hh"
@@ -207,7 +206,8 @@ void Event::UpdateMenu() noexcept {
   }
   ImGui::Separator();
   if (ImGui::BeginMenu("config")) {
-    nf7::gui::Config(mem_);
+    static nf7::gui::ConfigEditor ed;
+    ed(*this);
     ImGui::EndMenu();
   }
 }
