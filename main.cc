@@ -206,10 +206,11 @@ class Env final : public nf7::Env {
     }
   }
 
-  void Handle(const nf7::File::Event& e) noexcept override
+  nf7::File* Handle(const nf7::File::Event& e) noexcept override
   try {
     // trigger File::Handle()
-    GetFileOrThrow(e.id).Handle(e);
+    auto& f = GetFileOrThrow(e.id);
+    f.Handle(e);
 
     // trigger file watcher
     auto itr = watchers_map_.find(e.id);
@@ -219,7 +220,10 @@ class Env final : public nf7::Env {
 
     // trigger global watcher
     for (auto w : watchers_map_[0]) w->Handle(e);
+
+    return &f;
   } catch (nf7::ExpiredException&) {
+    return nullptr;
   }
 
   void Exit() noexcept override {

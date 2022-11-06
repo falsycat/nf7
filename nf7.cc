@@ -105,12 +105,13 @@ void File::Touch() noexcept {
   if (std::exchange(touch_, true)) {
     return;
   }
-  env().ExecMain(std::make_shared<nf7::GenericContext>(*this), [this]() {
-    if (id()) {
-      env().Handle( {.id = id(), .type = Event::kUpdate});
-    }
-    touch_ = false;
-  });
+  env().ExecSub(
+      std::make_shared<nf7::GenericContext>(*this),
+      [this, &env = env(), fid = id()]() {
+        if (env.Handle({ .id = fid, .type = nf7::File::Event::kUpdate })) {
+          touch_ = false;
+        }
+      });
 }
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;

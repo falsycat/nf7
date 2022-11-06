@@ -288,7 +288,8 @@ class Env {
   virtual void Save() noexcept = 0;
   virtual void Throw(std::exception_ptr&&) noexcept = 0;
 
-  virtual void Handle(const File::Event&) noexcept = 0;
+  // returns the target file if alive
+  virtual nf7::File* Handle(const File::Event&) noexcept = 0;
 
   virtual File* GetFile(File::Id) const noexcept = 0;
   File& GetFileOrThrow(File::Id) const;
