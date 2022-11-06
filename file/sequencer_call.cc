@@ -16,7 +16,6 @@
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_file.hh"
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -191,11 +190,7 @@ try {
     ssla_ = nullptr;
     la_   = nullptr;
   }
-} catch (nf7::ExpiredException&) {
-  ss->Finish();
-} catch (nf7::FileHolder::EmptyException&) {
-  ss->Finish();
-} catch (nf7::File::NotImplementedException&) {
+} catch (nf7::Exception&) {
   ss->Finish();
 }
 void Call::Lambda::Abort() noexcept {

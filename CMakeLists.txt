@@ -71,8 +71,6 @@ target_sources(nf7
     common/dir_item.hh
     common/factory.hh
     common/file_base.hh
-    common/file_holder.hh
-    common/file_holder.cc
     common/font_queue.hh
     common/future.hh
     common/generic_context.hh
@@ -88,10 +86,7 @@ target_sources(nf7
     common/gui.hh
     common/gui.cc
     common/gui_config.hh
-    common/gui_context.hh
     common/gui_dnd.hh
-    common/gui_file.hh
-    common/gui_file.cc
     common/gui_node.hh
     common/gui_timeline.hh
     common/gui_timeline.cc

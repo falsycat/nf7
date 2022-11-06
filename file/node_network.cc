@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 
 #include <ImNodes.h>
@@ -28,10 +29,8 @@
 #include "common/generic_context.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
+#include "common/gui.hh"
 #include "common/gui_config.hh"
-#include "common/gui_context.hh"
-#include "common/gui_file.hh"
-#include "common/gui_node.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/memento.hh"
@@ -1094,6 +1093,11 @@ void Network::NetworkEditor() noexcept {
       if (ImGui::BeginMenu("add")) {
         ItemAdder(pos);
         ImGui::EndMenu();
+      }
+      if (ImGui::MenuItem("add terminal")) {
+        ExecAddItem(
+            std::make_unique<Item>(next_++, std::make_unique<Terminal>(env())),
+            pos);
       }
       ImGui::Separator();
       if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {

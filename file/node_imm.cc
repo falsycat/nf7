@@ -19,7 +19,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_node.hh"
+#include "common/gui.hh"
 #include "common/gui_value.hh"
 #include "common/life.hh"
 #include "common/node.hh"

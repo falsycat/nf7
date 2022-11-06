@@ -14,7 +14,7 @@
 
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_node.hh"
+#include "common/gui.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
 #include "common/yas_std_atomic.hh"

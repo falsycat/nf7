@@ -24,7 +24,7 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui_config.hh"
-#include "common/gui_node.hh"
+#include "common/gui.hh"
 #include "common/gui_window.hh"
 #include "common/life.hh"
 #include "common/logger_ref.hh"

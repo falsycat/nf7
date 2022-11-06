@@ -7,6 +7,8 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <ImNodes.h>
+
 #include <yas/serialize.hpp>
 #include <yas/types/utility/usertype.hpp>
 
@@ -15,7 +17,7 @@
 #include "common/dir_item.hh"
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
-#include "common/gui_node.hh"
+#include "common/gui.hh"
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
