@@ -123,6 +123,7 @@ target_sources(nf7
     common/timed_queue.hh
     common/util_algorithm.hh
     common/value.hh
+    common/yaml_nf7.hh
     common/yas_enum.hh
     common/yas_imgui.hh
     common/yas_imnodes.hh
@@ -144,6 +145,7 @@ target_sources(nf7
     file/node_imm.cc
     file/node_network.cc
     file/node_ref.cc
+    file/node_singleton.cc
     file/sequencer_adaptor.cc
     file/sequencer_call.cc
     file/sequencer_timeline.cc
