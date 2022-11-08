@@ -1081,11 +1081,6 @@ void Network::NetworkEditor() noexcept {
         ItemAdder(pos);
         ImGui::EndMenu();
       }
-      if (ImGui::MenuItem("add terminal")) {
-        ExecAddItem(
-            std::make_unique<Item>(next_++, std::make_unique<Terminal>(env())),
-            pos);
-      }
       ImGui::Separator();
       if (ImGui::MenuItem("undo", nullptr, false, !!history_.prev())) {
         UnDo();
@@ -1121,7 +1116,7 @@ void Network::ItemAdder(const ImVec2& pos) noexcept {
   if (ImGui::BeginListBox("type", {16*em, 8*em})) {
     for (auto& p : nf7::File::registry()) {
       const auto& t = *p.second;
-      if (!t.flags().contains("nf7::Node")) {
+      if (!t.flags().contains("nf7::Node") && !t.name().starts_with("Node/Network/")) {
         continue;
       }
 
