@@ -28,6 +28,24 @@ class Node : public File::Interface {
   };
   using Flags = uint8_t;
 
+  struct Meta final {
+   public:
+    Meta() = default;
+    Meta(std::vector<std::string>&& i, std::vector<std::string>&& o) noexcept :
+        inputs(std::move(i)), outputs(std::move(o)) {
+    }
+    Meta(const std::vector<std::string>& i, const std::vector<std::string>& o) noexcept :
+        inputs(i), outputs(o) {
+    }
+
+    Meta(const Meta&) = default;
+    Meta(Meta&&) = default;
+    Meta& operator=(const Meta&) = default;
+    Meta& operator=(Meta&&) = default;
+
+    std::vector<std::string> inputs, outputs;
+  };
+
   static void ValidateSockets(std::span<const std::string> v) {
     for (auto itr = v.begin(); itr < v.end(); ++itr) {
       if (v.end() != std::find(itr+1, v.end(), *itr)) {
@@ -50,13 +68,12 @@ class Node : public File::Interface {
   virtual void UpdateNode(Editor&) noexcept { }
   virtual void UpdateMenu(Editor&) noexcept { }
 
-  // The returned span is alive until next operation to the file.
-  virtual std::span<const std::string> GetInputs() const noexcept = 0;
-  virtual std::span<const std::string> GetOutputs() const noexcept = 0;
+  // don't call too often because causes heap allocation
+  virtual Meta GetMeta() const noexcept = 0;
 
   Flags flags() const noexcept { return flags_; }
 
- protected:
+ private:
   Flags flags_;
 };
 

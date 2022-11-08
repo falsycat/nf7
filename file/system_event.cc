@@ -92,12 +92,8 @@ class Event final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"value"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return {};
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"value"}, {}};
   }
 
   void PostUpdate() noexcept override;
@@ -120,12 +116,6 @@ class Event final : public nf7::FileBase,
 
   nf7::Node& GetHandler() const {
     return ResolveOrThrow(mem_->handler).interfaceOrThrow<nf7::Node>();
-  }
-  std::span<const std::string> GetHandlerInputs() const noexcept
-  try {
-    return GetHandler().GetInputs();
-  } catch (nf7::Exception&) {
-    return {};
   }
   std::shared_ptr<nf7::Node::Lambda> CreateLambdaIf() noexcept {
     try {
@@ -180,21 +170,18 @@ std::shared_ptr<nf7::Node::Lambda> Event::CreateLambda(
 
 void Event::PostUpdate() noexcept {
   const auto& io = ImGui::GetIO();
-  const auto  in = GetHandlerInputs();
 
-  if (in.end() != std::find(in.begin(), in.end(), "key")) {
-    for (size_t i = 0; i < ImGuiKey_KeysData_SIZE; ++i) {
-      const auto& key   = io.KeysData[i];
-      const char* event = nullptr;
-      if (key.DownDuration == 0) {
-        event = "down";
-      } else if (key.DownDurationPrev >= 0 && !key.Down) {
-        event = "up";
-      }
-      if (event) {
-        const auto k = static_cast<ImGuiKey>(i);
-        TriggerKeyEvent(ImGui::GetKeyName(k), event);
-      }
+  for (size_t i = 0; i < ImGuiKey_KeysData_SIZE; ++i) {
+    const auto& key   = io.KeysData[i];
+    const char* event = nullptr;
+    if (key.DownDuration == 0) {
+      event = "down";
+    } else if (key.DownDurationPrev >= 0 && !key.Down) {
+      event = "up";
+    }
+    if (event) {
+      const auto k = static_cast<ImGuiKey>(i);
+      TriggerKeyEvent(ImGui::GetKeyName(k), event);
     }
   }
 }

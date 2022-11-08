@@ -51,12 +51,8 @@ class Call final : public nf7::File, public nf7::Node {
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"save", "exit", "abort", "panic"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return {};
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"save", "exit", "abort", "panic"}, {}};
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;

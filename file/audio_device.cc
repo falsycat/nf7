@@ -122,13 +122,12 @@ class Device final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"info", "mix", "peek"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"result"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    static const std::vector<std::string> kInputs = {};
+    return {
+      {"info", "mix", "peek"},
+      {"result"}
+    };
   }
 
   nf7::Future<std::shared_ptr<Instance>> Build() noexcept;

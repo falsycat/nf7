@@ -77,11 +77,8 @@ class Ref final : public nf7::FileBase, public nf7::Node {
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    return mem_->inputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return mem_->outputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {mem_->inputs, mem_->outputs};
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
@@ -116,12 +113,13 @@ class Ref final : public nf7::FileBase, public nf7::Node {
     bool mod = false;
     try {
       auto& n = target().interfaceOrThrow<nf7::Node>();
+      const auto meta = n.GetMeta();
 
-      const auto srci = n.GetInputs();
+      const auto& srci = meta.inputs;
       mod |= std::equal(dsti.begin(), dsti.end(), srci.begin(), srci.end());
       dsti = std::vector<std::string>{srci.begin(), srci.end()};
 
-      const auto srco = n.GetOutputs();
+      const auto& srco = meta.outputs;
       mod |= std::equal(dsto.begin(), dsto.end(), srco.begin(), srco.end());
       dsto = std::vector<std::string>{srco.begin(), srco.end()};
     } catch (nf7::Exception& e) {

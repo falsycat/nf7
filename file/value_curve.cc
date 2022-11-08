@@ -97,13 +97,8 @@ class Curve final : public nf7::FileBase,
   std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Context>&) noexcept override;
 
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"x"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"y"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"x"}, {"y"}};
   }
 
   void UpdateItem(nf7::Sequencer::Editor&) noexcept override;

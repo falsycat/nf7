@@ -90,13 +90,8 @@ class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"exec"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"result"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"exec"}, {"result"}};
   }
 
   void PostHandle(const nf7::File::Event& ev) noexcept;

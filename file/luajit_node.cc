@@ -90,11 +90,8 @@ class Node final : public nf7::FileBase,
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
 
-  std::span<const std::string> GetInputs() const noexcept override {
-    return mem_->inputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return mem_->outputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return nf7::Node::Meta {mem_->inputs, mem_->outputs};
   }
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept;

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <span>
@@ -163,12 +164,8 @@ class Network final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-
-  std::span<const std::string> GetInputs() const noexcept override {
-    return mem_->inputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return mem_->outputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {mem_->inputs, mem_->outputs};
   }
 
   File::Interface* interface(const std::type_info& t) noexcept override {
@@ -327,6 +324,7 @@ class Network::Item final {
   nf7::Env& env() const noexcept { return file_->env(); }
   nf7::File& file() const noexcept { return *file_; }
   nf7::Node& node() const noexcept { return *node_; }
+  const nf7::Node::Meta& meta() const noexcept { return meta_; }
 
   InternalNode* inode() const noexcept { return inode_; }
   InternalNode::Flags iflags() const noexcept { return inode_? inode_->flags(): 0; }
@@ -335,8 +333,9 @@ class Network::Item final {
   ItemId id_;
 
   std::unique_ptr<nf7::File> file_;
-  nf7::Node*    node_;
-  InternalNode* inode_;
+  nf7::Node*      node_;
+  InternalNode*   inode_;
+  nf7::Node::Meta meta_;
 
   std::optional<nf7::MementoRecorder> mem_;
 
@@ -365,7 +364,9 @@ class Network::Item final {
     node_ = &file_->interfaceOrThrow<nf7::Node>();
     mem_.emplace(file_->interface<nf7::Memento>());
 
-    inode_    = file_->interface<Network::InternalNode>();
+    inode_ = file_->interface<Network::InternalNode>();
+    meta_  = node_->GetMeta();
+
     prev_pos_ = pos_;
   }
 };
@@ -717,12 +718,8 @@ class Network::Initiator final : public nf7::File,
     };
     return std::make_shared<Emitter>(*this, parent);
   }
-  std::span<const std::string> GetInputs() const noexcept {
-    return {};
-  }
-  std::span<const std::string> GetOutputs() const noexcept {
-    static const std::vector<std::string> kOutputs = {"out"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept {
+    return {{}, {"out"}};
   }
 
   void UpdateNode(nf7::Node::Editor& ed) noexcept override;
@@ -769,20 +766,14 @@ class Network::Terminal : public nf7::FileBase,
       const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept override {
     return std::make_shared<Emitter>(*this, parent);
   }
-
-  std::span<const std::string> GetInputs() const noexcept override {
-    if (data().type == kOutput) {
-      static const std::vector<std::string> kInputs = {"in"};
-      return kInputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    switch (data().type) {
+    case kInput:
+      return {{}, {"out"}};
+    case kOutput:
+      return {{"in"}, {}};
     }
-    return {};
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    if (data().type == kInput) {
-      static const std::vector<std::string> kInputs = {"out"};
-      return kInputs;
-    }
-    return {};
+    std::abort();
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
@@ -867,7 +858,7 @@ void Network::Sanitize() {
   // remove expired links
   for (const auto& item : items_) {
     auto cmd = links_.CreateCommandToRemoveExpired(
-        item->id(), item->node().GetInputs(), item->node().GetOutputs());
+        item->id(), item->meta().inputs, item->meta().outputs);
     if (cmd) {
       cmd->Apply();
     }
@@ -937,7 +928,6 @@ void Network::Item::Detach() noexcept {
 }
 void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
   auto& item = *owner_;
-  auto& node = item.node();
 
   switch (ev.type) {
   case File::Event::kUpdate:
@@ -945,8 +935,10 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
       auto& net  = *item.owner_;
       net.Touch();
 
-      const auto inputs  = node.GetInputs();
-      const auto outputs = node.GetOutputs();
+      // update metadata
+      item.meta_ = item.node().GetMeta();
+      const auto& inputs  = item.meta().inputs;
+      const auto& outputs = item.meta().outputs;
 
       // check expired sockets
       if (auto cmd = net.links_.CreateCommandToRemoveExpired(item.id(), inputs, outputs)) {
@@ -1195,9 +1187,9 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
       node_->UpdateNode(ed);
     } else {
       ImGui::TextUnformatted(file_->type().name().c_str());
-      nf7::gui::NodeInputSockets(node_->GetInputs());
+      nf7::gui::NodeInputSockets(meta_.inputs);
       ImGui::SameLine();
-      nf7::gui::NodeOutputSockets(node_->GetOutputs());
+      nf7::gui::NodeOutputSockets(meta_.outputs);
     }
   }
   ImNodes::EndNode();

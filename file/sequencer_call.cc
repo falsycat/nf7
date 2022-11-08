@@ -180,7 +180,8 @@ try {
   }
 
   ssla_->Listen(*file_, ss);
-  for (const auto& name : node.GetInputs()) {
+  const auto inputs = node.GetMeta().inputs;
+  for (const auto& name : inputs) {
     if (auto v = ss->Receive(name)) {
       la_->Handle(name, *v, ssla_);
     }

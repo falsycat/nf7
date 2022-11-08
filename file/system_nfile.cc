@@ -143,14 +143,8 @@ class NFile final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"command"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"result"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"command"}, {"result"}};
   }
 
   void UpdateTooltip() noexcept override;

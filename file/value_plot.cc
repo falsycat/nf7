@@ -134,12 +134,8 @@ class Plot final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-
-  std::span<const std::string> GetInputs() const noexcept override {
-    return inputs_;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return {};
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {inputs_, {}};
   }
 
   void UpdateMenu() noexcept override;

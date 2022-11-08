@@ -106,16 +106,13 @@ class FontFace final : public nf7::FileBase,
     return {std::current_exception()};
   }
 
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"command"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"result"};
-    return kOutputs;
-  }
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {
+      {"command"}, {"result"},
+    };
+  }
 
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;

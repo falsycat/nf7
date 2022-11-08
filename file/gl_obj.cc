@@ -140,11 +140,8 @@ class ObjBase : public nf7::FileBase,
       const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept override {
     return std::make_shared<Lambda>(*this, parent);
   }
-  std::span<const std::string> GetInputs() const noexcept override {
-    return T::kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    return T::kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {T::kInputs, T::kOutputs};
   }
 
   ResourceFuture Create() noexcept final {

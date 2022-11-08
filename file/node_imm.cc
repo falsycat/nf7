@@ -65,13 +65,8 @@ class Imm final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::span<const std::string> GetInputs() const noexcept override {
-    static const std::vector<std::string> kInputs = {"in"};
-    return kInputs;
-  }
-  std::span<const std::string> GetOutputs() const noexcept override {
-    static const std::vector<std::string> kOutputs = {"out"};
-    return kOutputs;
+  nf7::Node::Meta GetMeta() const noexcept override {
+    return {{"in"}, {"out"}};
   }
 
   void UpdateNode(nf7::Node::Editor&) noexcept override;
