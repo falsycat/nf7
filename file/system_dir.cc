@@ -185,17 +185,18 @@ void Dir::UpdateChildren(bool early) noexcept {
 }
 void Dir::UpdateTree() noexcept {
   for (const auto& item : items_) {
-    ImGuiTreeNodeFlags flags =
-        ImGuiTreeNodeFlags_NoTreePushOnOpen |
-        ImGuiTreeNodeFlags_SpanFullWidth;
-
     const auto& name = item.first;
     auto&       file  = *item.second;
     ImGui::PushID(&file);
 
     auto* ditem = file.interface<nf7::DirItem>();
-    if (ditem && !(ditem->flags() & DirItem::kTree)) {
-      flags |= ImGuiTreeNodeFlags_Leaf;
+    const auto flags = ditem? ditem->flags(): 0;
+
+    ImGuiTreeNodeFlags node_flags =
+        ImGuiTreeNodeFlags_NoTreePushOnOpen |
+        ImGuiTreeNodeFlags_SpanFullWidth;
+    if (!(flags & DirItem::kTree)) {
+      node_flags |= ImGuiTreeNodeFlags_Leaf;
     }
 
     const bool opened = opened_.contains(name);
@@ -204,7 +205,8 @@ void Dir::UpdateTree() noexcept {
     }
 
     const auto top  = ImGui::GetCursorPosY();
-    const bool open = ImGui::TreeNodeEx(item.second.get(), flags, "%s", name.c_str());
+    const bool open = ImGui::TreeNodeEx(
+        item.second.get(), node_flags, "%s", name.c_str());
     if (!opened && open) {
       opened_.insert(name);
     } else if (opened && !open) {
@@ -225,6 +227,7 @@ void Dir::UpdateTree() noexcept {
 
     // context menu
     if (ImGui::BeginPopupContextItem()) {
+      ImGui::BeginDisabled(flags & nf7::DirItem::kImportant);
       if (ImGui::MenuItem("remove")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "removing item"),
@@ -244,11 +247,12 @@ void Dir::UpdateTree() noexcept {
         ImGui::SetTooltip("re-initialize the item by re-adding after removing");
       }
 
-      ImGui::Separator();
-      if (ImGui::BeginMenu("add new sibling")) {
-        ItemAdder();
-        ImGui::EndMenu();
+      if (ImGui::MenuItem("clone")) {
+        env().ExecMain(
+            std::make_shared<nf7::GenericContext>(*this, "duplicating item"),
+            [this, name, &file]() { Add(GetUniqueName(name), file.Clone(env())); });
       }
+      ImGui::EndDisabled();
 
       ImGui::Separator();
       nf7::gui::FileMenuItems(file);
@@ -257,18 +261,20 @@ void Dir::UpdateTree() noexcept {
     }
 
     // dnd source
-    if (ImGui::BeginDragDropSource()) {
-      gui::dnd::Send(gui::dnd::kFilePath, item.second->abspath());
-      ImGui::TextUnformatted(file.type().name().c_str());
-      ImGui::SameLine();
-      ImGui::TextDisabled(file.abspath().Stringify().c_str());
-      ImGui::EndDragDropSource();
+    if (flags & nf7::DirItem::kImportant) {
+      if (ImGui::BeginDragDropSource()) {
+        gui::dnd::Send(gui::dnd::kFilePath, item.second->abspath());
+        ImGui::TextUnformatted(file.type().name().c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled(file.abspath().Stringify().c_str());
+        ImGui::EndDragDropSource();
+      }
     }
 
     // displayed contents
     if (open) {
       ImGui::TreePush(&file);
-      if (ditem && (ditem->flags() & DirItem::kTree)) {
+      if (flags & DirItem::kTree) {
         ditem->UpdateTree();
       }
       ImGui::TreePop();
@@ -277,7 +283,7 @@ void Dir::UpdateTree() noexcept {
 
     // dnd target
     if (nf7::gui::dnd::IsFirstAccept()) {
-      if (ditem && (ditem->flags() & DirItem::kDragDropTarget)) {
+      if (flags & DirItem::kDragDropTarget) {
         ImGui::SetCursorPosY(top);
         ImGui::Dummy({ImGui::GetContentRegionAvail().x, bottom-top});
         if (ImGui::BeginDragDropTarget()) {

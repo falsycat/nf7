@@ -76,7 +76,8 @@ class ImGui_ final : public nf7::FileBase,
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
       nf7::DirItem(nf7::DirItem::kMenu |
-                   nf7::DirItem::kEarlyUpdate),
+                   nf7::DirItem::kEarlyUpdate |
+                   nf7::DirItem::kImportant),
       mem_(*this, {}) {
   }
 

@@ -9,7 +9,7 @@ namespace nf7 {
 
 class DirItem : public File::Interface {
  public:
-  enum Flag : uint8_t {
+  enum Flag : uint16_t {
     kNone           = 0,
     kTree           = 1 << 0,
     kMenu           = 1 << 1,
@@ -20,6 +20,9 @@ class DirItem : public File::Interface {
     // Update() will be called earlier than other items.
     // This is used by some system files and meaningless in most of cases.
     kEarlyUpdate = 1 << 5,
+
+    // suggests to forbid to move/remove/clone through UI
+    kImportant = 1 << 6,
   };
   using Flags = uint8_t;
 
