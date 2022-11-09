@@ -214,14 +214,16 @@ class Env final : public nf7::Env {
     f.Handle(e);
 
     // trigger file watcher
-    auto itr = watchers_map_.find(e.id);
-    if (itr != watchers_map_.end()) {
+    auto itr = watchers_.find(e.id);
+    if (itr != watchers_.end()) {
       for (auto w : itr->second) w->Handle(e);
     }
 
     // trigger global watcher
-    for (auto w : watchers_map_[0]) w->Handle(e);
-
+    itr = watchers_.find(0);
+    if (itr != watchers_.end()) {
+      for (auto w : itr->second) w->Handle(e);
+    }
     return &f;
   } catch (nf7::ExpiredException&) {
     return nullptr;
@@ -269,15 +271,17 @@ class Env final : public nf7::Env {
   }
 
   void AddWatcher(nf7::File::Id id, nf7::Env::Watcher& w) noexcept override {
-    watchers_map_[id].push_back(&w);
-    watchers_rmap_[&w].push_back(id);
+    watchers_[id].push_back(&w);
   }
-  void RemoveWatcher(nf7::Env::Watcher& w) noexcept override {
-    for (const auto id : watchers_rmap_[&w]) {
-      auto& v = watchers_map_[id];
+  void RemoveWatcher(nf7::File::Id id, nf7::Env::Watcher& w) noexcept override {
+    auto itr = watchers_.find(id);
+    if (watchers_.end() != itr) {
+      auto& v = itr->second;
       v.erase(std::remove(v.begin(), v.end(), &w), v.end());
+      if (v.size() == 0) {
+        watchers_.erase(itr);
+      }
     }
-    watchers_rmap_.erase(&w);
   }
 
  private:
@@ -288,8 +292,7 @@ class Env final : public nf7::Env {
   nf7::File::Id file_next_ = 1;
   std::unordered_map<nf7::File::Id, nf7::File*> files_;
 
-  std::unordered_map<nf7::File::Id, std::vector<nf7::Env::Watcher*>> watchers_map_;
-  std::unordered_map<nf7::Env::Watcher*, std::vector<nf7::File::Id>> watchers_rmap_;
+  std::unordered_map<nf7::File::Id, std::vector<nf7::Env::Watcher*>> watchers_;
 };
 
 

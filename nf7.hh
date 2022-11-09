@@ -302,7 +302,7 @@ class Env {
   virtual void RemoveFile(File::Id) noexcept = 0;
 
   virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
-  virtual void RemoveWatcher(Watcher&) noexcept = 0;
+  virtual void RemoveWatcher(File::Id, Watcher&) noexcept = 0;
 
  private:
   std::filesystem::path npath_;
@@ -316,12 +316,17 @@ class Env::Watcher {
   Watcher& operator=(const Watcher&) = delete;
   Watcher& operator=(Watcher&&) = delete;
 
+  void Watch(File::Id) noexcept;
+  void Unwatch(File::Id) noexcept;
+
   virtual void Handle(const File::Event&) noexcept = 0;
 
-  void Watch(File::Id) noexcept;
+  const std::vector<File::Id>& targets() const noexcept { return targets_; }
 
  private:
   Env* const env_;
+
+  std::vector<File::Id> targets_;
 };
 
 

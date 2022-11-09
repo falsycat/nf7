@@ -265,10 +265,22 @@ File& Env::GetFileOrThrow(File::Id id) const {
 Env::Watcher::Watcher(Env& env) noexcept : env_(&env) {
 }
 Env::Watcher::~Watcher() noexcept {
-  env_->RemoveWatcher(*this);
+  for (auto id : targets_) {
+    env_->RemoveWatcher(id, *this);
+  }
 }
 void Env::Watcher::Watch(File::Id id) noexcept {
-  env_->AddWatcher(id, *this);
+  if (targets_.end() == std::find(targets_.begin(), targets_.end(), id)) {
+    targets_.push_back(id);
+    env_->AddWatcher(id, *this);
+  }
+}
+void Env::Watcher::Unwatch(File::Id id) noexcept {
+  auto itr = std::remove(targets_.begin(), targets_.end(), id);
+  if (itr != targets_.end()) {
+    targets_.erase(itr);
+    env_->RemoveWatcher(id, *this);
+  }
 }
 
 
