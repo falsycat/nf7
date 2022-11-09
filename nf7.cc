@@ -89,12 +89,12 @@ void File::MakeAsRoot() noexcept {
   id_   = env_->AddFile(*this);
   name_ = "$";
 
-  Handle({ .id = id_, .type = File::Event::kAdd });
+  env_->Handle({ .id = id_, .type = File::Event::kAdd });
 }
 void File::Isolate() noexcept {
   assert(id_ != 0);
 
-  Handle({ .id = id_, .type = File::Event::kRemove });
+  env_->Handle({ .id = id_, .type = File::Event::kRemove });
 
   env_->RemoveFile(id_);
   id_     = 0;
