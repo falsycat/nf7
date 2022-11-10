@@ -261,14 +261,12 @@ void Dir::UpdateTree() noexcept {
     }
 
     // dnd source
-    if (flags & nf7::DirItem::kImportant) {
-      if (ImGui::BeginDragDropSource()) {
-        gui::dnd::Send(gui::dnd::kFilePath, item.second->abspath());
-        ImGui::TextUnformatted(file.type().name().c_str());
-        ImGui::SameLine();
-        ImGui::TextDisabled(file.abspath().Stringify().c_str());
-        ImGui::EndDragDropSource();
-      }
+    if (ImGui::BeginDragDropSource()) {
+      gui::dnd::Send(gui::dnd::kFilePath, item.second->abspath());
+      ImGui::TextUnformatted(file.type().name().c_str());
+      ImGui::SameLine();
+      ImGui::TextDisabled(file.abspath().Stringify().c_str());
+      ImGui::EndDragDropSource();
     }
 
     // displayed contents
@@ -317,6 +315,12 @@ try {
       return;
     }
 
+    auto& ditem =  target.interfaceOrThrow<nf7::DirItem>();
+    if (ditem.flags() & nf7::DirItem::kImportant) {
+      ImGui::SetTooltip("cannot move an important file");
+      return;
+    }
+
     auto parent = static_cast<nf7::File*>(this);
     while (parent) {
       if (parent == &target) return;
@@ -332,6 +336,8 @@ try {
           [this, &dir, name = target.name()]() { Add(GetUniqueName(name), dir.Remove(name)); });
     }
   }
+} catch (nf7::File::NotImplementedException&) {
+  ImGui::SetTooltip("the file is not an item of nf7::Dir");
 } catch (nf7::Exception&) {
 }
 
