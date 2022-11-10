@@ -331,9 +331,31 @@ void Logger::LogView() noexcept {
       }
       // msg column
       if (ImGui::TableNextColumn()) {
-        ImGui::TextUnformatted(row.msg.c_str());
+        auto len = row.msg.find('\n');
+        if (len == std::string::npos) {
+          len = row.msg.size();
+        }
+        const char* str = row.msg.c_str();
+        ImGui::TextUnformatted(str, str+len);
         if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltip(row.msg.c_str());
+          ImGui::BeginTooltip();
+          ImGui::TextUnformatted(row.msg.c_str());
+          if (row.ex) {
+            ImGui::Spacing();
+            ImGui::TextUnformatted("exception stack:");
+            for (auto ptr = row.ex; ptr;)
+            try {
+              ImGui::Bullet();
+              std::rethrow_exception(ptr);
+            } catch (Exception& e) {
+              ImGui::TextUnformatted(e.msg().c_str());
+              ptr = e.reason();
+            } catch (std::exception& e) {
+              ImGui::TextUnformatted(e.what());
+              ptr = nullptr;
+            }
+          }
+          ImGui::EndTooltip();
         }
       }
       // path column

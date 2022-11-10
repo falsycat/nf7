@@ -133,9 +133,6 @@ class Node::Lambda final : public nf7::Node::Lambda,
     f_->Build().
         ThenIf(self, [this, in](auto& func) mutable {
           if (f_) StartThread(in, func);
-        }).
-        Catch<nf7::Exception>([log = log_](auto&) {
-          log->Warn("skips execution because of build failure");
         });
   } catch (nf7::ExpiredException&) {
   }
