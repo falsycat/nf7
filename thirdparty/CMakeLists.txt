@@ -19,12 +19,12 @@ FetchContent_Declare(
   URL "https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-2-12-1/freetype-VER-2-12-1.zip"
 )
 
-set(FT_DISABLE_ZLIB     ON)
-set(FT_DISABLE_BZIP2    ON)
-set(FT_DISABLE_PNG      ON)
-set(FT_DISABLE_HARFBUZZ ON)
-set(FT_DISABLE_BROTLI   ON)
-set(FT_ENABLE_ERROR_STRINGS ON)
+option(FT_DISABLE_ZLIB     ON)
+option(FT_DISABLE_BZIP2    ON)
+option(FT_DISABLE_PNG      ON)
+option(FT_DISABLE_HARFBUZZ ON)
+option(FT_DISABLE_BROTLI   ON)
+option(FT_ENABLE_ERROR_STRINGS ON)
 FetchContent_MakeAvailable(freetype)
 
 
