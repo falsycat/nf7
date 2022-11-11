@@ -90,6 +90,8 @@ class Dir final : public nf7::FileBase,
   std::unordered_set<std::string> opened_;
   gui::Window                     win_;
 
+  std::vector<std::pair<std::string, std::unique_ptr<nf7::File>>> trash_;
+
 
   static bool TestFlags(nf7::File& f, nf7::DirItem::Flags flags) noexcept
   try {
@@ -153,7 +155,7 @@ void Dir::UpdateTree() noexcept {
       if (ImGui::MenuItem("remove")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "removing item"),
-            [this, name]() { dir_.Remove(name); });
+            [this, name]() { trash_.emplace_back(name, dir_.Remove(name)); });
       }
       if (ImGui::BeginMenu("rename")) {
         ItemRenamer(name);
@@ -220,6 +222,28 @@ void Dir::UpdateTree() noexcept {
 void Dir::UpdateMenu() noexcept {
   if (ImGui::BeginMenu("add new child")) {
     ItemAdder();
+    ImGui::EndMenu();
+  }
+  if (ImGui::BeginMenu("restore item", trash_.size() > 0)) {
+    for (auto itr = trash_.rbegin(); itr < trash_.rend();) {
+      const auto  idx  = std::distance(trash_.rbegin(), itr);
+      const auto& type = itr->second->type();
+      const auto  id   = itr->first + " (" + type.name() + ") ##" + std::to_string(idx);
+
+      const auto uniq = !dir_.Find(itr->first);
+      if (ImGui::MenuItem(id.c_str(), nullptr, false, uniq)) {
+        auto ctx = std::make_shared<nf7::GenericContext>(*this, "restoring an item");
+        auto p   = std::make_shared<std::pair<std::string, std::unique_ptr<nf7::File>>>(std::move(*itr));  // this sucks
+        env().ExecMain(ctx, [this, p]() mutable {
+          dir_.Add(p->first, std::move(p->second));
+        });
+
+        trash_.erase(std::next(itr).base());
+        itr = trash_.rbegin()+idx;
+      } else {
+        ++itr;
+      }
+    }
     ImGui::EndMenu();
   }
   ImGui::Separator();
