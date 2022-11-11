@@ -458,8 +458,9 @@ int main(int, char**) {
     cycle_ = kSyncUpdate;
     std::unique_lock<std::mutex> k {cycle_mtx_};
     cycle_cv_.notify_all();
-    cycle_cv_.wait(k, []() { return cycle_ != kUpdate; });
+    cycle_cv_.wait(k, []() { return cycle_ == kUpdate; });
   }
+  assert(cycle_ == kUpdate);
   env.TearDownRoot();
 
   // notify other threads that the destruction is done
