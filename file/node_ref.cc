@@ -62,7 +62,10 @@ class Ref final : public nf7::FileBase, public nf7::Node {
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(*this, std::move(data)) {
-    mem_.onRestore = mem_.onCommit = [this]() { SetUpWatcher(); };
+    mem_.onRestore = mem_.onCommit = [this]() {
+      SyncQuiet();
+      SetUpWatcher();
+    };
   }
 
   Ref(nf7::Deserializer& ar) : Ref(ar.env()) {
@@ -150,7 +153,6 @@ class Ref final : public nf7::FileBase, public nf7::Node {
         std::make_shared<nf7::GenericContext>(*this, "change path"),
         [this, &target, p = std::move(p)]() mutable {
           target = std::move(p);
-          SyncQuiet();
           mem_.Commit();
         });
   }
@@ -186,28 +188,41 @@ class Ref::Lambda final : public Node::Lambda,
     auto parent = this->parent();
     if (!parent) return;
 
-    if (in.sender == base_) {
-      parent->Handle(in.name, in.value, shared_from_this());
-    }
-    if (in.sender == parent) {
-      if (!base_) {
-        if (depth() > kMaxDepth) {
-          log_->Error("stack overflow");
-          return;
-        }
-        base_ = f_->target().
-            interfaceOrThrow<nf7::Node>().
-            CreateLambda(shared_from_this());
+    // check if target file is changed
+    auto& target = f_->target();
+    if (target.id() != target_id_) {
+      if (depth() > kMaxDepth) {
+        throw nf7::Exception {"stack overflow"};
       }
-      base_->Handle(in.name, in.value, shared_from_this());
+      target_id_ = target.id();
+      target_    = target.
+          interfaceOrThrow<nf7::Node>().
+          CreateLambda(shared_from_this());
     }
+
+    // output from the target
+    if (in.sender == target_) {
+      parent->Handle(in.name, in.value, shared_from_this());
+      return;
+    }
+
+    // input from the parent
+    if (in.sender == parent) {
+      target_->Handle(in.name, in.value, shared_from_this());
+      return;
+    }
+
+    // ignore everything from others
+
   } catch (nf7::Exception& e) {
-    log_->Error("failed to call referencee: "+e.msg());
+    log_->Error("failed to call referencee");
+    Abort();
   }
 
   void Abort() noexcept override {
-    if (base_) {
-      base_->Abort();
+    if (target_) {
+      target_->Abort();
+      target_ = nullptr;
     }
   }
 
@@ -216,7 +231,8 @@ class Ref::Lambda final : public Node::Lambda,
 
   std::shared_ptr<nf7::LoggerRef> log_;
 
-  std::shared_ptr<Node::Lambda> base_;
+  nf7::File::Id target_id_ = 0;
+  std::shared_ptr<nf7::Node::Lambda> target_;
 };
 
 std::shared_ptr<Node::Lambda> Ref::CreateLambda(
