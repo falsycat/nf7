@@ -19,6 +19,7 @@
 #include "common/dir_item.hh"
 #include "common/file_base.hh"
 #include "common/generic_context.hh"
+#include "common/generic_dir.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
 #include "common/gui_dnd.hh"
@@ -31,7 +32,6 @@ namespace nf7 {
 namespace {
 
 class Dir final : public nf7::FileBase,
-    public nf7::Dir,
     public nf7::DirItem {
  public:
   static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"nf7::DirItem"}};
@@ -39,13 +39,13 @@ class Dir final : public nf7::FileBase,
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 
-  Dir(nf7::Env& env, ItemMap&& items = {}) noexcept :
+  Dir(nf7::Env& env, nf7::GenericDir::ItemMap&& items = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kTree |
                    nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip |
                    nf7::DirItem::kDragDropTarget),
-      items_(std::move(items)), win_(*this, "Tree View") {
+      dir_(*this, std::move(items)), win_(*this, "Tree View") {
     win_.onConfig = []() {
       const auto em = ImGui::GetFontSize();
       ImGui::SetNextWindowSize({8*em, 8*em}, ImGuiCond_FirstUseEver);
@@ -54,68 +54,15 @@ class Dir final : public nf7::FileBase,
   }
 
   Dir(nf7::Deserializer& ar) : Dir(ar.env()) {
-    ar(opened_, win_);
-
-    uint64_t size;
-    ar(size);
-    for (size_t i = 0; i < size; ++i) {
-      std::string name;
-      ar(name);
-
-      std::unique_ptr<nf7::File> f;
-      try {
-        ar(f);
-        items_[name] = std::move(f);
-      } catch (nf7::Exception&) {
-        env().Throw(std::current_exception());
-      }
-    }
+    ar(dir_, opened_, win_);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(opened_, win_);
-
-    ar(static_cast<uint64_t>(items_.size()));
-    for (auto& p : items_) {
-      ar(p.first, p.second);
-    }
+    ar(dir_, opened_, win_);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    ItemMap items;
-    for (const auto& item : items_) {
-      items[item.first] = item.second->Clone(env);
-    }
-    return std::make_unique<Dir>(env, std::move(items));
+    return std::make_unique<Dir>(env, dir_.CloneItems(env));
   }
 
-  File* PreFind(std::string_view name) const noexcept override {
-    auto itr = items_.find(std::string(name));
-    if (itr == items_.end()) return nullptr;
-    return itr->second.get();
-  }
-
-  File& Add(std::string_view name, std::unique_ptr<File>&& f) override {
-    const auto sname = std::string(name);
-
-    auto [itr, ok] = items_.emplace(sname, std::move(f));
-    if (!ok) throw DuplicateException("item name duplication: "+sname);
-
-    auto& ret = *itr->second;
-    if (id()) ret.MoveUnder(*this, name);
-    return ret;
-  }
-  std::unique_ptr<File> Remove(std::string_view name) noexcept override {
-    auto itr = items_.find(std::string(name));
-    if (itr == items_.end()) return nullptr;
-
-    auto ret = std::move(itr->second);
-    items_.erase(itr);
-    if (id()) ret->Isolate();
-    return ret;
-  }
-
-  void UpdateChildren(bool early) noexcept;
-  void PreUpdate() noexcept override { UpdateChildren(true); }
-  void PostUpdate() noexcept override { UpdateChildren(false); }
   void UpdateTree() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
@@ -128,27 +75,20 @@ class Dir final : public nf7::FileBase,
       if (name() == "$") {
         win_.Show();
       }
-      for (const auto& item : items_) item.second->MoveUnder(*this, item.first);
       return;
-    case Event::kRemove:
-      for (const auto& item : items_) item.second->Isolate();
-      return;
-
     default:
       return;
     }
   }
 
   File::Interface* interface(const std::type_info& t) noexcept override {
-    return InterfaceSelector<nf7::Dir, nf7::DirItem>(t).Select(this);
+    return nf7::InterfaceSelector<nf7::Dir, nf7::DirItem>(t).Select(this, &dir_);
   }
 
  private:
-  // persistent params
-  ItemMap     items_;
-  gui::Window win_;
-
+  nf7::GenericDir                 dir_;
   std::unordered_set<std::string> opened_;
+  gui::Window                     win_;
 
 
   static bool TestFlags(nf7::File& f, nf7::DirItem::Flags flags) noexcept
@@ -158,14 +98,6 @@ class Dir final : public nf7::FileBase,
     return false;
   }
 
-  std::string GetUniqueName(std::string_view name) const noexcept {
-    auto ret = std::string {name};
-    while (Find(ret)) {
-      ret += "_dup";
-    }
-    return ret;
-  }
-
   // imgui widgets
   void TreeView() noexcept;
   void ItemAdder() noexcept;
@@ -173,18 +105,8 @@ class Dir final : public nf7::FileBase,
   bool ValidateName(const std::string& name) noexcept;
 };
 
-void Dir::UpdateChildren(bool early) noexcept {
-  for (const auto& item : items_) {
-    auto& f = *item.second;
-    if (early == TestFlags(f, nf7::DirItem::kEarlyUpdate)) {
-      ImGui::PushID(&f);
-      f.Update();
-      ImGui::PopID();
-    }
-  }
-}
 void Dir::UpdateTree() noexcept {
-  for (const auto& item : items_) {
+  for (const auto& item : dir_.items()) {
     const auto& name = item.first;
     auto&       file  = *item.second;
     ImGui::PushID(&file);
@@ -231,7 +153,7 @@ void Dir::UpdateTree() noexcept {
       if (ImGui::MenuItem("remove")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "removing item"),
-            [this, name]() { Remove(name); });
+            [this, name]() { dir_.Remove(name); });
       }
       if (ImGui::BeginMenu("rename")) {
         ItemRenamer(name);
@@ -241,7 +163,7 @@ void Dir::UpdateTree() noexcept {
       if (ImGui::MenuItem("renew")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "renewing item"),
-            [this, name]() { Add(name, Remove(name)); });
+            [this, name]() { dir_.Renew(name); });
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("re-initialize the item by re-adding after removing");
@@ -250,7 +172,7 @@ void Dir::UpdateTree() noexcept {
       if (ImGui::MenuItem("clone")) {
         env().ExecMain(
             std::make_shared<nf7::GenericContext>(*this, "duplicating item"),
-            [this, name, &file]() { Add(GetUniqueName(name), file.Clone(env())); });
+            [this, name, &file]() { dir_.Add(dir_.GetUniqueName(name), file.Clone(env())); });
       }
       ImGui::EndDisabled();
 
@@ -304,14 +226,14 @@ void Dir::UpdateMenu() noexcept {
   win_.MenuItem();
 }
 void Dir::UpdateTooltip() noexcept {
-  ImGui::Text("children: %zu", items_.size());
+  ImGui::Text("children: %zu", dir_.items().size());
 }
 void Dir::UpdateDragDropTarget() noexcept
 try {
   nf7::File::Path p;
   if (auto pay = gui::dnd::Peek<Path>(gui::dnd::kFilePath, p)) {
     auto& target = ResolveOrThrow(p);
-    if (target.parent() == this) {
+    if (target.parent() == nullptr || target.parent() == this) {
       return;
     }
 
@@ -327,13 +249,20 @@ try {
       parent = parent->parent();
     }
 
-    auto& dir = target.parent()->interfaceOrThrow<nf7::Dir>();
+    const auto pid = target.parent()->id();
+    auto&      src = target.parent()->interfaceOrThrow<nf7::Dir>();
 
     nf7::gui::dnd::DrawRect();
     if (pay->IsDelivery()) {
       env().ExecMain(
           std::make_shared<nf7::GenericContext>(*this, "moving an item"),
-          [this, &dir, name = target.name()]() { Add(GetUniqueName(name), dir.Remove(name)); });
+          [this, pid, &src, name = target.name()]() {
+            if (env().GetFile(pid)) {
+              if (auto f = src.Remove(name)) {
+                dir_.Add(dir_.GetUniqueName(name), std::move(f));
+              }
+            }
+          });
     }
   }
 } catch (nf7::File::NotImplementedException&) {
@@ -364,7 +293,7 @@ void Dir::ItemAdder() noexcept {
   static std::string                name;
   if (ImGui::IsWindowAppearing()) {
     type = nullptr;
-    name = GetUniqueName("new_file");
+    name = dir_.GetUniqueName("new_file");
   }
   ImGui::TextUnformatted("System/Dir: adding new file...");
 
@@ -418,7 +347,7 @@ void Dir::ItemAdder() noexcept {
     ImGui::CloseCurrentPopup();
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "adding new item"),
-        [this]() { Add(name, type->Create(env())); });
+        [this]() { dir_.Add(name, type->Create(env())); });
   }
 }
 
@@ -448,7 +377,7 @@ void Dir::ItemRenamer(const std::string& name) noexcept {
     ImGui::CloseCurrentPopup();
     env().ExecMain(
         std::make_shared<nf7::GenericContext>(*this, "renaming item"),
-        [this, name]() { Add(editing_name, Remove(name)); });
+        [this, name]() { dir_.Rename(name, editing_name); });
   }
 }
 

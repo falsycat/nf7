@@ -76,6 +76,7 @@ target_sources(nf7
     common/future.hh
     common/generic_config.hh
     common/generic_context.hh
+    common/generic_dir.hh
     common/generic_history.hh
     common/generic_memento.hh
     common/generic_type_info.hh
