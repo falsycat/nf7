@@ -30,17 +30,19 @@ class GenericTypeInfo : public nf7::File::TypeInfo {
 
   std::unique_ptr<nf7::File> Deserialize(nf7::Deserializer& ar) const override
   try {
-    return std::make_unique<T>(ar);
-  } catch (nf7::Exception&) {
-    throw nf7::DeserializeException {"deserialization failed"};
+    if constexpr (std::is_constructible<T, nf7::Deserializer&>::value) {
+      return std::make_unique<T>(ar);
+    } else {
+      throw nf7::Exception {name() + " is not a deserializable"};
+    }
   } catch (std::exception&) {
-    throw nf7::DeserializeException {"deserialization failed"};
+    throw nf7::DeserializeException {"deserialization failed ("+name()+")"};
   }
   std::unique_ptr<File> Create(nf7::Env& env) const override {
     if constexpr (std::is_constructible<T, nf7::Env&>::value) {
       return std::make_unique<T>(env);
     } else {
-      throw nf7::Exception {name()+" has no factory without parameters"};
+      throw nf7::Exception {name()+" has no default factory"};
     }
   }
 

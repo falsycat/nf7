@@ -150,12 +150,12 @@ target_sources(nf7
     file/sequencer_adaptor.cc
     file/sequencer_call.cc
     file/sequencer_timeline.cc
-    file/system_call.cc
     file/system_dir.cc
     file/system_event.cc
     file/system_imgui.cc
     file/system_logger.cc
     file/system_nfile.cc
+    file/system_node.cc
     file/value_curve.cc
     file/value_plot.cc
 )

@@ -7,14 +7,23 @@
 
 inline std::unique_ptr<nf7::File> CreateRoot(nf7::Env& env) noexcept {
   auto  ret = nf7::File::registry("System/Dir").Create(env);
-  auto& dir = ret->interfaceOrThrow<nf7::Dir>();
+  auto& root = ret->interfaceOrThrow<nf7::Dir>();
 
-  dir.Add("_audio", nf7::File::registry("Audio/Context").Create(env));
-  dir.Add("_font", nf7::File::registry("Font/Context").Create(env));
-  dir.Add("_imgui", nf7::File::registry("System/ImGui").Create(env));
-  dir.Add("_logger", nf7::File::registry("System/Logger").Create(env));
-  dir.Add("_luajit", nf7::File::registry("LuaJIT/Context").Create(env));
+  const auto Add = [&](nf7::Dir& dir, const char* name, const char* type) -> nf7::File& {
+    return dir.Add(name, nf7::File::registry(type).Create(env));
+  };
 
-  dir.Add("home", nf7::File::registry("System/Dir").Create(env));
+  Add(root, "_audio",  "Audio/Context");
+  Add(root, "_font",   "Font/Context");
+  Add(root, "_imgui",  "System/ImGui");
+  Add(root, "_logger", "System/Logger");
+  Add(root, "_luajit", "LuaJIT/Context");
+
+  auto& node = Add(root, "node", "System/Dir").interfaceOrThrow<nf7::Dir>();
+  {
+    Add(node, "system", "System/Node");
+  }
+
+  Add(root, "home", "System/Dir").interfaceOrThrow<nf7::Dir>();
   return ret;
 }
