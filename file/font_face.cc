@@ -205,12 +205,12 @@ class FontFace::Lambda final : public nf7::Node::Lambda,
       {"w",      static_cast<nf7::Value::Integer>(g.bitmap.width)},
       {"h",      static_cast<nf7::Value::Integer>(g.bitmap.rows)},
       {"buf",    std::move(dst)},
-      {"hBearX", static_cast<nf7::Value::Integer>(g.metrics.horiBearingX)},
-      {"hBearY", static_cast<nf7::Value::Integer>(g.metrics.horiBearingY)},
-      {"hAdv",   static_cast<nf7::Value::Integer>(g.metrics.horiAdvance)},
-      {"vBearX", static_cast<nf7::Value::Integer>(g.metrics.vertBearingX)},
-      {"vBearY", static_cast<nf7::Value::Integer>(g.metrics.vertBearingY)},
-      {"vAdv",   static_cast<nf7::Value::Integer>(g.metrics.vertAdvance)},
+      {"hBearX", static_cast<nf7::Value::Scalar>(g.metrics.horiBearingX)/64},
+      {"hBearY", static_cast<nf7::Value::Scalar>(g.metrics.horiBearingY)/64},
+      {"hAdv",   static_cast<nf7::Value::Scalar>(g.metrics.horiAdvance)/64},
+      {"vBearX", static_cast<nf7::Value::Scalar>(g.metrics.vertBearingX)/64},
+      {"vBearY", static_cast<nf7::Value::Scalar>(g.metrics.vertBearingY)/64},
+      {"vAdv",   static_cast<nf7::Value::Scalar>(g.metrics.vertAdvance)/64},
     }};
   }
 
