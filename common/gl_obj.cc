@@ -193,8 +193,14 @@ void Obj_ProgramMeta::ApplyState() const noexcept {
     glDepthRange(depth->near, depth->far);
     glDepthFunc(gl::ToEnum(depth->func));
   }
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 void Obj_ProgramMeta::RevertState() const noexcept {
+  glBlendFunc(GL_ONE, GL_ZERO);
+  glDisable(GL_BLEND);
+
   if (depth) {
     glDisable(GL_DEPTH_TEST);
   }
