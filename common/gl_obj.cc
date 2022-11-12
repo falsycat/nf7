@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 #include "common/aggregate_promise.hh"
@@ -278,8 +279,7 @@ try {
   LockedAttachmentsFuture::Promise pro {ctx};
 
   // lock array buffers
-  std::vector<gl::Buffer::Factory::Product> attrs_fu;
-  attrs_fu.reserve(attrs.size());
+  std::unordered_map<nf7::File::Id, gl::Buffer::Factory::Product> attrs_fu_map;
   for (size_t i = 0; i < attrs.size(); ++i) {
     const auto& attr = attrs[i];
 
@@ -292,8 +292,20 @@ try {
           static_cast<size_t>(attr.stride) * (vhint.instances-1) + attr.offset:
         size_t {0};
 
-    attrs_fu.push_back(Lock(attr.buffer, gl::BufferTarget::Array, required));
-    apro.Add(attrs_fu.back());
+    if (attrs_fu_map.end() == attrs_fu_map.find(attr.buffer)) {
+      auto [itr, add] = attrs_fu_map.emplace(
+          attr.buffer, Lock(attr.buffer, gl::BufferTarget::Array, required));
+      (void) add;
+      apro.Add(itr->second);
+    }
+  }
+
+  // serialize attrs_fu_map
+  std::vector<gl::Buffer::Factory::Product> attrs_fu;
+  for (const auto& attr : attrs) {
+    auto itr = attrs_fu_map.find(attr.buffer);
+    assert(itr != attrs_fu_map.end());
+    attrs_fu.push_back(itr->second);
   }
 
   // lock index buffers (it must be the last element in `fus`)
@@ -366,6 +378,20 @@ Obj_FramebufferMeta::LockedAttachmentsFuture Obj_FramebufferMeta::LockAttachment
     const std::shared_ptr<nf7::Context>& ctx) const noexcept
 try {
   auto ret = std::make_shared<LockedAttachments>();
+
+  // file duplication check for preventing deadlock by double lock
+  std::unordered_set<nf7::File::Id> locked;
+  for (const auto& col : colors) {
+    if (col->tex && !locked.insert(col->tex).second) {
+      throw nf7::Exception {"attached color texture is duplicated"};
+    }
+  }
+  if (depth && !locked.insert(depth->tex).second) {
+    throw nf7::Exception {"attached depth texture is duplicated"};
+  }
+  if (stencil && !locked.insert(stencil->tex).second) {
+    throw nf7::Exception {"attached stencil texture is duplicated"};
+  }
 
   nf7::AggregatePromise apro {ctx};
   LockedAttachmentsFuture::Promise pro {ctx};
