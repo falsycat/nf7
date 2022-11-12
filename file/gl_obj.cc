@@ -154,9 +154,12 @@ class ObjBase : public nf7::FileBase,
     mtx_.AcquireLock(ctx, ex).ThenIf([this, ctx, pro](auto& k) mutable {
       if (!fu_) {
         watch_ = std::make_shared<nf7::GenericWatcher>(env());
-        watch_->AddHandler(nf7::File::Event::kUpdate, [self = life_.ref()](auto&) {
+
+        const auto handler = [self = life_.ref()](auto&) {
           if (self) self->Drop();
-        });
+        };
+        watch_->AddHandler(nf7::File::Event::kUpdate, handler);
+        watch_->AddHandler(nf7::File::Event::kRemove, handler);
         nwatch_->Clear();
 
         fu_ = mem_->Create(CreateParam {
