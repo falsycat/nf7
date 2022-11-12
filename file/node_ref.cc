@@ -63,7 +63,6 @@ class Ref final : public nf7::FileBase, public nf7::Node {
       log_(std::make_shared<nf7::LoggerRef>(*this)),
       mem_(*this, std::move(data)) {
     mem_.onRestore = mem_.onCommit = [this]() {
-      SyncQuiet();
       SetUpWatcher();
     };
   }
