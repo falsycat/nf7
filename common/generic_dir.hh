@@ -32,7 +32,31 @@ class GenericDir : public nf7::FileBase::Feature, public nf7::Dir {
   GenericDir& operator=(const GenericDir&) = delete;
   GenericDir& operator=(GenericDir&&) = delete;
 
-  void serialize(auto& ar) { ar(items_); }
+  void Serialize(auto& ar) const noexcept {
+    ar(items_);
+  }
+  void Deserialize(auto& ar) {
+    assert(f_.id() == 0);
+    assert(items_.size() == 0);
+
+    size_t n;
+    ar(n);
+    for (size_t i = 0; i < n; ++i) {
+      std::string k;
+      try {
+        std::unique_ptr<nf7::File> f;
+        ar(k, f);
+        nf7::File::Path::ValidateTerm(k);
+        if (items_.end() != items_.find(k)) {
+          throw nf7::Exception {"item name duplicated"};
+        }
+        items_.emplace(k, std::move(f));
+      } catch (nf7::Exception&) {
+        f_.env().Throw(std::make_exception_ptr(
+                nf7::Exception {"failed to deserialize item: "+k}));
+      }
+    }
+  }
 
   ItemMap CloneItems(nf7::Env& env) const {
     ItemMap ret;
@@ -120,3 +144,25 @@ class GenericDir : public nf7::FileBase::Feature, public nf7::Dir {
 };
 
 }  // namespace nf7
+namespace yas::detail {
+
+template <size_t F>
+struct serializer<
+    type_prop::not_a_fundamental,
+    ser_case::use_internal_serializer,
+    F,
+    nf7::GenericDir> {
+ public:
+  template <typename Archive>
+  static Archive& save(Archive& ar, const nf7::GenericDir& dir) {
+    dir.Serialize(ar);
+    return ar;
+  }
+  template <typename Archive>
+  static Archive& load(Archive& ar, nf7::GenericDir& dir) {
+    dir.Deserialize(ar);
+    return ar;
+  }
+};
+
+}  // namespace yas::detail
