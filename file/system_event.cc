@@ -48,6 +48,7 @@ class Event final : public nf7::FileBase,
     nf7::File::Path handler;
 
     // feature switch
+    bool init  = false;
     bool key   = false;
     bool mouse = false;
 
@@ -55,7 +56,7 @@ class Event final : public nf7::FileBase,
 
     Data() noexcept { }
     void serialize(auto& ar) {
-      ar(handler, key, mouse, watch);
+      ar(handler, init, key, mouse, watch);
     }
 
     std::string Stringify() const noexcept {
@@ -65,6 +66,8 @@ class Event final : public nf7::FileBase,
       st << YAML::Value << handler;
       st << YAML::Key   << "event";
       st << YAML::BeginMap;
+      st << YAML::Key   << "init";
+      st << YAML::Value << init;
       st << YAML::Key   << "key";
       st << YAML::Value << key;
       st << YAML::Key   << "mouse";
@@ -82,6 +85,7 @@ class Event final : public nf7::FileBase,
       d.handler = yaml["handler"].as<nf7::File::Path>();
 
       const auto& ev = yaml["event"];
+      d.init    = ev["init"].as<bool>();
       d.key     = ev["key"].as<bool>();
       d.mouse   = ev["mouse"].as<bool>();
       d.watch   = ev["watch"].as<std::vector<nf7::File::Path>>();
@@ -109,6 +113,24 @@ class Event final : public nf7::FileBase,
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Event>(env, Data {mem_.data()});
+  }
+
+  void PostHandle(const nf7::File::Event& e) noexcept override {
+    switch (e.type) {
+    case nf7::File::Event::kAdd:
+      if (mem_->init) {
+        env().ExecMain(
+            std::make_shared<nf7::GenericContext>(*this, "trigger init event"),
+            [this]() {
+              if (auto la = CreateLambdaIf()) {
+                la->Handle("init", nf7::Value::Pulse {}, la_root_);
+              }
+            });
+      }
+      return;
+    default:
+      return;
+    }
   }
 
   void PostUpdate() noexcept override;
@@ -230,6 +252,9 @@ void Event::UpdateMenu() noexcept {
 void Event::UpdateTooltip() noexcept {
   ImGui::Text("handler: %s", mem_->handler.Stringify().c_str());
   ImGui::Text("events :");
+  if (mem_->init) {
+    ImGui::Bullet(); ImGui::TextUnformatted("init");
+  }
   if (mem_->key) {
     ImGui::Bullet(); ImGui::TextUnformatted("key");
   }
