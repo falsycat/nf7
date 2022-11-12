@@ -183,7 +183,9 @@ std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
 
 nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Node::Build() noexcept
 try {
-  if (cache_) return *cache_;
+  if (cache_ && !cache_->error()) {
+    return *cache_;
+  }
   last_build_ = std::chrono::file_clock::now();
 
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>>::Promise pro;
