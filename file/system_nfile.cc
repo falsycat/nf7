@@ -41,7 +41,7 @@ class NFile final : public nf7::FileBase,
     public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<NFile> kType = {
-    "System/NFile", {"nf7::DirItem", "nf7::Node"}};
+    "System/NFile", {"nf7::DirItem"}};
   static void UpdateTypeTooltip() noexcept {
     ImGui::TextUnformatted("Read/Write a file placed on native filesystem.");
     ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
