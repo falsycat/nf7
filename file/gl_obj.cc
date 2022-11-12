@@ -170,8 +170,8 @@ class ObjBase : public nf7::FileBase,
       fu_->Chain(pro, [k](auto& obj) { return Resource {k, obj}; });
     });
     return pro.future().
-        template Catch<nf7::Exception>(ctx, [this](auto& e) {
-          log_->Error(e);
+        template Catch<nf7::Exception>(ctx, [log = log_](auto& e) {
+          log->Error(e);
         });
   }
 
@@ -1242,7 +1242,7 @@ struct VertexArray {
 
  private:
   nf7::File::Path index_;
-  gl::NumericType index_numtype_;
+  gl::NumericType index_numtype_ = gl::NumericType::U16;
   std::vector<Attr> attrs_;
 };
 template <>
