@@ -54,13 +54,9 @@ class Network final : public nf7::FileBase,
     public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const GenericTypeInfo<Network> kType = {
-    "Node/Network", {"nf7::DirItem"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("A Node composed of multiple child Nodes, whose sockets are linked to each other");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "connection changes will be applied to active lambdas immediately");
-  }
+    "Node/Network", {"nf7::DirItem"},
+    "defines new Node by child Nodes and their links",
+  };
 
   class InternalNode;
 
@@ -683,12 +679,9 @@ class Network::Initiator final : public nf7::File,
     public Network::InternalNode {
  public:
   static inline const nf7::GenericTypeInfo<Initiator> kType = {
-    "Node/Network/Initiator", {}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted(
-        "Emits a pulse immediately when Node/Network gets the first input.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-  }
+    "Node/Network/Initiator", {},
+    "emits a pulse immediately when Node/Network gets the first input",
+  };
 
   Initiator(nf7::Env& env) noexcept :
       nf7::File(kType, env), nf7::Node(nf7::Node::kCustomNode) {

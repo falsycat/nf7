@@ -34,8 +34,9 @@ namespace {
 class Dir final : public nf7::FileBase,
     public nf7::DirItem {
  public:
-  static inline const GenericTypeInfo<Dir> kType = {"System/Dir", {"nf7::DirItem"}};
-  static constexpr const char* kTypeDescription = "generic directory";
+  static inline const nf7::GenericTypeInfo<Dir> kType = {
+    "System/Dir", {"nf7::DirItem"}, "generic directory",
+  };
 
   using ItemMap = std::map<std::string, std::unique_ptr<File>>;
 

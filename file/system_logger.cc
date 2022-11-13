@@ -40,15 +40,8 @@ class Logger final : public nf7::FileBase,
     public nf7::GenericConfig, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<Logger> kType = {
-    "System/Logger", {"nf7::DirItem"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Records log output from other files.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Logger");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "logged are children and grandchildren of a dir that has this with name '_logger'");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "recorded logs won't be permanentized");
-  }
+    "System/Logger", {"nf7::DirItem"}, "records log output from other files",
+  };
 
   struct Row final {
    public:

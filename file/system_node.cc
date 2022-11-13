@@ -17,7 +17,7 @@ class Save final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Save> {
  public:
   static inline nf7::GenericTypeInfo<nf7::PureNodeFile<Save>> kType = {
-    "System/Node/Save", {"nf7::DirItem"},
+    "System/Node/Save", {},
   };
   static inline const nf7::Node::Meta kMeta = { {"exec"}, {}, };
 
@@ -32,7 +32,7 @@ class Save final : public nf7::Node::Lambda,
 class Exit final : public nf7::Node::Lambda {
  public:
   static inline nf7::GenericTypeInfo<nf7::PureNodeFile<Exit>> kType = {
-    "System/Node/Exit", {"nf7::DirItem"},
+    "System/Node/Exit", {},
   };
   static inline const nf7::Node::Meta kMeta = { {"exec"}, {}, };
 
@@ -45,7 +45,7 @@ class Exit final : public nf7::Node::Lambda {
 class Panic final : public nf7::Node::Lambda {
  public:
   static inline nf7::GenericTypeInfo<nf7::PureNodeFile<Panic>> kType = {
-    "System/Node/Panic", {"nf7::DirItem"},
+    "System/Node/Panic", {},
   };
   static inline const nf7::Node::Meta kMeta = { {"exec"}, {}, };
 

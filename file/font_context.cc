@@ -22,15 +22,7 @@ namespace {
 class FontContext final : public nf7::File, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<FontContext> kType = {
-    "Font/Context", {"nf7::DirItem",}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Drives freetype context.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::font::Queue");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "there's few merit to use multiple contexts");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "the context remains alive after file deletion until unused");
-  }
+    "Font/Context", {"nf7::DirItem",}, "drives freetype context"};
 
   class Queue;
 

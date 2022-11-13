@@ -15,17 +15,12 @@
 namespace nf7 {
 
 template <typename T>
-concept GenericTypeInfo_UpdateTooltip_ = requires() { T::UpdateTypeTooltip(); };
-
-template <typename T>
-concept GenericTypeInfo_Description_ = requires() { T::kTypeDescription; };
-
-
-template <typename T>
 class GenericTypeInfo : public nf7::File::TypeInfo {
  public:
-  GenericTypeInfo(const std::string& name, std::unordered_set<std::string>&& v) noexcept :
-      TypeInfo(name, AddFlags(std::move(v))) {
+  GenericTypeInfo(const std::string&                name,
+                  std::unordered_set<std::string>&& v,
+                  const std::string&                desc = "(no description)") noexcept :
+      TypeInfo(name, AddFlags(std::move(v))), desc_(desc) {
   }
 
   std::unique_ptr<nf7::File> Deserialize(nf7::Deserializer& ar) const override
@@ -47,16 +42,12 @@ class GenericTypeInfo : public nf7::File::TypeInfo {
   }
 
   void UpdateTooltip() const noexcept override {
-    if constexpr (nf7::GenericTypeInfo_UpdateTooltip_<T>) {
-      T::UpdateTypeTooltip();
-    } else if constexpr (nf7::GenericTypeInfo_Description_<T>) {
-      ImGui::TextUnformatted(T::kTypeDescription);
-    } else {
-      ImGui::TextUnformatted("(no description)");
-    }
+    ImGui::TextUnformatted(desc_.c_str());
   }
 
  private:
+  std::string desc_;
+
   static std::unordered_set<std::string> AddFlags(
       std::unordered_set<std::string>&& flags) noexcept {
     if (std::is_constructible<T, nf7::Env&>::value) {

@@ -47,11 +47,8 @@ namespace {
 class TL final : public nf7::FileBase, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<TL> kType = {
-    "Sequencer/Timeline", {"nf7::DirItem"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Timeline data");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-  }
+    "Sequencer/Timeline", {"nf7::DirItem"},
+  };
 
   struct Timing;
 

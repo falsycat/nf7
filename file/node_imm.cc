@@ -34,15 +34,9 @@ namespace {
 class Imm final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
  public:
-  static inline const nf7::GenericTypeInfo<Imm> kType =
-      {"Node/Imm", {"nf7::DirItem", "nf7::Node"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Emits an immediate value when get an input.");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "implements nf7::Node");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "changes will be applied to active lambdas immediately");
-  }
+  static inline const nf7::GenericTypeInfo<Imm> kType = {
+    "Node/Imm", {"nf7::DirItem", "nf7::Node"},
+    "emits an immediate value when get an input"};
 
   class Lambda;
 

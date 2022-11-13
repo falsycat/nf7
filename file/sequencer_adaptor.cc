@@ -32,15 +32,10 @@ namespace {
 class Adaptor final : public nf7::FileBase,
     public nf7::Sequencer {
  public:
-  static inline const nf7::GenericTypeInfo<Adaptor> kType =
-      {"Sequencer/Adaptor", {"nf7::Sequencer"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Wraps and Adapts other Sequencer.");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "implements nf7::Sequencer");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "changes will be applied to active lambdas immediately");
-  }
+  static inline const nf7::GenericTypeInfo<Adaptor> kType = {
+    "Sequencer/Adaptor", {"nf7::Sequencer"},
+    "wraps and adapts other Sequencer",
+  };
 
   class Session;
   class Lambda;

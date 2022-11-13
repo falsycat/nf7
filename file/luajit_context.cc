@@ -21,16 +21,8 @@ namespace {
 class LuaContext final : public nf7::File, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<nf7::LuaContext> kType = {
-    "LuaJIT/Context", {"nf7::DirItem",}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Drives LuaJIT thread and task queue.");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "implements nf7::luajit::Queue");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "create multiple contexts to execute LuaJIT paralelly");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "the thread remains alive after file deletion until unused");
-  }
+    "LuaJIT/Context", {"nf7::DirItem",},
+    "drives LuaJIT thread and task queue"};
 
   class Queue;
 

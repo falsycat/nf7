@@ -35,15 +35,10 @@ class Curve final : public nf7::FileBase,
     public nf7::Node,
     public nf7::Sequencer {
  public:
-  static inline const nf7::GenericTypeInfo<Curve> kType =
-      {"Value/Curve", {"nf7::DirItem", "nf7::Node", "nf7::Sequencer"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("bezier curve");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Sequencer");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "changes will be applied to active lambdas immediately");
-  }
+  static inline const nf7::GenericTypeInfo<Curve> kType = {
+    "Value/Curve", {"nf7::DirItem", "nf7::Node", "nf7::Sequencer"},
+    "bezier curve editor",
+  };
 
   class NodeLambda;
   class SeqLambda;

@@ -28,10 +28,9 @@ class Singleton final : public nf7::FileBase,
   public nf7::DirItem, public nf7::GenericConfig, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Singleton> kType = {
-    "Node/Singleton", {"nf7::DirItem",}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Shares a single lambda between multiple callers.");
-  }
+    "Node/Singleton", {"nf7::DirItem",},
+    "shares a single lambda between multiple callers",
+  };
 
   class SharedLambda;
   class Lambda;

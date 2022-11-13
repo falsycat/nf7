@@ -36,16 +36,7 @@ namespace {
 class Ref final : public nf7::FileBase, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Ref> kType = {
-    "Node/Ref", {"nf7::Node"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Refers other Node.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "the referencee's changes won't be applied to active lambdas "
-        "until their recreation");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "press 'sync' button on Node UI to resolve socket issues");
-  }
+    "Node/Ref", {"nf7::Node"}, "refers other Node"};
 
   class Lambda;
 

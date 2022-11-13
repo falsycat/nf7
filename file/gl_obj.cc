@@ -91,10 +91,6 @@ class ObjBase : public nf7::FileBase,
 
   struct TypeInfo;
 
-  static void UpdateTypeTooltip() noexcept {
-    T::UpdateTypeTooltip();
-  }
-
   ObjBase(nf7::Env& env, T&& data = {}) noexcept :
       nf7::FileBase(TypeInfo::kType, env),
       nf7::GenericConfig(mem_),
@@ -288,10 +284,6 @@ class ObjBase : public nf7::FileBase,
 
 struct Buffer {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL buffer");
-  }
-
   static inline const std::vector<std::string> kInputs = {
     "upload",
   };
@@ -392,16 +384,13 @@ struct Buffer {
 };
 template <>
 struct ObjBase<Buffer>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<Buffer>> kType = {"GL/Buffer", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<Buffer>> kType = {
+    "GL/Buffer", {"nf7::DirItem"}, "OpenGL buffer"};
 };
 
 
 struct Texture {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL texture");
-  }
-
   static inline const std::vector<std::string> kInputs = {
     "upload", "download",
   };
@@ -676,16 +665,13 @@ struct Texture {
 };
 template <>
 struct ObjBase<Texture>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<Texture>> kType = {"GL/Texture", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<Texture>> kType = {
+    "GL/Texture", {"nf7::DirItem"}, "OpenGL texture"};
 };
 
 
 struct Shader {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL shader");
-  }
-
   static inline const std::vector<std::string> kInputs  = {};
   static inline const std::vector<std::string> kOutputs = {};
 
@@ -768,16 +754,13 @@ struct Shader {
 };
 template <>
 struct ObjBase<Shader>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<Shader>> kType = {"GL/Shader", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<Shader>> kType = {
+    "GL/Shader", {"nf7::DirItem"}, "OpenGL shader"};
 };
 
 
 struct Program {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL program");
-  }
-
   static inline const std::vector<std::string> kInputs  = {
     "draw",
   };
@@ -1056,16 +1039,13 @@ struct Program {
 };
 template <>
 struct ObjBase<Program>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<Program>> kType = {"GL/Program", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<Program>> kType = {
+    "GL/Program", {"nf7::DirItem"}, "OpenGL program"};
 };
 
 
 struct VertexArray {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL Vertex Array Object");
-  }
-
   static inline const std::vector<std::string> kInputs  = {
   };
   static inline const std::vector<std::string> kOutputs = {
@@ -1250,21 +1230,17 @@ struct VertexArray {
 };
 template <>
 struct ObjBase<VertexArray>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<VertexArray>> kType = {"GL/VertexArray", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<VertexArray>> kType = {
+    "GL/VertexArray", {"nf7::DirItem"}, "OpenGL vertex array"};
 };
 
 
 struct Framebuffer {
  public:
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("OpenGL Framebuffer Object");
-  }
-
   static inline const std::vector<std::string> kInputs  = {
     "clear", "blit",
   };
-  static inline const std::vector<std::string> kOutputs = {
-  };
+  static inline const std::vector<std::string> kOutputs = {};
 
   using Product = nf7::gl::Framebuffer;
 
@@ -1435,7 +1411,8 @@ struct Framebuffer {
 };
 template <>
 struct ObjBase<Framebuffer>::TypeInfo final {
-  static inline const nf7::GenericTypeInfo<ObjBase<Framebuffer>> kType = {"GL/Framebuffer", {"nf7::DirItem"}};
+  static inline const nf7::GenericTypeInfo<ObjBase<Framebuffer>> kType = {
+    "GL/Framebuffer", {"nf7::DirItem"}, "OpenGL framebuffer"};
 };
 
 }

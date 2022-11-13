@@ -28,14 +28,9 @@ namespace {
 class Call final : public nf7::FileBase, public nf7::Sequencer {
  public:
   static inline const nf7::GenericTypeInfo<Call> kType = {
-    "Sequencer/Call", {"nf7::Sequencer"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Calls a Node.");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "implements nf7::Sequencer");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "changes will be applied to active lambdas immediately");
-  }
+    "Sequencer/Call", {"nf7::Sequencer"},
+    "calls an external Node as a Sequencer",
+  };
 
   class Lambda;
   class SessionLambda;

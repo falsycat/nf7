@@ -43,11 +43,10 @@ namespace {
 class Node final : public nf7::FileBase,
     public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
-  static inline const nf7::GenericTypeInfo<Node> kType =
-      {"LuaJIT/Node", {"nf7::DirItem", "nf7::Node"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Defines new pure Node without creating nfile.");
-  }
+  static inline const nf7::GenericTypeInfo<Node> kType = {
+    "LuaJIT/Node", {"nf7::DirItem", "nf7::Node"},
+    "defines new pure Node without creating nfile"
+  };
 
   class Lambda;
 

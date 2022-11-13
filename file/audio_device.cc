@@ -50,10 +50,8 @@ class Device final : public nf7::FileBase,
     public nf7::GenericConfig, public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Device> kType = {
-    "Audio/Device", {"nf7::DirItem",}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Provides a ring buffer to send/receive PCM samples.");
-  }
+    "Audio/Device", {"nf7::DirItem",},
+    "provides a ring buffer to send/receive PCM samples"};
 
   class Instance;
   class Lambda;

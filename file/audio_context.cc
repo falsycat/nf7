@@ -22,15 +22,7 @@ namespace {
 class AudioContext final : public nf7::File, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<AudioContext> kType = {
-    "Audio/Context", {"nf7::DirItem",}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("Drives miniaudio context.");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::audio::Queue");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "there's no merit to use multiple contexts");
-    ImGui::Bullet(); ImGui::TextUnformatted(
-        "the context remains alive after file deletion until unused");
-  }
+    "Audio/Context", {"nf7::DirItem",}, "drives miniaudio context"};
 
   class Queue;
 

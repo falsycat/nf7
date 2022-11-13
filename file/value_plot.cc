@@ -43,11 +43,7 @@ class Plot final : public nf7::FileBase,
     public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Plot> kType =
-      {"Value/Plot", {"nf7::DirItem"}};
-  static void UpdateTypeTooltip() noexcept {
-    ImGui::TextUnformatted("plotter");
-    ImGui::Bullet(); ImGui::TextUnformatted("implements nf7::Node");
-  }
+      {"Value/Plot", {"nf7::DirItem"}, "data plotter"};
 
   class Lambda;
 
