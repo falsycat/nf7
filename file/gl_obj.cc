@@ -473,7 +473,7 @@ struct Texture {
     if (p.in.name == "upload") {
       const auto& v = p.in.value;
 
-      const auto vec = v.tuple("vec").vector();
+      const auto buf = v.tuple("buf").vector();
       auto& tex = **p.obj;
 
       static const char* kOffsetNames[] = {"x", "y", "z"};
@@ -494,9 +494,9 @@ struct Texture {
       }
 
       const auto texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-      const auto vecsz = texel*gl::GetByteSize(ifmt_);
-      if (vec->size() < static_cast<size_t>(vecsz)) {
-        throw nf7::Exception {"vector is too small"};
+      const auto bufsz = texel*gl::GetByteSize(ifmt_);
+      if (buf->size() < static_cast<size_t>(bufsz)) {
+        throw nf7::Exception {"buffer is too small"};
       }
 
       const auto fmt  = gl::ToEnum(gl::GetColorComp(ifmt_));
@@ -514,7 +514,7 @@ struct Texture {
                           static_cast<GLint>(offset[1]),
                           static_cast<GLsizei>(size[0]),
                           static_cast<GLsizei>(size[1]),
-                          fmt, type, vec->data());
+                          fmt, type, buf->data());
           break;
         default:
           assert(false);
@@ -580,10 +580,10 @@ struct Texture {
 
           p.la->env().ExecSub(p.la, [=, &tex]() {
             auto v = nf7::Value {std::vector<nf7::Value::TuplePair> {
-              {"w",      static_cast<nf7::Value::Integer>(size[0])},
-              {"h",      static_cast<nf7::Value::Integer>(size[1])},
-              {"d",      static_cast<nf7::Value::Integer>(size[2])},
-              {"vector", buf},
+              {"w",   static_cast<nf7::Value::Integer>(size[0])},
+              {"h",   static_cast<nf7::Value::Integer>(size[1])},
+              {"d",   static_cast<nf7::Value::Integer>(size[2])},
+              {"buf", buf},
             }};
             p.in.sender->Handle("buffer", std::move(v), p.la);
           });
