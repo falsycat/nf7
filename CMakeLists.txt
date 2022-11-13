@@ -139,6 +139,7 @@ target_sources(nf7
 
     file/audio_context.cc
     file/audio_device.cc
+    file/codec_stbimage.cc
     file/font_context.cc
     file/font_face.cc
     file/gl_obj.cc
