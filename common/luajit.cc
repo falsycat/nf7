@@ -426,6 +426,12 @@ void PushImmEnv(lua_State* L) noexcept {
     lua_setmetatable(L, -2);
   }
 }
+void PushImmTable(lua_State* L) noexcept {
+  if (luaL_newmetatable(L, "nf7::luajit::ImmTable")) {
+    lua_pushcfunction(L, [](auto L) { return luaL_error(L, "table is immutable"); });
+    lua_setfield(L, -2, "__newindex");
+  }
+}
 
 
 template <typename T>

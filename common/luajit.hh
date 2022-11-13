@@ -143,5 +143,6 @@ int PushAll(lua_State* L, T v, Args&&... args) noexcept {
 // ---- global table
 void PushGlobalTable(lua_State*) noexcept;
 void PushImmEnv(lua_State*) noexcept;
+void PushImmTable(lua_State*) noexcept;
 
 }  // namespace nf7

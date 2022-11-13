@@ -6,92 +6,12 @@
 namespace nf7::luajit {
 
 inline void PushStdTable(lua_State* L) noexcept {
+  luaL_openlibs(L);
+
   lua_newuserdata(L, 0);
   lua_createtable(L, 0, 0);
   lua_createtable(L, 0, 0);
   {
-    // ---- lua lib ----
-
-    // assert(expr[, msg])
-    lua_pushcfunction(L, [](auto L) {
-      if (lua_toboolean(L, 1)) {
-        return 0;
-      }
-      if (lua_gettop(L) >= 2) {
-        return luaL_error(L, lua_tostring(L, 2));
-      } else {
-        return luaL_error(L, "assertion failure");
-      }
-    });
-    lua_setfield(L, -2, "assert");
-
-    // error(msg)
-    lua_pushcfunction(L, [](auto L) {
-      return luaL_error(L, luaL_checkstring(L, 1));
-    });
-    lua_setfield(L, -2, "error");
-
-    // load(str)
-    lua_pushcfunction(L, [](auto L) {
-      if (0 != luaL_loadstring(L, luaL_checkstring(L, 1))) {
-        return luaL_error(L, "lua.load error: %s", lua_tostring(L, -1));
-      }
-      return 1;
-    });
-    lua_setfield(L, -2, "load");
-
-    // pcall(func, args...) -> success, result
-    lua_pushcfunction(L, [](auto L) {
-      if (0 == lua_pcall(L, lua_gettop(L)-1, LUA_MULTRET, 0)) {
-        lua_pushboolean(L, true);
-        lua_insert(L, 1);
-        return lua_gettop(L);
-      } else {
-        lua_pushboolean(L, false);
-        lua_insert(L, 1);
-        return 2;
-      }
-    });
-    lua_setfield(L, -2, "pcall");
-
-
-    // ---- math lib ----
-
-    // sin(theta)
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::sin(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "sin");
-
-    // cos(theta)
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::cos(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "cos");
-
-    // tan(theta)
-    lua_pushcfunction(L, [](auto L) {
-      lua_pushnumber(L, std::tan(luaL_checknumber(L, 1)));
-      return 1;
-    });
-    lua_setfield(L, -2, "tan");
-
-
-    // ---- table lib ----
-
-    // meta(table, meta_table)
-    lua_pushcfunction(L, [](auto L) {
-      luaL_checktype(L, 1, LUA_TTABLE);
-      luaL_checktype(L, 2, LUA_TTABLE);
-      lua_settop(L, 2);
-      lua_setmetatable(L, 1);
-      return 1;
-    });
-    lua_setfield(L, -2, "meta");
-
-
     // ---- time lib ----
 
     // now()
@@ -142,17 +62,41 @@ inline void PushStdTable(lua_State* L) noexcept {
     lua_setfield(L, -2, "mvector");
 
 
-    // ---- bit manip ----
-    luaL_openlibs(L);
-    luaL_loadstring(L, "return require(\"bit\")");
-    lua_call(L, 0, 1);
-    lua_setfield(L, -2, "bit");
+    // ---- lua std libs ----
+    const auto Copy =
+        [L](const char* name, const char* expr, bool imm) {
+          luaL_loadstring(L, expr);
+          lua_call(L, 0, 1);
+          if (imm) {
+            PushImmTable(L);
+            lua_setmetatable(L, -2);
+          }
+          lua_setfield(L, -2, name);
+        };
+    Copy("assert",       "return assert",       false);
+    Copy("error",        "return error",        false);
+    Copy("ipairs",       "return ipairs",       false);
+    Copy("loadstring",   "return loadstring",   false);
+    Copy("next",         "return next",         false);
+    Copy("pairs",        "return pairs",        false);
+    Copy("pcall",        "return pcall",        false);
+    Copy("rawequal",     "return rawequal",     false);
+    Copy("rawget",       "return rawget",       false);
+    Copy("select",       "return select",       false);
+    Copy("setfenv",      "return setfenv",      false);
+    Copy("setmetatable", "return setmetatable", false);
+    Copy("tonumber",     "return tonumber",     false);
+    Copy("tostring",     "return tostring",     false);
+    Copy("type",         "return type",         false);
+    Copy("unpack",       "return unpack",       false);
+    Copy("_VERSION",     "return _VERSION",     false);
+    Copy("xpcall",       "return xpcall",       false);
 
-    // ---- str manip ----
-    luaL_openlibs(L);
-    luaL_loadstring(L, "return string");
-    lua_call(L, 0, 1);
-    lua_setfield(L, -2, "str");
+    Copy("bit",       "return require(\"bit\")", true);
+    Copy("coroutine", "return coroutine",        true);
+    Copy("math",      "return math",             true);
+    Copy("string",    "return string",           true);
+    Copy("table",     "return table",            true);
   }
   lua_setfield(L, -2, "__index");
   lua_setmetatable(L, -2);
