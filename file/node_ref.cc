@@ -205,7 +205,7 @@ class Ref::Lambda final : public Node::Lambda,
 
     // ignore everything from others
 
-  } catch (nf7::Exception& e) {
+  } catch (nf7::Exception&) {
     log_->Error("failed to call referencee");
     Abort();
   }

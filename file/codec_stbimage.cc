@@ -87,8 +87,8 @@ class StbImage final : public nf7::Node::Lambda,
   }
 
   std::shared_ptr<nf7::LoggerRef> log_;
-  static_assert(PureNodeFile_LoggerRef<StbImage>);
 };
+static_assert(PureNodeFile_LoggerRef<StbImage>);
 
 }
 }  // namespace nf7
