@@ -115,6 +115,7 @@ target_sources(nf7
     common/node_link_store.hh
     common/node_root_lambda.hh
     common/ptr_selector.hh
+    common/pure_node_file.hh
     common/queue.hh
     common/ring_buffer.hh
     common/sequencer.hh

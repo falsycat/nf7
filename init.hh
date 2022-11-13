@@ -21,7 +21,12 @@ inline std::unique_ptr<nf7::File> CreateRoot(nf7::Env& env) noexcept {
 
   auto& node = Add(root, "node", "System/Dir").interfaceOrThrow<nf7::Dir>();
   {
-    Add(node, "system", "System/Node");
+    auto& system = Add(node, "system", "System/Node").interfaceOrThrow<nf7::Dir>();
+    {
+      Add(system, "save",  "System/Node/Save");
+      Add(system, "exit",  "System/Node/Exit");
+      Add(system, "panic", "System/Node/Panic");
+    }
   }
 
   Add(root, "home", "System/Dir").interfaceOrThrow<nf7::Dir>();
