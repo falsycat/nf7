@@ -143,6 +143,7 @@ class Ref final : public nf7::FileBase, public nf7::Node {
         std::make_shared<nf7::GenericContext>(*this, "change path"),
         [this, &target, p = std::move(p)]() mutable {
           target = std::move(p);
+          SyncQuiet();
           mem_.Commit();
         });
   }
