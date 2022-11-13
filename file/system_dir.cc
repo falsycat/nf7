@@ -316,9 +316,12 @@ void Dir::TreeView() noexcept {
 void Dir::ItemAdder() noexcept {
   static const nf7::File::TypeInfo* type;
   static std::string                name;
+  static bool                       type_filtered;
+
   if (ImGui::IsWindowAppearing()) {
-    type = nullptr;
-    name = dir_.GetUniqueName("new_file");
+    type          = nullptr;
+    name          = dir_.GetUniqueName("new_file");
+    type_filtered = true;
   }
   ImGui::TextUnformatted("System/Dir: adding new file...");
 
@@ -328,7 +331,7 @@ void Dir::ItemAdder() noexcept {
   if (ImGui::BeginListBox("type", {16*em, 8*em})) {
     for (auto& p : nf7::File::registry()) {
       const auto& t = *p.second;
-      if (!t.flags().contains("nf7::DirItem")) {
+      if (type_filtered && !t.flags().contains("nf7::DirItem")) {
         continue;
       }
 
@@ -345,6 +348,19 @@ void Dir::ItemAdder() noexcept {
 
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
           exec = true;
+        }
+      }
+    }
+
+    if (type_filtered) {
+      ImGui::Selectable("(show all types)");
+      if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted("double click to allow you to place system files");
+        ImGui::TextDisabled("  -- great power brings DESTRUCTION and CREATION");
+        ImGui::EndTooltip();
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+          type_filtered = false;
         }
       }
     }
