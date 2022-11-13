@@ -173,6 +173,7 @@ target_link_libraries(nf7
     magic_enum
     miniaudio
     source_location
+    stb
     yas
     yaml-cpp
 )

@@ -231,6 +231,25 @@ target_include_directories(source_location SYSTEM INTERFACE .)
 target_sources(source_location INTERFACE source_location.hh)
 
 
+# ---- stb ----
+# repository: https://github.com/nothings/stb
+# license   : Unlicense
+FetchContent_Declare(
+  stb
+  URL "https://github.com/nothings/stb/archive/8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55.zip"
+)
+FetchContent_Populate(stb)
+
+add_library(stb)
+target_include_directories(stb PUBLIC SYSTEM ${stb_SOURCE_DIR})
+target_sources(stb
+  PUBLIC
+    ${stb_SOURCE_DIR}/stb_image.h
+  PRIVATE
+    stb.c
+)
+
+
 # ---- yaml-cpp ----
 # repository: https://github.com/jbeder/yaml-cpp
 # license   : MIT
