@@ -974,6 +974,10 @@ struct Program {
         if (status != GL_FRAMEBUFFER_COMPLETE) {
           p.log->Warn("framebuffer is broken");
         }
+
+        p.la->env().ExecSub(p.la, [p]() {
+          p.in.sender->Handle("done", nf7::Value::Pulse {}, p.la);
+        });
       }).Catch<nf7::Exception>([p](auto& e) {
         p.log->Error(e);
       });
