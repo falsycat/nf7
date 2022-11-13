@@ -388,14 +388,14 @@ try {
   // file duplication check for preventing deadlock by double lock
   std::unordered_set<nf7::File::Id> locked;
   for (const auto& col : colors) {
-    if (col->tex && !locked.insert(col->tex).second) {
+    if (col && col->tex && !locked.insert(col->tex).second) {
       throw nf7::Exception {"attached color texture is duplicated"};
     }
   }
-  if (depth && !locked.insert(depth->tex).second) {
+  if (depth && depth->tex && !locked.insert(depth->tex).second) {
     throw nf7::Exception {"attached depth texture is duplicated"};
   }
-  if (stencil && !locked.insert(stencil->tex).second) {
+  if (stencil && stencil->tex && !locked.insert(stencil->tex).second) {
     throw nf7::Exception {"attached stencil texture is duplicated"};
   }
 
