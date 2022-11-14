@@ -178,6 +178,8 @@ class Singleton::Lambda final : public nf7::Node::Lambda,
 
   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
     const auto p = parent();
+    if (!p) return;
+
     if (in.sender == shared_) {
       p->Handle(in.name, in.value, shared_from_this());
     } else if (in.sender == p) {
