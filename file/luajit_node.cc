@@ -117,6 +117,8 @@ class Node final : public nf7::FileBase,
 
   std::filesystem::file_time_type last_build_ = {};
   std::shared_ptr<nf7::luajit::NFileImporter> importer_;
+
+  nf7::ContextOwner la_owner_;
 };
 
 
@@ -139,6 +141,10 @@ class Node::Lambda final : public nf7::Node::Lambda,
   } catch (nf7::ExpiredException&) {
   }
 
+  void Abort() noexcept override {
+    th_owner_.AbortAll();
+  }
+
  private:
   nf7::Life<Node>::Ref f_;
 
@@ -147,6 +153,8 @@ class Node::Lambda final : public nf7::Node::Lambda,
   std::mutex mtx_;
   std::optional<nf7::luajit::Ref> ctx_;
 
+  nf7::ContextOwner th_owner_;
+
 
   void StartThread(const nf7::Node::Lambda::Msg& in,
                    const std::shared_ptr<nf7::luajit::Ref>& func) noexcept {
@@ -154,7 +162,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
     auto self = shared_from_this();
 
     auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(in.sender, self);
-    auto th   = std::make_shared<nf7::luajit::Thread>(self, ljq, std::move(hndl));
+    auto th   = th_owner_.Create<nf7::luajit::Thread>(self, ljq, std::move(hndl));
     th->Install(log_);
     th->Install(f_->importer_);
 
@@ -176,7 +184,7 @@ class Node::Lambda final : public nf7::Node::Lambda,
 };
 std::shared_ptr<nf7::Node::Lambda> Node::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {
-  return std::make_shared<Lambda>(*this, parent);
+  return la_owner_.Create<Lambda>(*this, parent);
 }
 
 

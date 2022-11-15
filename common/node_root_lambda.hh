@@ -30,7 +30,11 @@ class NodeRootLambda : public nf7::Node::Lambda,
      ret->target_ = n.CreateLambda(ret);
      return ret;
    }
+
    using nf7::Node::Lambda::Lambda;
+   ~NodeRootLambda() noexcept {
+     Abort();
+   }
 
    void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
      std::unique_lock<std::mutex> lk {mtx_};
@@ -69,6 +73,10 @@ class NodeRootLambda : public nf7::Node::Lambda,
      pro_.emplace();
      names_ = std::move(names);
      return pro_->future();
+   }
+
+   void Abort() noexcept override {
+     target_->Abort();
    }
 
   private:

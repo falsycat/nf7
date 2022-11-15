@@ -68,6 +68,7 @@ target_sources(nf7
     common/aggregate_promise.hh
     common/audio_queue.hh
     common/config.hh
+    common/context_owner.hh
     common/dir.hh
     common/dir_item.hh
     common/factory.hh

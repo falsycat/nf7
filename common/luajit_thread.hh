@@ -14,6 +14,7 @@
 
 #include "nf7.hh"
 
+#include "common/context_owner.hh"
 #include "common/future.hh"
 #include "common/logger_ref.hh"
 #include "common/luajit.hh"
@@ -23,7 +24,8 @@
 
 namespace nf7::luajit {
 
-class Thread final : public std::enable_shared_from_this<Thread> {
+class Thread final : public nf7::Context,
+    public std::enable_shared_from_this<Thread> {
  public:
   static constexpr const char* kTypeName = "nf7::luajit::Thread";
 
@@ -60,10 +62,12 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   }
 
   Thread() = delete;
-  Thread(const std::shared_ptr<nf7::Context>&       ctx,
+  Thread(const std::shared_ptr<nf7::Context>&       parent,
          const std::shared_ptr<nf7::luajit::Queue>& ljq,
          Handler&& handler) noexcept :
-      ctx_(ctx), ljq_(ljq), handler_(std::move(handler)) {
+      nf7::Context(parent->env(), parent->initiator(), parent),
+      ljq_(ljq),
+      handler_(std::move(handler)) {
   }
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
@@ -106,20 +110,23 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   }
 
   // thread-safe
-  void Abort() noexcept;
+  void Abort() noexcept override;
 
   // queue a task that exec Resume()
   // thread-safe
   template <typename... Args>
   void ExecResume(lua_State* L, Args&&... args) noexcept {
     auto self = shared_from_this();
-    ljq_->Push(ctx_, [this, L, self, args...](auto) mutable {
+    ljq_->Push(self, [this, L, args...](auto) mutable {
       Resume(L, luajit::PushAll(L, std::forward<Args>(args)...));
     });
   }
 
-  nf7::Env& env() const noexcept { return ctx_->env(); }
-  const std::shared_ptr<nf7::Context>& ctx() const noexcept { return ctx_; }
+
+  std::string GetDescription() const noexcept override {
+    return "LuaJIT thread";
+  }
+
   const std::shared_ptr<nf7::luajit::Queue>& ljq() const noexcept { return ljq_; }
   const std::shared_ptr<nf7::LoggerRef>& logger() const noexcept { return logger_; }
   const std::shared_ptr<Importer>& importer() const noexcept { return importer_; }
@@ -129,7 +136,6 @@ class Thread final : public std::enable_shared_from_this<Thread> {
   // initialized by constructor
   std::mutex mtx_;
 
-  std::shared_ptr<nf7::Context>       ctx_;
   std::shared_ptr<nf7::luajit::Queue> ljq_;
 
   Handler handler_;
@@ -163,7 +169,7 @@ class Thread::Importer {
 
   // be called on luajit thread
   virtual nf7::Future<std::shared_ptr<luajit::Ref>> Import(
-      const luajit::Thread&, std::string_view) noexcept = 0;
+      const std::shared_ptr<luajit::Thread>&, std::string_view) noexcept = 0;
 };
 
 

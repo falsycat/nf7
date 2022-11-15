@@ -1,6 +1,7 @@
 #include "nf7.hh"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <map>
 #include <sstream>

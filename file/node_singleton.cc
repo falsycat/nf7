@@ -120,6 +120,9 @@ class Singleton::SharedLambda final : public nf7::Node::Lambda,
  public:
   SharedLambda(Singleton& f) noexcept : nf7::Node::Lambda(f), f_(f.life_) {
   }
+  ~SharedLambda() noexcept {
+    Abort();
+  }
 
   void SendToTarget(const nf7::Node::Lambda::Msg& in) noexcept
   try {
@@ -135,10 +138,14 @@ class Singleton::SharedLambda final : public nf7::Node::Lambda,
   } catch (nf7::ExpiredException&) {
   } catch (nf7::Exception&) {
     f_->log_.Error("failed to call target");
+    Abort();
   }
 
-  void Drop() noexcept {
-    target_ = nullptr;
+  void Abort() noexcept override {
+    if (target_) {
+      target_->Abort();
+      target_ = nullptr;
+    }
   }
 
   std::string GetDescription() const noexcept override {
@@ -202,7 +209,7 @@ std::shared_ptr<nf7::Node::Lambda> Singleton::CreateLambda(
 
 void Singleton::UpdateMenu() noexcept {
   if (ImGui::MenuItem("drop current lambda")) {
-    shared_la_->Drop();
+    shared_la_->Abort();
   }
 }
 void Singleton::UpdateTooltip() noexcept {

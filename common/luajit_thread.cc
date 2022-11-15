@@ -23,7 +23,7 @@ lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
 
   th_ = lua_newthread(L);
-  th_ref_.emplace(ctx_, ljq_, L);
+  th_ref_.emplace(shared_from_this(), ljq_, L);
 
   state_ = kPaused;
   return th_;
@@ -136,7 +136,7 @@ static void PushMeta(lua_State* L) noexcept {
           return luaL_error(L, "import is not available in the current thread");
         }
         if (const auto name = lua_tostring(L, 2)) {
-          auto fu = im->Import(*th, name);
+          auto fu = im->Import(th, name);
           fu.ThenIf([L, th](auto& obj) {
             th->ExecResume(L, obj);
           }).template Catch<nf7::Exception>([L, th](auto&) {
@@ -155,10 +155,10 @@ static void PushMeta(lua_State* L) noexcept {
       // nf7:resolve(path)
       lua_pushcfunction(L, [](auto L) {
         auto th   = Thread::GetPtr(L, 1);
-        auto base = th->ctx()->initiator();
+        auto base = th->initiator();
 
         std::string path = luaL_checkstring(L, 2);
-        th->env().ExecSub(th->ctx(), [th, L, base, path = std::move(path)]() {
+        th->env().ExecSub(th, [th, L, base, path = std::move(path)]() {
           try {
             th->ExecResume(L, th->env().GetFileOrThrow(base).ResolveOrThrow(path).id());
           } catch (nf7::File::NotFoundException&) {
@@ -174,7 +174,7 @@ static void PushMeta(lua_State* L) noexcept {
         auto th = Thread::GetPtr(L, 1);
         lua_pushvalue(L, 2);
 
-        auto ref = std::make_shared<nf7::luajit::Ref>(th->ctx(), th->ljq(), L);
+        auto ref = std::make_shared<nf7::luajit::Ref>(th, th->ljq(), L);
         PushValue(L, nf7::Value {std::move(ref)});
         return 1;
       });
@@ -186,13 +186,13 @@ static void PushMeta(lua_State* L) noexcept {
 
         const auto  id    = luaL_checkinteger(L, 2);
         std::string iface = luaL_checkstring(L, 3);
-        th->env().ExecSub(th->ctx(), [th, L, id, iface = std::move(iface)]() {
+        th->env().ExecSub(th, [th, L, id, iface = std::move(iface)]() {
           try {
             auto& f = th->env().GetFileOrThrow(static_cast<nf7::File::Id>(id));
             if (iface == "node") {
               th->ExecResume(
                   L, nf7::NodeRootLambda::Create(
-                      th->ctx(), f.template interfaceOrThrow<nf7::Node>()));
+                      th, f.template interfaceOrThrow<nf7::Node>()));
             } else {
               throw nf7::Exception {"unknown interface: "+iface};
             }
@@ -211,7 +211,7 @@ static void PushMeta(lua_State* L) noexcept {
 
         const auto time = nf7::Env::Clock::now() +
             std::chrono::milliseconds(static_cast<uint64_t>(sec*1000));
-        th->ljq()->Push(th->ctx(), [th, L](auto) { th->ExecResume(L); }, time);
+        th->ljq()->Push(th, [th, L](auto) { th->ExecResume(L); }, time);
 
         return th->Yield(L);
       });

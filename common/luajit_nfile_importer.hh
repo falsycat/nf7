@@ -27,15 +27,14 @@ class NFileImporter :
   }
 
   nf7::Future<std::shared_ptr<luajit::Ref>> Import(
-      const luajit::Thread& th, std::string_view name) noexcept {
+      const std::shared_ptr<luajit::Thread>& th, std::string_view name) noexcept {
     auto self = shared_from_this();
 
     const auto path = base_ / std::string {name};
 
-    auto ljq = th.ljq();
+    auto ljq = th->ljq();
     auto ctx = std::make_shared<
-        nf7::GenericContext>(th.env(), th.ctx()->initiator(),
-                             "LuaJIT imported script (nfile)", th.ctx());
+        nf7::GenericContext>(th->env(), th->initiator(), "imported LuaJIT script", th);
     nf7::Future<std::shared_ptr<luajit::Ref>>::Promise pro {ctx};
 
     // create new thread
@@ -50,7 +49,7 @@ class NFileImporter :
     });
     auto th_sub = std::make_shared<
         nf7::luajit::Thread>(ctx, ljq, std::move(handler));
-    th_sub->Install(th);
+    th_sub->Install(*th);
 
     // install new importer for sub thread
     auto dir = path;
