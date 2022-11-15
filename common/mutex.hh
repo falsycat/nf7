@@ -42,6 +42,13 @@ class Mutex final {
     return k;
   }
 
+  const char* status() const noexcept {
+    return sync_.expired()? "free": ex_? "exlocked": "locked";
+  }
+  size_t pendings() const noexcept {
+    return pends_.size();
+  }
+
   std::function<void()> onLock   = [](){};
   std::function<void()> onUnlock = [](){};
 
