@@ -52,23 +52,15 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     public std::enable_shared_from_this<LuaContext::Queue> {
  public:
   struct Runner final {
-    Runner(std::weak_ptr<Queue> owner) noexcept : owner_(owner) {
+    Runner(lua_State* lua) noexcept : L(lua) {
     }
     void operator()(Task&& t) {
-      if (auto k = owner_.lock()) {
-        t(k->L);
-      }
+      t(L);
     }
    private:
-    std::weak_ptr<Queue> owner_;
+    lua_State* L;
   };
   using Thread = nf7::Thread<Runner, Task>;
-
-  static std::shared_ptr<Queue> Create(LuaContext& f) {
-    auto ret = std::make_shared<Queue>(f);
-    ret->th_ = std::make_shared<Thread>(f, Runner {ret});
-    return ret;
-  }
 
   Queue() = delete;
   Queue(LuaContext& f) : L(luaL_newstate()), env_(&f.env()) {
@@ -79,6 +71,8 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     nf7::luajit::PushImmEnv(L);
     lua_setfenv(L, -2);
     lua_pop(L, 1);
+
+    th_ = std::make_shared<Thread>(f, Runner {L});
   }
   ~Queue() noexcept {
     th_->Push(
@@ -106,7 +100,7 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
 LuaContext::LuaContext(nf7::Env& env) :
     nf7::File(kType, env),
     nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
-    q_(Queue::Create(*this)) {
+    q_(std::make_shared<Queue>(*this)) {
 }
 
 
