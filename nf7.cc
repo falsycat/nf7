@@ -254,8 +254,10 @@ Context::Context(File& f, const std::shared_ptr<Context>& parent) noexcept :
 Context::Context(Env& env, File::Id initiator, const std::shared_ptr<Context>& parent) noexcept :
     env_(&env), initiator_(initiator),
     parent_(parent), depth_(parent? parent->depth()+1: 0) {
+  env_->AddContext(*this);
 }
 Context::~Context() noexcept {
+  env_->RemoveContext(*this);
 }
 
 File& Env::GetFileOrThrow(File::Id id) const {

@@ -301,6 +301,10 @@ class Env {
   virtual File::Id AddFile(File&) noexcept = 0;
   virtual void RemoveFile(File::Id) noexcept = 0;
 
+  friend class nf7::Context;
+  virtual void AddContext(nf7::Context&) noexcept = 0;
+  virtual void RemoveContext(nf7::Context&) noexcept = 0;
+
   virtual void AddWatcher(File::Id, Watcher&) noexcept = 0;
   virtual void RemoveWatcher(File::Id, Watcher&) noexcept = 0;
 
