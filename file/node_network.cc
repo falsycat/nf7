@@ -882,6 +882,7 @@ void Network::PostHandle(const Event& ev) noexcept {
     break;
   case Event::kRemove:
     for (const auto& item : items_) item->Detach();
+    AttachLambda(nullptr);
     break;
   case Event::kUpdate:
     break;

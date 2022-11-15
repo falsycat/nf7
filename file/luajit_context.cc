@@ -77,8 +77,7 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   ~Queue() noexcept {
     th_->Push(
         std::make_shared<nf7::GenericContext>(*env_, 0, "deleting lua_State"),
-        [L = L](auto) { lua_close(L); }
-      );
+        [L = L](auto) { lua_close(L); });
   }
   Queue(const Queue&) = delete;
   Queue(Queue&&) = delete;

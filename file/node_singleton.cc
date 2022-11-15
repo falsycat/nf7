@@ -65,8 +65,7 @@ class Singleton final : public nf7::FileBase,
                    nf7::DirItem::kTooltip),
       nf7::GenericConfig(mem_),
       nf7::Node(nf7::Node::kNone),
-      life_(*this), log_(*this), mem_(*this, std::move(d)),
-      shared_la_(std::make_shared<Singleton::SharedLambda>(*this)) {
+      life_(*this), log_(*this), mem_(*this, std::move(d)) {
   }
 
   Singleton(nf7::Deserializer& ar) : Singleton(ar.env()) {
@@ -88,6 +87,7 @@ class Singleton final : public nf7::FileBase,
     return {};
   }
 
+  void PostHandle(const nf7::File::Event&) noexcept override;
   void PostUpdate() noexcept override {
     la_.erase(
         std::remove_if(
@@ -206,6 +206,20 @@ std::shared_ptr<nf7::Node::Lambda> Singleton::CreateLambda(
   return ret;
 }
 
+
+void Singleton::PostHandle(const nf7::File::Event& e) noexcept {
+  switch (e.type) {
+  case nf7::File::Event::kAdd:
+    shared_la_ = std::make_shared<SharedLambda>(*this);
+    return;
+  case nf7::File::Event::kRemove:
+    shared_la_->Abort();
+    shared_la_ = nullptr;
+    return;
+  default:
+    return;
+  }
+}
 
 void Singleton::UpdateMenu() noexcept {
   if (ImGui::MenuItem("drop current lambda")) {
