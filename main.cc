@@ -8,6 +8,7 @@
 #include <shared_mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <GL/glew.h>
@@ -187,8 +188,8 @@ class Env final : public nf7::Env {
     }
   }
   ~Env() noexcept {
-    if (ctx_cnt_ > 0) {
-      std::cout << "context leak detected: " << ctx_cnt_ << std::endl;
+    if (ctxs_.size() > 0) {
+      std::cout << "context leak detected: " << ctxs_.size() << std::endl;
     }
   }
 
@@ -291,11 +292,13 @@ class Env final : public nf7::Env {
     files_.erase(id);
   }
 
-  void AddContext(nf7::Context&) noexcept override {
-    ++ctx_cnt_;
+  void AddContext(nf7::Context& ctx) noexcept override {
+    std::unique_lock<std::mutex> k {ctx_mtx_};
+    ctxs_.insert(&ctx);
   }
-  void RemoveContext(nf7::Context&) noexcept override {
-    --ctx_cnt_;
+  void RemoveContext(nf7::Context& ctx) noexcept override {
+    std::unique_lock<std::mutex> k {ctx_mtx_};
+    ctxs_.erase(&ctx);
   }
 
   void AddWatcher(nf7::File::Id id, nf7::Env::Watcher& w) noexcept override {
@@ -322,7 +325,8 @@ class Env final : public nf7::Env {
 
   std::unordered_map<nf7::File::Id, std::vector<nf7::Env::Watcher*>> watchers_;
 
-  std::atomic<size_t> ctx_cnt_ = 0;
+  std::mutex ctx_mtx_;
+  std::unordered_set<nf7::Context*> ctxs_;
 };
 
 
