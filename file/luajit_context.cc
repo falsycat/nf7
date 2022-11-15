@@ -51,19 +51,26 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 class LuaContext::Queue final : public nf7::luajit::Queue,
     public std::enable_shared_from_this<LuaContext::Queue> {
  public:
+  struct SharedData final {
+    lua_State* L;
+  };
   struct Runner final {
-    Runner(lua_State* lua) noexcept : L(lua) {
+    Runner(const std::shared_ptr<SharedData>& data) noexcept : data_(data) {
     }
     void operator()(Task&& t) {
-      t(L);
+      t(data_->L);
+      if (data_->L) {
+        lua_gc(data_->L, LUA_GCCOLLECT, 0);
+      }
     }
    private:
-    lua_State* L;
+    std::shared_ptr<SharedData> data_;
   };
   using Thread = nf7::Thread<Runner, Task>;
 
   Queue() = delete;
-  Queue(LuaContext& f) : L(luaL_newstate()), env_(&f.env()) {
+  Queue(LuaContext& f) {
+    auto L = luaL_newstate();
     if (!L) {
       throw nf7::Exception("failed to create new Lua state");
     }
@@ -72,12 +79,18 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     lua_setfenv(L, -2);
     lua_pop(L, 1);
 
-    th_ = std::make_shared<Thread>(f, Runner {L});
+    data_ = std::make_shared<SharedData>();
+    data_->L = L;
+
+    th_ = std::make_shared<Thread>(f, Runner {data_});
   }
   ~Queue() noexcept {
     th_->Push(
-        std::make_shared<nf7::GenericContext>(*env_, 0, "deleting lua_State"),
-        [L = L](auto) { lua_close(L); });
+        std::make_shared<nf7::GenericContext>(th_->env(), 0, "deleting lua_State"),
+        [data = data_](auto) {
+          lua_close(data->L);
+          data->L = nullptr;
+        });
   }
   Queue(const Queue&) = delete;
   Queue(Queue&&) = delete;
@@ -92,9 +105,8 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   size_t tasksDone() const noexcept { return th_->tasksDone(); }
 
  private:
-  lua_State* L;
-  Env* const env_;
-  std::shared_ptr<Thread> th_;
+  std::shared_ptr<Thread>     th_;
+  std::shared_ptr<SharedData> data_;
 };
 LuaContext::LuaContext(nf7::Env& env) :
     nf7::File(kType, env),
