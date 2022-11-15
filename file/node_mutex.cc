@@ -5,9 +5,11 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
 #include "common/life.hh"
+#include "common/logger_ref.hh"
 #include "common/mutex.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -15,7 +17,7 @@
 
 namespace nf7 {
 
-class MutexNode final : public nf7::File,
+class MutexNode final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<MutexNode> kType = {
@@ -24,10 +26,11 @@ class MutexNode final : public nf7::File,
   };
 
   MutexNode(nf7::Env& env) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kNone),
-      life_(*this) {
+      life_(*this),
+      log_(std::make_shared<nf7::LoggerRef>(*this)) {
   }
 
   MutexNode(nf7::Deserializer& ar) : MutexNode(ar.env()) {
@@ -58,6 +61,9 @@ class MutexNode final : public nf7::File,
 
   nf7::Mutex mtx_;
 
+  std::shared_ptr<nf7::LoggerRef> log_;
+
+
   class Lambda final : public nf7::Node::Lambda,
       public std::enable_shared_from_this<Lambda> {
    public:
@@ -77,11 +83,13 @@ class MutexNode final : public nf7::File,
       }
     }
     void Lock(const std::shared_ptr<nf7::Node::Lambda>& sender, bool ex) noexcept {
+      auto self = shared_from_this();
+      auto log  = f_->log_;
       if (lock_ || std::exchange(working_, true)) {
+        log->Warn("race condition detected (lock is already acquired or requested)");
         return;
       }
-      auto self = shared_from_this();
-      auto ctx  = std::make_shared<nf7::GenericContext>(*f_, "mutex lock", self);
+      auto ctx = std::make_shared<nf7::GenericContext>(*f_, "mutex lock", self);
       f_->mtx_.
           AcquireLock(ctx, ex).
           ThenIf([=](auto& k) {
@@ -91,6 +99,7 @@ class MutexNode final : public nf7::File,
           }).
           Catch<nf7::Exception>([=](auto&) {
             self->working_ = false;
+            log->Warn("failed to lock lambda");
             sender->Handle("failed", nf7::Value::Pulse {}, self);
           });
     }
