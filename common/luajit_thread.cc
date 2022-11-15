@@ -57,13 +57,15 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   if (state_ == kAborted) return;
   switch (ret) {
   case 0:
-    state_ = kFinished;
+    th_ref_ = std::nullopt;
+    state_  = kFinished;
     break;
   case LUA_YIELD:
     state_ = kPaused;
     break;
   default:
-    state_ = kAborted;
+    th_ref_ = std::nullopt;
+    state_  = kAborted;
   }
   if (!std::exchange(skip_handle_, false)) {
     handler_(*this, L);

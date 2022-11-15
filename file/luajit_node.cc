@@ -126,7 +126,9 @@ class Node::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<Node::Lambda> {
  public:
   Lambda(Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), f_(f.life_), log_(f.log_) {
+      nf7::Node::Lambda(f, parent),
+      f_(f.life_), log_(f.log_),
+      table_ctx_(std::make_shared<nf7::GenericContext>(f, "LuaJIT Node context table")) {
   }
 
   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
@@ -151,7 +153,8 @@ class Node::Lambda final : public nf7::Node::Lambda,
   std::shared_ptr<nf7::LoggerRef> log_;
 
   std::mutex mtx_;
-  std::optional<nf7::luajit::Ref> ctx_;
+  std::shared_ptr<nf7::Context>   table_ctx_;
+  std::optional<nf7::luajit::Ref> table_;
 
   nf7::ContextOwner th_owner_;
 
@@ -169,15 +172,15 @@ class Node::Lambda final : public nf7::Node::Lambda,
     ljq->Push(self, [this, ljq, th, func, in](auto L) mutable {
       {
         std::unique_lock<std::mutex> k {mtx_};
-        if (!ctx_ || ctx_->ljq() != ljq) {
+        if (!table_ || table_->ljq() != ljq) {
           lua_createtable(L, 0, 0);
-          ctx_.emplace(shared_from_this(), ljq, L);
+          table_.emplace(table_ctx_, ljq, L);
         }
       }
       L = th->Init(L);
       func->PushSelf(L);
       nf7::luajit::PushAll(L, in.name, in.value);
-      ctx_->PushSelf(L);
+      table_->PushSelf(L);
       th->Resume(L, 3);
     });
   }
