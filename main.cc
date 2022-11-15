@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -49,6 +50,7 @@ std::atomic<CycleState> cycle_ = kUpdate;
 std::condition_variable cycle_cv_;
 std::mutex              cycle_mtx_;
 
+std::shared_mutex task_mtx_;
 using Task = std::pair<std::shared_ptr<nf7::Context>, nf7::Env::Task>;
 nf7::Queue<Task>      mainq_;
 nf7::Queue<Task>      subq_;
@@ -65,21 +67,28 @@ void WorkerThread() noexcept {
     k.unlock();
 
     // exec main tasks
-    while (auto task = mainq_.Pop())
-    try {
-      task->second();
-    } catch (nf7::Exception&) {
-      panicq_.Push(std::current_exception());
+    for (;;) {
+      std::shared_lock<std::shared_mutex> sk {task_mtx_};
+      auto task = mainq_.Pop();
+      if (!task) break;
+      try {
+        task->second();
+      } catch (nf7::Exception&) {
+        sk.unlock();
+        panicq_.Push(std::current_exception());
+      }
     }
 
     // exec sub tasks
     while (cycle_ != kSyncUpdate) {
       for (size_t i = 0; i < kSubTaskUnit; ++i) {
+        std::shared_lock<std::shared_mutex> sk {task_mtx_};
         const auto task = subq_.Pop();
         if (!task) break;
         try {
           task->second();
         } catch (nf7::Exception&) {
+          sk.unlock();
           panicq_.Push(std::current_exception());
         }
       }
@@ -105,11 +114,16 @@ void AsyncThread() noexcept {
     cycle_cv_.wait_until(k, until, []() { return !alive_ || !asyncq_.idle(); });
     k.unlock();
 
-    while (auto task = asyncq_.Pop())
-    try {
-      task->second();
-    } catch (nf7::Exception&) {
-      panicq_.Push(std::current_exception());
+    for (;;) {
+      std::shared_lock<std::shared_mutex> sk {task_mtx_};
+      auto task = asyncq_.Pop();
+      if (!task) break;
+      try {
+        task->second();
+      } catch (nf7::Exception&) {
+        sk.unlock();
+        panicq_.Push(std::current_exception());
+      }
     }
     k.lock();
   }
@@ -130,11 +144,13 @@ void GLThread(GLFWwindow* window) noexcept {
 
     glfwMakeContextCurrent(window);
     for (size_t i = 0; i < kSubTaskUnit; ++i) {
+      std::shared_lock<std::shared_mutex> sk {task_mtx_};
       auto task = glq_.Pop();
       if (!task) break;
       try {
         task->second();
       } catch (nf7::Exception&) {
+        sk.unlock();
         panicq_.Push(std::current_exception());
       }
       assert(0 == glGetError());
@@ -485,7 +501,11 @@ int main(int, char**) {
   }
 
   // wait for all tasks
-  while (mainq_.size() || subq_.size() || asyncq_.size() || glq_.size()) {
+  for (;;) {
+    std::unique_lock<std::shared_mutex> sk {task_mtx_};
+    if (!mainq_.size() && !subq_.size() && !asyncq_.size() && !glq_.size()) {
+      break;
+    }
     std::this_thread::sleep_for(30ms);
   }
 
