@@ -145,7 +145,7 @@ class Network final : public nf7::FileBase,
       items.push_back(std::make_unique<Item>(env, *item));
     }
     return std::make_unique<Network>(
-        env, std::move(items), NodeLinkStore(links_));
+        env, std::move(items), NodeLinkStore(links_), Data {mem_.data()});
   }
 
   File* PreFind(std::string_view name) const noexcept override;
