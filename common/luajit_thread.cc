@@ -48,12 +48,15 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   lua_setfield(L, -2, "nf7");
   lua_pop(L, 1);
 
-  state_ = kRunning;
-  k.unlock();
+  state_  = kRunning;
   active_ = true;
+  yield_ctx_.reset();
+
+  k.unlock();
   const auto ret = lua_resume(L, narg);
-  active_ = false;
   k.lock();
+
+  active_ = false;
   if (state_ == kAborted) return;
   switch (ret) {
   case 0:
@@ -67,13 +70,24 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
     th_ref_ = std::nullopt;
     state_  = kAborted;
   }
-  if (!std::exchange(skip_handle_, false)) {
+  if (!std::exchange(skip_handler_, false)) {
+    k.unlock();
     handler_(*this, L);
   }
 }
 void Thread::Abort() noexcept {
   std::unique_lock<std::mutex> k(mtx_);
-  state_ = kAborted;
+  state_  = kAborted;
+  th_ref_ = std::nullopt;
+
+  auto wctx = std::move(yield_ctx_);
+  yield_ctx_.reset();
+  k.unlock();
+  if (auto ctx = wctx.lock()) {
+    if (ctx.get() != this) {
+      ctx->Abort();
+    }
+  }
 }
 
 

@@ -390,7 +390,7 @@ void PushNodeRootLambda(
           }).template Catch<nf7::Exception>(nullptr, [L, th](nf7::Exception&) {
             th->ExecResume(L);
           });
-          return th->Yield(L);
+          return th->Yield(L, la);
         }
       });
       lua_setfield(L, -2, "recv");

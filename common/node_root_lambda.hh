@@ -77,6 +77,7 @@ class NodeRootLambda : public nf7::Node::Lambda,
 
    void Abort() noexcept override {
      target_->Abort();
+     pro_ = std::nullopt;
    }
 
   private:

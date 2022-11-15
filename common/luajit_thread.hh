@@ -97,8 +97,9 @@ class Thread final : public nf7::Context,
 
   // must be called on luajit thread
   // handler_ won't be called on this yielding
-  int Yield(lua_State* L) {
-    skip_handle_ = true;
+  int Yield(lua_State* L, const std::shared_ptr<nf7::Context>& ctx = nullptr) {
+    yield_ctx_    = ctx;
+    skip_handler_ = true;
     return lua_yield(L, 0);
   }
 
@@ -153,8 +154,9 @@ class Thread final : public nf7::Context,
 
 
   // mutable params
-  bool active_      = false;  // true while executing lua_resume
-  bool skip_handle_ = false;  // handler_ won't be called on next yield
+  bool active_       = false;  // true while executing lua_resume
+  bool skip_handler_ = false;
+  std::weak_ptr<nf7::Context> yield_ctx_;
 };
 
 
