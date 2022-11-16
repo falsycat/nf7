@@ -27,6 +27,11 @@ class SquashedHistory : public nf7::GenericHistory {
     if (staged_.size() == 0) {
       return false;
     }
+    if (++tick_ <= 2) {
+      return false;
+    }
+    tick_ = 0;
+
     nf7::GenericHistory::Add(
         std::make_unique<nf7::AggregateCommand>(std::move(staged_)));
     return true;
@@ -48,6 +53,8 @@ class SquashedHistory : public nf7::GenericHistory {
 
  private:
   std::vector<std::unique_ptr<Command>> staged_;
+
+  uint8_t tick_ = 0;
 };
 
 }  // namespace nf7

@@ -151,6 +151,7 @@ target_sources(nf7
     file/node_network.cc
     file/node_ref.cc
     file/node_singleton.cc
+    file/node_ziptie.cc
     file/sequencer_adaptor.cc
     file/sequencer_call.cc
     file/sequencer_timeline.cc
