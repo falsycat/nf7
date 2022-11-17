@@ -389,8 +389,12 @@ class Network::Lambda : public Node::Lambda,
       if (in.sender == parent) {
         for (auto& item : f_->items_) {
           if (item->iflags() & InternalNode::kInputHandler) {
-            auto la = FindOrCreateLambda(item->id());
-            la->Handle(in.name, in.value, shared_from_this());
+            try {
+              auto la = FindOrCreateLambda(item->id());
+              la->Handle(in.name, in.value, shared_from_this());
+            } catch (nf7::Exception&) {
+              // ignore missing socket
+            }
           }
         }
         return;
@@ -427,7 +431,7 @@ class Network::Lambda : public Node::Lambda,
   }
 
   // Ensure that the Network is alive before calling
-  const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(ItemId id) noexcept
+  const std::shared_ptr<Node::Lambda>& FindOrCreateLambda(ItemId id)
   try {
     return FindLambda(id);
   } catch (nf7::Exception&) {
