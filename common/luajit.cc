@@ -61,7 +61,7 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
             for (auto& p : tup) {
               PushValue(L, p.second);
               if (p.first.empty()) {
-                lua_rawseti(L, -2, static_cast<int>(arridx++));
+                lua_rawseti(L, -2, static_cast<int>(++arridx));
               } else {
                 lua_setfield(L, -2, p.first.c_str());
               }
