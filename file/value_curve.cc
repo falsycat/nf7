@@ -386,8 +386,8 @@ void Curve::UpdateCurveEditorWindow(const ImVec2& size) noexcept {
     const auto pad = ImGui::GetStyle().WindowPadding / 2;
     ImGui::SetCursorPos(pad);
     UpdateCurveEditor(ImGui::GetContentRegionAvail()-pad*2);
-    ImGui::EndChild();
   }
+  ImGui::EndChild();
 }
 void Curve::UpdateCurveEditor(const ImVec2& sz) noexcept {
   const auto& io = ImGui::GetIO();
