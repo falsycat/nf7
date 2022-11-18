@@ -12,37 +12,36 @@ class Stopwatch final {
  public:
   struct Benchmark;
 
-  Stopwatch() = default;
+  static nf7::Env::Time now() noexcept { return nf7::Env::Clock::now(); }
+
+  Stopwatch() noexcept : begin_(now()) {
+  }
   Stopwatch(const Stopwatch&) = default;
   Stopwatch(Stopwatch&&) = default;
   Stopwatch& operator=(const Stopwatch&) = default;
   Stopwatch& operator=(Stopwatch&&) = default;
 
-  void Begin() noexcept {
-    begin_ = nf7::Env::Clock::now();
-  }
   void End() noexcept {
-    end_ = nf7::Env::Clock::now();
+    assert(!end_);
+    end_ = now();
   }
 
   auto dur() const noexcept {
-    return std::chrono::duration_cast<std::chrono::microseconds>(end_ - begin_);
+    const auto end = end_.value_or(now());
+    return end - begin_;
   }
-  nf7::Env::Time beginTime() const noexcept { return begin_; }
-  nf7::Env::Time endTime() const noexcept { return end_; }
 
  private:
   nf7::Env::Time begin_;
-  nf7::Env::Time end_;
+  std::optional<nf7::Env::Time> end_;
 };
 inline std::ostream& operator << (std::ostream& out, const Stopwatch& sw) {
-  return out << sw.dur().count() << " usecs";
+  return out << std::chrono::duration_cast<std::chrono::microseconds>(sw.dur());
 }
 
 struct Stopwatch::Benchmark final {
  public:
   Benchmark(const char* name) noexcept : name_(name) {
-    sw_.Begin();
   }
   ~Benchmark() noexcept {
     sw_.End();

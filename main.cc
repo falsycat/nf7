@@ -20,6 +20,7 @@
 #include "nf7.hh"
 
 #include "common/queue.hh"
+#include "common/stopwatch.hh"
 #include "common/timed_queue.hh"
 #include "common/yas_nf7.hh"
 
@@ -34,8 +35,9 @@ using namespace std::literals;
 
 namespace {
 
-constexpr size_t      kSubTaskUnit = 64;
-constexpr const char* kFontPath    = "./nf7.ttf";
+constexpr auto        kFrameDur   = 1000ms / 30;
+constexpr auto        kSubTaskDur = 5ms;
+constexpr const char* kFontPath   = "./nf7.ttf";
 
 
 std::atomic<bool> alive_ = true;
@@ -82,7 +84,7 @@ void WorkerThread() noexcept {
 
     // exec sub tasks
     while (cycle_ != kSyncUpdate) {
-      for (size_t i = 0; i < kSubTaskUnit; ++i) {
+      for (nf7::Stopwatch sw; sw.dur() < kSubTaskDur;) {
         std::shared_lock<std::shared_mutex> sk {task_mtx_};
         const auto task = subq_.Pop();
         if (!task) break;
@@ -144,7 +146,7 @@ void GLThread(GLFWwindow* window) noexcept {
     k.unlock();
 
     glfwMakeContextCurrent(window);
-    for (size_t i = 0; i < kSubTaskUnit; ++i) {
+    for (nf7::Stopwatch sw; sw.dur() < kSubTaskDur;) {
       std::shared_lock<std::shared_mutex> sk {task_mtx_};
       auto task = glq_.Pop();
       if (!task) break;
@@ -404,7 +406,7 @@ int main(int, char**) {
   window = glfwCreateWindow(1280, 720, "Nf7", NULL, NULL);
   if (window == NULL) return 1;
   glfwMakeContextCurrent(window);
-  glfwSwapInterval(1);
+  glfwSwapInterval(0);
   if (glewInit() != GLEW_OK) return 1;
 
   // start threads
@@ -439,6 +441,8 @@ int main(int, char**) {
   ::Env env;
   glfwShowWindow(window);
   while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
+    nf7::Stopwatch sw;
+
     // handle events
     glfwPollEvents();
     ImGui_ImplOpenGL3_NewFrame();
@@ -484,7 +488,7 @@ int main(int, char**) {
       std::unique_lock<std::mutex> k {cycle_mtx_};
       cycle_cv_.notify_all();
     }
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(kFrameDur - sw.dur());
   }
 
   // sync with worker thread and tear down filesystem
