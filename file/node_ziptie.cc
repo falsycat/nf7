@@ -52,12 +52,17 @@ class ZipTie final : public nf7::FileBase, public nf7::Node {
 
   enum Algorithm {
     // N to 1
+    kPassthruN1,
     kAwait,
+    kMakeArray,
     kMakeTuple,
+    kUpdateArray,
     kUpdateTuple,
 
     // 1 to N
+    kPassthru1N,
     kOrderedPulse,
+    kExtractArray,
     kExtractTuple,
   };
   static bool IsNto1(Algorithm algo) noexcept {
@@ -72,18 +77,23 @@ class ZipTie final : public nf7::FileBase, public nf7::Node {
     std::string desc;
   };
   static inline const std::unordered_map<Algorithm, AlgoMeta> kAlgoMetas = {
-    {kAwait,        { .name = "await",         .desc = "awaits for all inputs satisfied"            }},
-    {kMakeTuple,    { .name = "make tuple",    .desc = "emits a tuple when all inputs satisfied"    }},
-    {kUpdateTuple,  { .name = "update tuple",  .desc = "emits a tuple when one input satisfied"     }},
-    {kOrderedPulse, { .name = "ordered pulse", .desc = "emits a pulse in order"                     }},
-    {kExtractTuple, { .name = "extract tuple", .desc = "extracts values from a tuple by thier name" }},
+    {kPassthruN1,   { .name = "passthru N",    .desc = "passthrough multiple input to single output"  }},
+    {kAwait,        { .name = "await",         .desc = "awaits for all inputs satisfied"              }},
+    {kMakeArray,    { .name = "make array",    .desc = "emits an array when all inputs satisfied"     }},
+    {kMakeTuple,    { .name = "make tuple",    .desc = "emits a tuple when all inputs satisfied"      }},
+    {kUpdateArray,  { .name = "update array",  .desc = "emits an array when one input satisfied"      }},
+    {kUpdateTuple,  { .name = "update tuple",  .desc = "emits a tuple when one input satisfied"       }},
+    {kPassthru1N,   { .name = "passthru 1",    .desc = "passthrough single input to multiple output"  }},
+    {kOrderedPulse, { .name = "ordered pulse", .desc = "emits a pulse in order"                       }},
+    {kExtractArray, { .name = "extract array", .desc = "extracts values from an array by thier index" }},
+    {kExtractTuple, { .name = "extract tuple", .desc = "extracts values from a tuple by thier name"   }},
   };
 
   struct Data {
    public:
     Data() {}
 
-    Algorithm algo = kAwait;
+    Algorithm algo = kPassthru1N;
     std::vector<std::string> names = {"", ""};
   };
 
@@ -170,6 +180,9 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
     }
 
     switch (d.algo) {
+    case kPassthruN1:
+      PassthruN1(in);
+      return;
     case kAwait:
       Await(in);
       return;
@@ -178,6 +191,9 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
       return;
     case kUpdateTuple:
       UpdateTuple(in, d);
+      return;
+    case kPassthru1N:
+      Passthru1N(in, d);
       return;
     case kOrderedPulse:
       OrderedPulse(in, d);
@@ -202,6 +218,9 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
 
   std::vector<std::optional<nf7::Value>> values_;
 
+  void PassthruN1(const nf7::Node::Lambda::Msg& in) noexcept {
+    in.sender->Handle("out", in.value, shared_from_this());
+  }
   void Await(const nf7::Node::Lambda::Msg& in) noexcept {
     if (AllSatisifed()) {
       in.sender->Handle("out", nf7::Value::Pulse {}, shared_from_this());
@@ -224,6 +243,11 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
       pairs.emplace_back(name, *values_[i]);
     }
     in.sender->Handle("out", std::move(pairs), shared_from_this());
+  }
+  void Passthru1N(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
+    for (const auto& name : d.names) {
+      in.sender->Handle(name, in.value, shared_from_this());
+    }
   }
   void OrderedPulse(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
     for (size_t i = 0; i < d.names.size(); ++i) {
@@ -351,7 +375,7 @@ void ZipTie::UpdateNode(nf7::Node::Editor& ed) noexcept {
   for (size_t i = 0; i < mem_->names.size(); ++i) {
     ImGui::AlignTextToFramePadding();
     if (!IsNto1(mem_->algo)) {
-      ImGui::TextUnformatted("->");
+      ImGui::TextUnformatted("  ->");
       ImGui::SameLine();
     }
     if (IsNameRequired(mem_->algo)) {
@@ -372,7 +396,7 @@ void ZipTie::UpdateNode(nf7::Node::Editor& ed) noexcept {
     }
     if (IsNto1(mem_->algo)) {
       ImGui::SameLine();
-      ImGui::TextUnformatted("->");
+      ImGui::TextUnformatted("->  ");
     }
   }
   ImGui::EndGroup();
@@ -410,12 +434,18 @@ void ZipTie::UpdateNode(nf7::Node::Editor& ed) noexcept {
   ImGui::Button(meta.name.c_str(), {w, 0});
   if (ImGui::BeginPopupContextItem(nullptr, ImGuiPopupFlags_MouseButtonLeft)) {
     ImGui::TextDisabled("N to 1");
+    mod |= AlgorithmComboItem(kPassthruN1);
     mod |= AlgorithmComboItem(kAwait);
+    mod |= AlgorithmComboItem(kMakeArray);
     mod |= AlgorithmComboItem(kMakeTuple);
+    mod |= AlgorithmComboItem(kUpdateArray);
     mod |= AlgorithmComboItem(kUpdateTuple);
 
+    ImGui::Separator();
     ImGui::TextDisabled("1 to N");
+    mod |= AlgorithmComboItem(kPassthru1N);
     mod |= AlgorithmComboItem(kOrderedPulse);
+    mod |= AlgorithmComboItem(kExtractArray);
     mod |= AlgorithmComboItem(kExtractTuple);
 
     ImGui::EndPopup();
