@@ -26,14 +26,21 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 
   class Queue;
 
-  LuaContext(nf7::Env& env);
+  LuaContext(nf7::Env& env, bool async = false) noexcept :
+      nf7::File(kType, env),
+      nf7::DirItem(nf7::DirItem::kMenu |
+                   nf7::DirItem::kTooltip),
+      q_(std::make_shared<Queue>(*this, async)), async_(async) {
+  }
 
   LuaContext(nf7::Deserializer& ar) : LuaContext(ar.env()) {
+    ar(async_);
   }
-  void Serialize(nf7::Serializer&) const noexcept override {
+  void Serialize(nf7::Serializer& ar) const noexcept override {
+    ar(async_);
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<LuaContext>(env);
+    return std::make_unique<LuaContext>(env, async_);
   }
 
   void UpdateMenu() noexcept override;
@@ -46,6 +53,8 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
 
  private:
   std::shared_ptr<Queue> q_;
+
+  bool async_;
 };
 
 class LuaContext::Queue final : public nf7::luajit::Queue,
@@ -69,7 +78,7 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   using Thread = nf7::Thread<Runner, Task>;
 
   Queue() = delete;
-  Queue(LuaContext& f) {
+  Queue(LuaContext& f, bool async) {
     auto L = luaL_newstate();
     if (!L) {
       throw nf7::Exception("failed to create new Lua state");
@@ -83,6 +92,7 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     data_->L = L;
 
     th_ = std::make_shared<Thread>(f, Runner {data_});
+    SetAsync(async);
   }
   ~Queue() noexcept {
     th_->Push(
@@ -97,6 +107,10 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   Queue& operator=(const Queue&) = delete;
   Queue& operator=(Queue&&) = delete;
 
+  void SetAsync(bool async) noexcept {
+    th_->SetExecutor(async? nf7::Env::kAsync: nf7::Env::kSub);
+  }
+
   void Push(const std::shared_ptr<nf7::Context>& ctx, Task&& task, nf7::Env::Time t) noexcept override {
     th_->Push(ctx, std::move(task), t);
   }
@@ -108,20 +122,10 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   std::shared_ptr<Thread>     th_;
   std::shared_ptr<SharedData> data_;
 };
-LuaContext::LuaContext(nf7::Env& env) :
-    nf7::File(kType, env),
-    nf7::DirItem(nf7::DirItem::kMenu | nf7::DirItem::kTooltip),
-    q_(std::make_shared<Queue>(*this)) {
-}
-
 
 void LuaContext::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("perform a full GC cycle")) {
-    q_->Push(
-        std::make_shared<nf7::GenericContext>(*this, "LuaJIT garbage collection"),
-        [](auto L) {
-          lua_gc(L, LUA_GCCOLLECT, 0);
-        }, nf7::Env::Time {});
+  if (ImGui::MenuItem("async", nullptr, &async_)) {
+    q_->SetAsync(async_);
   }
 }
 void LuaContext::UpdateTooltip() noexcept {

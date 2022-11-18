@@ -23,8 +23,7 @@ class Thread final : public nf7::Context,
       Thread(f.env(), f.id(), std::move(runner), exec) {
   }
   Thread(nf7::Env& env, nf7::File::Id id, Runner&& runner, nf7::Env::Executor exec = nf7::Env::kAsync) noexcept :
-      nf7::Context(env, id),
-      runner_(std::move(runner)), exec_(exec) {
+      nf7::Context(env, id), runner_(std::move(runner)), exec_(exec) {
   }
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
@@ -36,13 +35,17 @@ class Thread final : public nf7::Context,
     HandleNext(true  /* = first */);
   }
 
+  void SetExecutor(nf7::Env::Executor exec) noexcept {
+    exec_ = exec;
+  }
+
   size_t tasksDone() const noexcept { return tasks_done_; }
 
  private:
   using Pair = std::pair<std::shared_ptr<nf7::Context>, Task>;
 
-  Runner             runner_;
-  nf7::Env::Executor exec_;
+  Runner                          runner_;
+  std::atomic<nf7::Env::Executor> exec_;
 
   nf7::TimedQueue<Pair> q_;
 
@@ -54,7 +57,7 @@ class Thread final : public nf7::Context,
 
   using std::enable_shared_from_this<Thread<Runner, Task>>::shared_from_this;
   void HandleNext(bool first = false) noexcept {
-    std::unique_lock<std::mutex> k(mtx_);
+    std::unique_lock<std::mutex> k {mtx_};
     if (std::exchange(working_, true) && first) return;
 
     auto self = shared_from_this();

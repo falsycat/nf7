@@ -54,7 +54,7 @@ std::mutex              cycle_mtx_;
 std::shared_mutex task_mtx_;
 using Task = std::pair<std::shared_ptr<nf7::Context>, nf7::Env::Task>;
 nf7::Queue<Task>      mainq_;
-nf7::Queue<Task>      subq_;
+nf7::TimedQueue<Task> subq_;
 nf7::TimedQueue<Task> asyncq_;
 nf7::TimedQueue<Task> glq_;
 nf7::Queue<std::exception_ptr> panicq_;
@@ -96,7 +96,7 @@ void WorkerThread() noexcept {
 
       k.lock();
       cycle_cv_.wait(k, []() {
-        return cycle_ == kSyncUpdate || subq_.size() > 0;
+        return cycle_ == kSyncUpdate || !subq_.idle();
       });
       k.unlock();
     }
@@ -211,7 +211,7 @@ class Env final : public nf7::Env {
       mainq_.Push({ctx, std::move(task)});
       break;
     case kSub:
-      subq_.Push({ctx, std::move(task)});
+      subq_.Push(time, {ctx, std::move(task)});
       notify = true;
       break;
     case kAsync:
