@@ -39,6 +39,7 @@ namespace {
 struct EditorStatus {
   // input
   const bool emittable;
+  const bool autoemit;
   const bool autosize;
 
   // output
@@ -78,7 +79,7 @@ struct Integer {
       ImGui::SetNextItemWidth(6*ImGui::GetFontSize());
     }
     if (ImGui::DragScalar("##value", ImGuiDataType_S64, &value_)) {
-      ed.emit = nf7::Value {value_};
+      if (ed.autoemit) ed.emit = nf7::Value {value_};
     }
     ed.mod = ImGui::IsItemDeactivatedAfterEdit();
   }
@@ -101,7 +102,7 @@ struct Scalar {
       ImGui::SetNextItemWidth(6*ImGui::GetFontSize());
     }
     if (ImGui::DragScalar("##value", ImGuiDataType_Double, &value_)) {
-      ed.emit = nf7::Value {value_};
+      if (ed.autoemit) ed.emit = nf7::Value {value_};
     }
     ed.mod = ImGui::IsItemDeactivatedAfterEdit();
   }
@@ -122,11 +123,11 @@ struct String {
   void Editor(EditorStatus& ed) noexcept {
     const auto em = ImGui::GetFontSize();
     if (!ed.autosize) {
-      ImGui::SetNextItemWidth(6*ImGui::GetFontSize());
+      ImGui::SetNextItemWidth(12*em);
     }
     ImGui::InputTextMultiline("##value", &value_, {0, 2.4f*em});
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      ed.emit = GetValue();
+      if (ed.autoemit) ed.emit = GetValue();
       ed.mod  = true;
     }
   }
@@ -152,7 +153,7 @@ struct SliderBase {
       ImGui::SetNextItemWidth(8*ImGui::GetFontSize());
     }
     if (ImGui::SliderScalar("##value", ImGuiDataType_Double, &value_, &min, &max)) {
-      ed.emit = nf7::Value {value_};
+      if (ed.autoemit) ed.emit = nf7::Value {value_};
     }
     ed.mod = ImGui::IsItemDeactivatedAfterEdit();
   }
@@ -185,7 +186,7 @@ struct Color {
       ImGui::SetNextItemWidth(16*ImGui::GetFontSize());
     }
     if (ImGui::ColorEdit4("##value", values_.data())) {
-      ed.emit = GetValue();
+      if (ed.autoemit) ed.emit = GetValue();
     }
     ed.mod = ImGui::IsItemDeactivatedAfterEdit();
   }
@@ -257,7 +258,7 @@ struct Pos2D {
       // add rpos to values_
       values_[0] += rpos.x;
       values_[1] += rpos.y;
-      ed.emit = GetValue();
+      if (ed.autoemit) ed.emit = GetValue();
     }
     if (ImGui::IsItemDeactivated()) {
       ed.mod = !std::equal(values_.begin(), values_.end(), prev_.begin());
@@ -399,6 +400,7 @@ void Imm::UpdateNode(nf7::Node::Editor& ed) noexcept {
   ImGui::BeginGroup();
   EditorStatus stat = {
     .emittable = true,
+    .autoemit  = mem_->autoemit,
     .autosize  = false,
   };
   Editor(stat);
@@ -411,7 +413,7 @@ void Imm::UpdateNode(nf7::Node::Editor& ed) noexcept {
     ImNodes::EndSlot();
   }
 
-  if (mem_->autoemit && stat.emit) {
+  if (stat.emit) {
     ed.Emit(*this, "out", std::move(*stat.emit));
   }
   if (stat.mod) {
@@ -430,6 +432,7 @@ void Imm::UpdateMenu() noexcept {
 void Imm::UpdateTree() noexcept {
   EditorStatus stat {
     .emittable = false,
+    .autoemit  = false,
     .autosize  = true,
   };
   Editor(stat);
@@ -443,6 +446,7 @@ void Imm::UpdateTooltip() noexcept {
   ImGui::TextUnformatted("preview:");
   EditorStatus stat {
     .emittable = false,
+    .autoemit  = false,
     .autosize  = false,
   };
   ImGui::Indent();
