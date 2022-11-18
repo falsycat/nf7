@@ -411,7 +411,7 @@ void Imm::UpdateNode(nf7::Node::Editor& ed) noexcept {
     ImNodes::EndSlot();
   }
 
-  if (stat.emit) {
+  if (mem_->autoemit && stat.emit) {
     ed.Emit(*this, "out", std::move(*stat.emit));
   }
   if (stat.mod) {
