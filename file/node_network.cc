@@ -1036,6 +1036,21 @@ void Network::NetworkEditor() noexcept {
     canvas_pos_ = ImGui::GetCursorScreenPos();
     ImNodes::BeginCanvas(&canvas_);
 
+    // scale style vars by zoom factor
+    const auto& style = ImGui::GetStyle();
+    const auto  z     = canvas_.Zoom;
+    int push = 0;
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,      style.FramePadding      *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,     style.FrameRounding     *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,       style.ItemSpacing       *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing,  style.ItemInnerSpacing  *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing,     style.IndentSpacing     *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,     style.ScrollbarSize     *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, style.ScrollbarRounding *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,       style.GrabMinSize       *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,      style.GrabRounding      *z); ++push;
+    ImGui::PushStyleVar(ImGuiStyleVar_TabRounding,       style.TabRounding       *z); ++push;
+
     // update child nodes
     auto ed = Network::Editor {*this};
     for (const auto& item : items_) {
@@ -1066,6 +1081,7 @@ void Network::NetworkEditor() noexcept {
         .dst_name = dst_name,
       });
     }
+    ImGui::PopStyleVar(push);
     ImNodes::EndCanvas();
 
     // popup menu for canvas
