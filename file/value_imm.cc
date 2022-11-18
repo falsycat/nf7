@@ -139,15 +139,15 @@ struct String {
 };
 
 
-template <double kMin, double kMax>
+template <int kMin, int kMax>
 struct SliderBase {
  public:
   nf7::Value GetValue() const noexcept {
     return nf7::Value {value_};
   }
   void Editor(EditorStatus& ed) noexcept {
-    static const double max = kMax;
-    static const double min = kMin;
+    static const double max = static_cast<double>(kMax);
+    static const double min = static_cast<double>(kMin);
 
     if (!ed.autosize) {
       ImGui::SetNextItemWidth(8*ImGui::GetFontSize());
@@ -163,11 +163,11 @@ struct SliderBase {
  private:
   nf7::Value::Scalar value_ = 0;
 };
-struct Slider01 : public SliderBase<0., 1.> {
+struct Slider01 : public SliderBase<0, 1> {
   static constexpr const char* kName = "slider 0~1";
   static constexpr const char* kDesc = nullptr;
 };
-struct Slider11 : public SliderBase<-1., 1.> {
+struct Slider11 : public SliderBase<-1, 1> {
   static constexpr const char* kName = "slider -1~1";
   static constexpr const char* kDesc = nullptr;
 };
