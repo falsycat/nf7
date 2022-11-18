@@ -13,17 +13,18 @@
 
 namespace nf7 {
 
-// a thread emulation using nf7::Env::ExecAsync
+// a thread emulation by tasks
 template <typename Runner, typename Task>
 class Thread final : public nf7::Context,
     public std::enable_shared_from_this<Thread<Runner, Task>> {
  public:
   Thread() = delete;
-  Thread(nf7::File& f, Runner&& runner) noexcept :
-      Thread(f.env(), f.id(), std::move(runner)) {
+  Thread(nf7::File& f, Runner&& runner, nf7::Env::Executor exec = nf7::Env::kAsync) noexcept :
+      Thread(f.env(), f.id(), std::move(runner), exec) {
   }
-  Thread(nf7::Env& env, nf7::File::Id id, Runner&& runner) noexcept :
-      nf7::Context(env, id), env_(&env), runner_(std::move(runner)) {
+  Thread(nf7::Env& env, nf7::File::Id id, Runner&& runner, nf7::Env::Executor exec = nf7::Env::kAsync) noexcept :
+      nf7::Context(env, id),
+      runner_(std::move(runner)), exec_(exec) {
   }
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
@@ -40,8 +41,8 @@ class Thread final : public nf7::Context,
  private:
   using Pair = std::pair<std::shared_ptr<nf7::Context>, Task>;
 
-  Env* const env_;
-  Runner runner_;
+  Runner             runner_;
+  nf7::Env::Executor exec_;
 
   nf7::TimedQueue<Pair> q_;
 
@@ -59,14 +60,14 @@ class Thread final : public nf7::Context,
     auto self = shared_from_this();
     if (auto p = q_.Pop()) {
       k.unlock();
-      env_->ExecAsync(p->first, [this, self, t = std::move(p->second)]() mutable {
+      env().Exec(exec_, p->first, [this, self, t = std::move(p->second)]() mutable {
         runner_(std::move(t));
         ++tasks_done_;
         HandleNext();
       });
     } else if (auto time = q_.next()) {
       working_ = false;
-      env_->ExecAsync(self, [this]() mutable { HandleNext(); }, *time);
+      env().Exec(exec_, self, [this]() mutable { HandleNext(); }, *time);
     } else {
       working_ = false;
     }
