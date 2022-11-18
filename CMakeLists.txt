@@ -121,6 +121,7 @@ target_sources(nf7
     common/ring_buffer.hh
     common/sequencer.hh
     common/squashed_history.hh
+    common/stopwatch.hh
     common/task.hh
     common/thread.hh
     common/timed_queue.hh
