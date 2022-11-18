@@ -65,7 +65,6 @@ class Network final : public nf7::FileBase,
   class Editor;
 
   // special Node types
-  class Initiator;
   class Terminal;
 
   using ItemId   = uint64_t;
@@ -677,58 +676,6 @@ void Network::ExecAddItem(
 }
 
 
-// Node that emits a pulse when Network lambda receives the first input.
-class Network::Initiator final : public nf7::File,
-    public nf7::Node,
-    public Network::InternalNode {
- public:
-  static inline const nf7::GenericTypeInfo<Initiator> kType = {
-    "Node/Network/Initiator", {},
-    "emits a pulse immediately when Node/Network gets the first input",
-  };
-
-  Initiator(nf7::Env& env) noexcept :
-      nf7::File(kType, env), nf7::Node(nf7::Node::kCustomNode) {
-  }
-
-  Initiator(nf7::Deserializer& ar) : Initiator(ar.env()) {
-  }
-  void Serialize(nf7::Serializer&) const noexcept override {
-  }
-  std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
-    return std::make_unique<Initiator>(env);
-  }
-
-  std::shared_ptr<Node::Lambda> CreateLambda(
-      const std::shared_ptr<Node::Lambda>& parent) noexcept override {
-    class Emitter final : public Node::Lambda,
-        public std::enable_shared_from_this<Emitter> {
-     public:
-      using Node::Lambda::Lambda;
-      void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
-        if (in.name == "_force" || !std::exchange(done_, true)) {
-          in.sender->Handle("out", nf7::Value::Pulse {}, shared_from_this());
-        }
-      }
-     private:
-      bool done_ = false;
-    };
-    return std::make_shared<Emitter>(*this, parent);
-  }
-  nf7::Node::Meta GetMeta() const noexcept {
-    return {{}, {"out"}};
-  }
-
-  void UpdateNode(nf7::Node::Editor& ed) noexcept override;
-
-  InternalNode::Flags flags() const noexcept override {
-    return InternalNode::kInputHandler;
-  }
-  nf7::File::Interface* interface(const std::type_info& t) noexcept {
-    return nf7::InterfaceSelector<nf7::Node>(t).Select(this);
-  }
-};
-
 // Node that emits/receives input or output.
 class Network::Terminal : public nf7::FileBase,
     public nf7::Node,
@@ -1236,25 +1183,6 @@ void Network::Item::UpdateNode(Node::Editor& ed) noexcept {
   }
 
   ImGui::PopID();
-}
-
-
-void Network::Initiator::UpdateNode(nf7::Node::Editor& ed) noexcept {
-  ImGui::TextUnformatted("INITIATOR");
-
-  if (ImGui::Button("PULSE")) {
-    ed.Emit(*this, "_force", nf7::Value::Pulse {});
-  }
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("generates a pulse manually on debug context");
-  }
-
-  ImGui::SameLine();
-  if (ImNodes::BeginOutputSlot("out", 1)) {
-    ImGui::AlignTextToFramePadding();
-    nf7::gui::NodeSocket();
-    ImNodes::EndSlot();
-  }
 }
 
 

@@ -16,6 +16,7 @@
 
 
 namespace nf7 {
+namespace {
 
 class MutexNode final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
@@ -117,4 +118,5 @@ void MutexNode::UpdateTooltip() noexcept {
   ImGui::Text("pendings: %zu", mtx_.pendings());
 }
 
+}
 }  // namespace nf7
