@@ -473,8 +473,10 @@ void Imm::MenuItem() noexcept {
     mem_->value = T {};
     mem_.Commit();
   }
-  if (T::kDesc && ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s", T::kDesc);
+  if constexpr (T::kDesc) {
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", T::kDesc);
+    }
   }
 }
 
