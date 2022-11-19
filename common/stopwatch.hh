@@ -21,19 +21,12 @@ class Stopwatch final {
   Stopwatch& operator=(const Stopwatch&) = default;
   Stopwatch& operator=(Stopwatch&&) = default;
 
-  void End() noexcept {
-    assert(!end_);
-    end_ = now();
-  }
-
   auto dur() const noexcept {
-    const auto end = end_.value_or(now());
-    return end - begin_;
+    return now() - begin_;
   }
 
  private:
   nf7::Env::Time begin_;
-  std::optional<nf7::Env::Time> end_;
 };
 inline std::ostream& operator << (std::ostream& out, const Stopwatch& sw) {
   return out << std::chrono::duration_cast<std::chrono::microseconds>(sw.dur());
@@ -44,7 +37,6 @@ struct Stopwatch::Benchmark final {
   Benchmark(const char* name) noexcept : name_(name) {
   }
   ~Benchmark() noexcept {
-    sw_.End();
     std::cout << name_ << ": " << sw_ << std::endl;
   }
   Benchmark(const Benchmark&) = delete;
