@@ -167,7 +167,6 @@ class Node::Lambda final : public nf7::Node::Lambda,
     auto hndl = nf7::luajit::Thread::CreateNodeLambdaHandler(in.sender, self);
     auto th   = th_owner_.Create<nf7::luajit::Thread>(self, ljq, std::move(hndl));
     th->Install(log_);
-    th->Install(f_->importer_);
 
     ljq->Push(self, [this, ljq, th, func, in](auto L) mutable {
       {
