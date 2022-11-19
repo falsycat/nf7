@@ -10,8 +10,22 @@ else()
 endif()
 
 
+# ---- ExprTk ----
+# repository: https://github.com/ArashPartow/exprtk
+# license   : MIT
+
+FetchContent_Declare(
+  exprtk
+  URL "https://github.com/ArashPartow/exprtk/archive/refs/tags/0.0.1.zip"
+)
+FetchContent_Populate(exprtk)
+
+add_library(exprtk INTERFACE)
+target_include_directories(exprtk SYSTEM INTERFACE "${exprtk_SOURCE_DIR}")
+
+
 # ---- FreeType ----
-# repository:
+# repository: https://gitlab.freedesktop.org/freetype/freetype
 # license   : The FreeType License
 
 FetchContent_Declare(
