@@ -807,6 +807,9 @@ void Network::Sanitize() {
       cmd->Apply();
     }
   }
+  if (auto cmd = links_.CreateCommandToRemoveExpired(ids)) {
+    cmd->Apply();
+  }
 }
 File* Network::PreFind(std::string_view name) const noexcept
 try {

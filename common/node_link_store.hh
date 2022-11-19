@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include <yas/serialize.hpp>
@@ -65,6 +66,8 @@ class NodeLinkStore {
 
   inline std::unique_ptr<nf7::History::Command> CreateCommandToRemoveExpired(
       uint64_t id, std::span<const std::string> in, std::span<const std::string> out) noexcept;
+  inline std::unique_ptr<nf7::History::Command> CreateCommandToRemoveExpired(
+      const std::unordered_set<uint64_t>& ids) noexcept;
 
   std::span<const Link> items() const noexcept { return links_; }
 
@@ -111,7 +114,19 @@ std::unique_ptr<nf7::History::Command> NodeLinkStore::CreateCommandToRemoveExpir
     const bool rm =
         (lk.src_id == id && std::find(out.begin(), out.end(), lk.src_name) == out.end()) ||
         (lk.dst_id == id && std::find(in .begin(), in .end(), lk.dst_name) == in .end());
-    if (rm) cmds.push_back(SwapCommand::CreateToRemove(*this, Link(lk)));
+    if (rm) cmds.push_back(SwapCommand::CreateToRemove(*this, Link {lk}));
+  }
+  if (cmds.empty()) return nullptr;
+  return std::make_unique<nf7::AggregateCommand>(std::move(cmds));
+}
+
+std::unique_ptr<nf7::History::Command> NodeLinkStore::CreateCommandToRemoveExpired(
+    const std::unordered_set<uint64_t>& ids) noexcept {
+  std::vector<std::unique_ptr<nf7::History::Command>> cmds;
+  for (const auto& lk : links_) {
+    if (!ids.contains(lk.src_id) || !ids.contains(lk.dst_id)) {
+      cmds.push_back(SwapCommand::CreateToRemove(*this, Link {lk}));
+    }
   }
   if (cmds.empty()) return nullptr;
   return std::make_unique<nf7::AggregateCommand>(std::move(cmds));
