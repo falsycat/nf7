@@ -5,6 +5,8 @@
 #include <tuple>
 #include <unordered_set>
 
+#include <tracy/Tracy.hpp>
+
 #include "common/node.hh"
 #include "common/node_root_lambda.hh"
 
@@ -53,7 +55,11 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   yield_ctx_.reset();
 
   k.unlock();
-  const auto ret = lua_resume(L, narg);
+  int ret;
+  {
+    ZoneScopedN("lua_resume");
+    ret = lua_resume(L, narg);
+  }
   k.lock();
 
   active_ = false;

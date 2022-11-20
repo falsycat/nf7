@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <tracy/Tracy.hpp>
+
 #include "common/aggregate_promise.hh"
 #include "common/factory.hh"
 #include "common/future.hh"
@@ -61,6 +63,7 @@ nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>> Obj_BufferMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx) const noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_BufferMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=, *this]() mutable {
+    ZoneScopedN("create buffer");
     GLuint id;
     glGenBuffers(1, &id);
     pro.Return(std::make_shared<Obj<Obj_BufferMeta>>(ctx, id, *this));
@@ -73,6 +76,8 @@ nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>> Obj_TextureMeta::Create(
     const std::shared_ptr<nf7::Context>& ctx) const noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_TextureMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=, *this]() mutable {
+    ZoneScopedN("create texture");
+
     GLuint id;
     glGenTextures(1, &id);
 
@@ -108,6 +113,8 @@ nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Obj_ShaderMeta::Create(
     const std::string&                   src) const noexcept {
   nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>>::Promise pro {ctx};
   ctx->env().ExecGL(ctx, [=, *this]() mutable {
+    ZoneScopedN("create shader");
+
     const auto t  = gl::ToEnum(type);
     const auto id = glCreateShader(t);
     if (id == 0) {
@@ -119,10 +126,13 @@ nf7::Future<std::shared_ptr<Obj<Obj_ShaderMeta>>> Obj_ShaderMeta::Create(
         "#version 330\n"
         "#extension GL_ARB_shading_language_include: require\n";
 
-    const GLchar* str[] = {kHeader, src.c_str()};
-    glShaderSource(id, 2, str, nullptr);
-    glCompileShader(id);
-    assert(0 == glGetError());
+    {
+      ZoneScopedN("compile");
+      const GLchar* str[] = {kHeader, src.c_str()};
+      glShaderSource(id, 2, str, nullptr);
+      glCompileShader(id);
+      assert(0 == glGetError());
+    }
 
     GLint status;
     glGetShaderiv(id, GL_COMPILE_STATUS, &status);
@@ -155,6 +165,8 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
 
   nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>>::Promise pro {ctx};
   apro.future().Chain(nf7::Env::kGL, ctx, pro, [*this, ctx, shs = std::move(shs)](auto&) {
+    ZoneScopedN("create program");
+
     // check all shaders
     for (auto& sh : shs) { sh.value(); }
 
@@ -168,7 +180,11 @@ nf7::Future<std::shared_ptr<Obj<Obj_ProgramMeta>>> Obj_ProgramMeta::Create(
     for (auto& sh : shs) {
       glAttachShader(id, (*sh.value())->id());
     }
-    glLinkProgram(id);
+
+    {
+      ZoneScopedN("link");
+      glLinkProgram(id);
+    }
 
     // check status
     GLint status;
@@ -222,6 +238,8 @@ try {
   LockAttachments(ctx).Chain(
       nf7::Env::kGL, ctx, pro,
       [*this, ctx, pro](auto& bufs) mutable {
+        ZoneScopedN("create va");
+
         // check all buffers
         if (index) {
           assert(bufs.index);
@@ -340,6 +358,8 @@ nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>> Obj_FramebufferMeta::Crea
   nf7::Future<std::shared_ptr<Obj<Obj_FramebufferMeta>>>::Promise pro {ctx};
   LockAttachments(ctx).
       Chain(nf7::Env::kGL, ctx, pro, [ctx, *this](auto& k) mutable {
+        ZoneScopedN("create fb");
+
         GLuint id;
         glGenFramebuffers(1, &id);
 

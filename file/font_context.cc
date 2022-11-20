@@ -7,6 +7,8 @@
 
 #include <imgui.h>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
@@ -65,6 +67,7 @@ class FontContext::Queue final : public nf7::font::Queue,
     }
     void operator()(Task&& t) noexcept {
       if (!data_->broken) {
+        ZoneScopedN("font task");
         t(data_->ft);
       }
     }

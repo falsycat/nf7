@@ -10,6 +10,8 @@
 
 #include <ImNodes.h>
 
+#include <tracy/Tracy.hpp>
+
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
@@ -218,6 +220,7 @@ try {
 
   // start the thread
   ljq->Push(ctx, [ctx, ljq, th, pro, script = mem_->script](auto L) mutable {
+    ZoneScopedN("build function for Node");
     L = th->Init(L);
     if (0 == luaL_loadstring(L, script.c_str())) {
       th->Resume(L, 0);

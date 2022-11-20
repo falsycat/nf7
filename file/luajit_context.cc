@@ -3,6 +3,8 @@
 #include <imgui.h>
 #include <lua.hpp>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
@@ -67,8 +69,12 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     Runner(const std::shared_ptr<SharedData>& data) noexcept : data_(data) {
     }
     void operator()(Task&& t) {
-      t(data_->L);
+      {
+        ZoneScopedN("LuaJIT task");
+        t(data_->L);
+      }
       if (data_->L) {
+        ZoneScopedNC("GC", tracy::Color::Gray);
         lua_gc(data_->L, LUA_GCCOLLECT, 0);
       }
     }

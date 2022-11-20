@@ -17,6 +17,8 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/queue.hh"
@@ -63,18 +65,26 @@ nf7::Queue<std::exception_ptr> panicq_;
 
 
 void WorkerThread() noexcept {
+  [[maybe_unused]] const char kThreadId[] = "SyncWorker";
+  tracy::SetThreadName("SyncWorker");
+
   std::unique_lock<std::mutex> k {cycle_mtx_};
   while (alive_) {
-    // wait for the end of GUI update
+    FrameMarkStart(kThreadId);
+
     cycle_cv_.wait(k, []() { return cycle_ != kUpdate; });
     k.unlock();
 
-    // exec main tasks
     for (;;) {
       std::shared_lock<std::shared_mutex> sk {task_mtx_};
       auto task = mainq_.Pop();
       if (!task) break;
       try {
+        ZoneScopedNC("main task", tracy::Color::Orange);
+        if (task->first) {
+          const auto str = task->first->GetDescription();
+          ZoneText(str.data(), str.size());
+        }
         task->second();
       } catch (nf7::Exception&) {
         sk.unlock();
@@ -89,6 +99,11 @@ void WorkerThread() noexcept {
         const auto task = subq_.Pop();
         if (!task) break;
         try {
+          ZoneScopedNC("sub task", tracy::Color::Green);
+          if (task->first) {
+            const auto str = task->first->GetDescription();
+            ZoneText(str.data(), str.size());
+          }
           task->second();
         } catch (nf7::Exception&) {
           sk.unlock();
@@ -107,12 +122,19 @@ void WorkerThread() noexcept {
     k.lock();
     cycle_ = kUpdate;
     cycle_cv_.notify_all();
+
+    FrameMarkEnd(kThreadId);
   }
 }
 
 void AsyncThread() noexcept {
+  [[maybe_unused]] const char kThreadId[] = "AsyncWorker";
+  tracy::SetThreadName("AsyncWorker");
+
   std::unique_lock<std::mutex> k {cycle_mtx_};
   while (alive_) {
+    FrameMarkStart(kThreadId);
+
     const auto until = asyncq_.next().value_or(nf7::Env::Time::max());
     cycle_cv_.wait_until(k, until, []() { return !alive_ || !asyncq_.idle(); });
     k.unlock();
@@ -122,6 +144,11 @@ void AsyncThread() noexcept {
       auto task = asyncq_.Pop();
       if (!task) break;
       try {
+        ZoneScopedNC("async task", tracy::Color::Blue);
+        if (task->first) {
+          const auto str = task->first->GetDescription();
+          ZoneText(str.data(), str.size());
+        }
         task->second();
       } catch (nf7::Exception&) {
         sk.unlock();
@@ -129,10 +156,15 @@ void AsyncThread() noexcept {
       }
     }
     k.lock();
+
+    FrameMarkEnd(kThreadId);
   }
 }
 
 void GLThread(GLFWwindow* window) noexcept {
+  [[maybe_unused]] const char kThreadId[] = "AsyncWorker";
+  tracy::SetThreadName("GLWorker");
+
   std::unique_lock<std::mutex> k {cycle_mtx_};
 
   // does nothing when the first cycle because the main thread is using GL context
@@ -141,6 +173,8 @@ void GLThread(GLFWwindow* window) noexcept {
   cycle_cv_.notify_all();
 
   while (alive_) {
+    FrameMarkStart(kThreadId);
+
     // wait for the end of GUI drawing
     cycle_cv_.wait(k, []() { return cycle_ != kDraw; });
     k.unlock();
@@ -151,6 +185,11 @@ void GLThread(GLFWwindow* window) noexcept {
       auto task = glq_.Pop();
       if (!task) break;
       try {
+        ZoneScopedNC("GL task", tracy::Color::Aqua);
+        if (task->first) {
+          const auto str = task->first->GetDescription();
+          ZoneText(str.data(), str.size());
+        }
         task->second();
       } catch (nf7::Exception&) {
         sk.unlock();
@@ -167,6 +206,8 @@ void GLThread(GLFWwindow* window) noexcept {
       cycle_ = kDraw;
       cycle_cv_.notify_all();
     }
+
+    FrameMarkEnd(kThreadId);
   }
 }
 
@@ -176,6 +217,8 @@ class Env final : public nf7::Env {
   static constexpr auto kFileName = "root.nf7";
 
   Env() noexcept : nf7::Env(std::filesystem::current_path()) {
+    ZoneScopedN("nf7::Env constructor");
+
     // deserialize
     if (!std::filesystem::exists(kFileName)) {
       root_ = CreateRoot(*this);
@@ -196,6 +239,7 @@ class Env final : public nf7::Env {
   }
 
   void TearDownRoot() noexcept {
+    ZoneScoped;
     if (root_) {
       Save();
       root_->Isolate();
@@ -210,17 +254,21 @@ class Env final : public nf7::Env {
     bool notify = false;
     switch (type) {
     case kMain:
+      TracyMessageL("queue main task");
       mainq_.Push({ctx, std::move(task)});
       break;
     case kSub:
+      TracyMessageL("queue sub task");
       subq_.Push(time, {ctx, std::move(task)});
       notify = true;
       break;
     case kAsync:
+      TracyMessageL("queue async task");
       asyncq_.Push(time, {ctx, std::move(task)});
       notify = true;
       break;
     case kGL:
+      TracyMessageL("queue gl task");
       glq_.Push(time, {ctx, std::move(task)});
       notify = true;
       break;
@@ -254,10 +302,12 @@ class Env final : public nf7::Env {
   }
 
   void Exit() noexcept override {
+    TracyMessageL("exit requested");
     exit_requested_ = true;
   }
   void Save() noexcept override
   try {
+    ZoneScoped;
     nf7::Serializer::Save(*this, kFileName, root_);
   } catch (nf7::Exception&) {
     panicq_.Push(std::current_exception());
@@ -267,6 +317,7 @@ class Env final : public nf7::Env {
   }
 
   void Update() noexcept {
+    ZoneScoped;
     ImGui::PushID(this);
     {
       if (root_) {
@@ -333,6 +384,8 @@ class Env final : public nf7::Env {
 
 
 void UpdatePanic() noexcept {
+  ZoneScoped;
+
   static std::exception_ptr ptr_;
   if (!ptr_) {
     if (auto ptr = panicq_.Pop()) {
@@ -438,18 +491,22 @@ int main(int, char**) {
   }
 
   // main loop
+  [[maybe_unused]] const char kThreadId[] = "GUI";
   ::Env env;
   glfwShowWindow(window);
   while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
+    FrameMarkStart(kThreadId);
     nf7::Stopwatch sw;
 
-    // handle events
-    glfwPollEvents();
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    {
+      ZoneScopedN("handle events");
+      glfwPollEvents();
+      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_ImplGlfw_NewFrame();
+      ImGui::NewFrame();
+    }
 
-    // sync with worker thread
+    // wait for sync thrad
     {
       cycle_ = kSyncUpdate;
       std::unique_lock<std::mutex> k {cycle_mtx_};
@@ -457,13 +514,15 @@ int main(int, char**) {
       cycle_cv_.wait(k, []() { return cycle_ == kUpdate; });
     }
 
-    // GUI update (OpenGL call is forbidden)
-    assert(cycle_ == kUpdate);
-    env.Update();
-    UpdatePanic();
-    ImGui::Render();
+    {
+      ZoneScopedN("update GUI");
+      assert(cycle_ == kUpdate);
+      env.Update();
+      UpdatePanic();
+      ImGui::Render();
+    }
 
-    // sync with GL thread
+    // wait for GL thread
     {
       cycle_ = kSyncDraw;
       std::unique_lock<std::mutex> k {cycle_mtx_};
@@ -472,15 +531,18 @@ int main(int, char**) {
     }
 
     // GUI draw (OpenGL calls occur)
-    assert(cycle_ == kDraw);
-    glfwMakeContextCurrent(window);
-    int w, h;
-    glfwGetFramebufferSize(window, &w, &h);
-    glViewport(0, 0, w, h);
-    glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    glfwSwapBuffers(window);
-    glfwMakeContextCurrent(nullptr);
+    {
+      ZoneScopedN("update display");
+      assert(cycle_ == kDraw);
+      glfwMakeContextCurrent(window);
+      int w, h;
+      glfwGetFramebufferSize(window, &w, &h);
+      glViewport(0, 0, w, h);
+      glClear(GL_COLOR_BUFFER_BIT);
+      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      glfwSwapBuffers(window);
+      glfwMakeContextCurrent(nullptr);
+    }
 
     // sleep
     {
@@ -489,6 +551,8 @@ int main(int, char**) {
       cycle_cv_.notify_all();
     }
     std::this_thread::sleep_for(kFrameDur - sw.dur());
+
+    FrameMarkEnd(kThreadId);
   }
 
   // sync with worker thread and tear down filesystem
@@ -508,7 +572,7 @@ int main(int, char**) {
     cycle_cv_.notify_all();
   }
 
-  // wait for all tasks
+  TracyMessageL("waiting for all tasks");
   for (;;) {
     std::unique_lock<std::shared_mutex> sk {task_mtx_};
     if (!mainq_.size() && !subq_.size() && !asyncq_.size() && !glq_.size()) {
@@ -517,7 +581,7 @@ int main(int, char**) {
     std::this_thread::sleep_for(30ms);
   }
 
-  // exit worker and async threads
+  TracyMessageL("exitting SyncWorker and AsyncWorker");
   {
     alive_ = false;
     cycle_ = kSyncUpdate;
@@ -527,7 +591,7 @@ int main(int, char**) {
   for (auto& th : th_async) th.join();
   th_worker.join();
 
-  // exit GL thread
+  TracyMessageL("exitting GLWorker");
   {
     cycle_ = kSyncDraw;
     std::unique_lock<std::mutex> k {cycle_mtx_};
@@ -535,14 +599,18 @@ int main(int, char**) {
   }
   th_gl.join();
 
-  // tear down ImGUI
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplGlfw_Shutdown();
-  ImPlot::DestroyContext();
-  ImGui::DestroyContext();
+  {
+    ZoneScopedN("tear down everything");
 
-  // tear down display
-  glfwDestroyWindow(window);
-  glfwTerminate();
+    // tear down ImGUI
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
+    ImGui::DestroyContext();
+
+    // tear down display
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  }
   return 0;
 }

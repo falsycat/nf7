@@ -7,6 +7,8 @@
 #include <mutex>
 #include <utility>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/stopwatch.hh"
@@ -68,6 +70,7 @@ class Thread final : public nf7::Context,
 
     auto self = shared_from_this();
     if (!entry) {
+      ZoneScopedN("thread task execution");
       for (nf7::Stopwatch sw; sw.dur() < kTaskDur; ++tasks_done_) {
         auto t = q_.Pop();
         if (!t) break;

@@ -15,6 +15,8 @@
 
 #include <magic_enum.hpp>
 
+#include <tracy/Tracy.hpp>
+
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
@@ -351,6 +353,9 @@ struct Buffer {
         const auto t = gl::ToEnum(buf.meta().target);
         glBindBuffer(t, buf.id());
         {
+          ZoneScopedN("upload buffer");
+          ZoneValue(vec->size());
+
           auto& size = buf.param().size;
           if (size != vec->size()) {
             size = vec->size();
@@ -508,14 +513,16 @@ struct Texture {
         glBindTexture(t, tex.id());
         switch (t) {
         case GL_TEXTURE_2D:
-        case GL_TEXTURE_RECTANGLE:
+        case GL_TEXTURE_RECTANGLE: {
+          ZoneScopedN("glTexSubImage2D");
+          ZoneValue(buf->size());
           glTexSubImage2D(t, 0,
                           static_cast<GLint>(offset[0]),
                           static_cast<GLint>(offset[1]),
                           static_cast<GLsizei>(size[0]),
                           static_cast<GLsizei>(size[1]),
                           fmt, type, buf->data());
-          break;
+        } break;
         default:
           assert(false);
           break;
@@ -554,25 +561,32 @@ struct Texture {
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
         const auto  bsize = texel*gl::GetCompCount(comp)*gl::GetByteSize(numtype);
-        glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_STREAM_READ);
+        const auto  t     = gl::ToEnum(tex.meta().target);
 
-        const auto t = gl::ToEnum(tex.meta().target);
-        glBindTexture(t, tex.id());
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glGetTexImage(t, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
-        glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        glBindTexture(t, 0);
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-        assert(0 == glGetError());
+        {
+          ZoneScopedN("request to download texture");
+          glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bsize), nullptr, GL_STREAM_READ);
+
+          glBindTexture(t, tex.id());
+          glPixelStorei(GL_PACK_ALIGNMENT, 1);
+          glGetTexImage(t, 0, gl::ToEnum(comp), gl::ToEnum(numtype), nullptr);
+          glPixelStorei(GL_PACK_ALIGNMENT, 4);
+          glBindTexture(t, 0);
+          glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+          assert(0 == glGetError());
+        }
 
         nf7::gl::ExecFenceSync(p.la).ThenIf([=, &tex](auto&) {
           glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
           auto buf = std::make_shared<std::vector<uint8_t>>(bsize);
 
-          const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-          std::memcpy(buf->data(), ptr, static_cast<size_t>(bsize));
-          glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+          {
+            ZoneScopedN("download texture");
+            const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+            std::memcpy(buf->data(), ptr, static_cast<size_t>(bsize));
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+          }
 
           glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
           glDeleteBuffers(1, &pbo);
@@ -916,6 +930,8 @@ struct Program {
 
       // execute drawing after successful locking
       apro.future().ThenIf(nf7::Env::kGL, p.la, [=, tex_fu = std::move(tex_fu)](auto&) {
+        ZoneScopedN("draw");
+
         const auto& fbo  = *fbo_fu.value().first;
         const auto& vao  = *vao_fu.value().first;
         const auto& prog = *p.obj;
@@ -956,8 +972,10 @@ struct Program {
         config.ApplyState();
         if (vao->meta().index) {
           const auto numtype = gl::ToEnum(vao->meta().index->numtype);
+          ZoneScopedN("glDrawElementsInstanced");
           glDrawElementsInstanced(mode, count, numtype, nullptr, inst);
         } else {
+          ZoneScopedN("glDrawArraysInstanced");
           glDrawArraysInstanced(mode, 0, count, inst);
         }
         config.RevertState();
@@ -1357,7 +1375,10 @@ struct Framebuffer {
     if (p.in.name == "clear") {
       (**p.obj).meta().LockAttachments(p.la).ThenIf(nf7::Env::kGL, p.la, [=](auto&) {
         glBindFramebuffer(GL_FRAMEBUFFER, (**p.obj).id());
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        {
+          ZoneScopedN("glClear");
+          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
       });
       return true;
@@ -1386,9 +1407,12 @@ struct Framebuffer {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, src.id());
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.id());
 
-        glBlitFramebuffer(rect[0], rect[1], rect[2], rect[3],
-                          rect[4], rect[5], rect[6], rect[7],
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        {
+          ZoneScopedN("glBlitFramebuffer");
+          glBlitFramebuffer(rect[0], rect[1], rect[2], rect[3],
+                            rect[4], rect[5], rect[6], rect[7],
+                            GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

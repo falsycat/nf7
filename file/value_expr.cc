@@ -11,6 +11,8 @@
 
 #include <ImNodes.h>
 
+#include <tracy/Tracy.hpp>
+
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
@@ -141,6 +143,7 @@ class Expr::Lambda final : public nf7::Node::Lambda,
   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
+    ZoneScopedN("ExprTk");
 
     auto& obj = f_->obj_;
     if (!obj) {

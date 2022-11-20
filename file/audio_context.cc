@@ -5,7 +5,10 @@
 #include <typeinfo>
 
 #include <imgui.h>
+
 #include <miniaudio.h>
+
+#include <tracy/Tracy.hpp>
 
 #include "nf7.hh"
 
@@ -68,6 +71,7 @@ class AudioContext::Queue final : public nf7::audio::Queue,
     }
     void operator()(Task&& t) {
       if (!data_->broken) {
+        ZoneScopedN("audio task");
         t(&data_->ctx);
       }
     }
