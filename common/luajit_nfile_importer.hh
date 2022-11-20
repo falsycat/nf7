@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -76,7 +77,7 @@ class NFileImporter :
   std::filesystem::file_time_type GetLatestMod() const noexcept {
     std::unique_lock<std::mutex> _ {mtx_};
 
-    std::filesystem::file_time_type ret = {};
+    auto ret = std::filesystem::file_time_type::min();
     for (const auto& p : imports_) {
       try {
         ret = std::max(ret, std::filesystem::last_write_time(p));
