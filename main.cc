@@ -200,7 +200,7 @@ void GLThread(GLFWwindow* window) noexcept {
     glfwMakeContextCurrent(nullptr);
 
     k.lock();
-    cycle_cv_.wait(k, []() { return cycle_ != kDraw || !glq_.idle(); });
+    cycle_cv_.wait(k, []() { return cycle_ == kSyncDraw || !glq_.idle(); });
     if (cycle_ == kSyncDraw) {
       // tell the main thread to start GUI drawing
       cycle_ = kDraw;
