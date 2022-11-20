@@ -33,12 +33,12 @@ FetchContent_Declare(
   URL "https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-2-12-1/freetype-VER-2-12-1.zip"
 )
 
-option(FT_DISABLE_ZLIB     ON)
-option(FT_DISABLE_BZIP2    ON)
-option(FT_DISABLE_PNG      ON)
-option(FT_DISABLE_HARFBUZZ ON)
-option(FT_DISABLE_BROTLI   ON)
-option(FT_ENABLE_ERROR_STRINGS ON)
+set(FT_DISABLE_ZLIB         ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2        ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG          ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI       ON CACHE BOOL "" FORCE)
+set(FT_ENABLE_ERROR_STRINGS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(freetype)
 
 
@@ -272,7 +272,8 @@ FetchContent_Declare(
   tracy
   URL "https://github.com/wolfpld/tracy/archive/refs/tags/v0.9.zip"
 )
-option(TRACY_ENABLE "" ${NF7_PROFILE})
+set(TRACY_ENABLE    ${NF7_PROFILE} CACHE BOOL "" FORCE)
+set(TRACY_CALLSTACK ON             CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(tracy)
 
 
