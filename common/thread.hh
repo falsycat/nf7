@@ -57,6 +57,7 @@ class Thread final : public nf7::Context,
 
   std::mutex mtx_;
   bool working_ = false;
+  nf7::Env::Time scheduled_;
 
   std::atomic<size_t> tasks_done_ = 0;
 
@@ -81,11 +82,12 @@ class Thread final : public nf7::Context,
     {
       std::unique_lock<std::mutex> k {mtx_};
       if (auto time = q_.next()) {
-        working_ = false;
-        env().Exec(exec_, self, [this]() mutable { ExecNext(); }, *time);
-      } else {
-        working_ = false;
+        if (time <= nf7::Env::Clock::now() || time != scheduled_) {
+          scheduled_ = *time;
+          env().Exec(exec_, self, [this]() mutable { ExecNext(); }, *time);
+        }
       }
+      working_ = false;
     }
   }
 };
