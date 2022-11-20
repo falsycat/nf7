@@ -9,6 +9,8 @@
 #include <yas/serialize.hpp>
 #include <yas/types/std/map.hpp>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/dir.hh"
@@ -122,6 +124,9 @@ class GenericDir : public nf7::FileBase::Feature, public nf7::Dir {
   }
   void UpdateChildren(bool early) noexcept {
     for (auto& p : items_) {
+      ZoneScopedN("update child");
+      ZoneText(p.first.data(), p.first.size());
+
       auto& f     = *p.second;
       auto* ditem = f.interface<nf7::DirItem>();
 

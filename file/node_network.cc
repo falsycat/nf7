@@ -16,6 +16,8 @@
 
 #include <ImNodes.h>
 
+#include <tracy/Tracy.hpp>
+
 #include <yaml-cpp/yaml.h>
 
 #include <yas/serialize.hpp>
@@ -306,6 +308,9 @@ class Network::Item final {
   void Detach() noexcept;
 
   void Update() noexcept {
+    ZoneScoped;
+    ZoneValue(id_);
+
     assert(owner_);
     ImGui::PushID(file_.get());
     file_->Update();
@@ -386,6 +391,8 @@ class Network::Lambda : public Node::Lambda,
 
       // send input from outer to input handlers
       if (in.sender == parent) {
+        ZoneScopedN("return value");
+
         for (auto& item : f_->items_) {
           if (item->iflags() & InternalNode::kInputHandler) {
             try {
@@ -401,6 +408,8 @@ class Network::Lambda : public Node::Lambda,
 
       // send an output from children as input to children
       try {
+        ZoneScopedN("transmit value");
+
         auto itr = idmap_.find(in.sender.get());
         if (itr == idmap_.end()) {
           throw nf7::Exception {"called by unknown lambda"};

@@ -12,6 +12,8 @@
 #include <yas/types/std/unordered_set.hpp>
 #include <yas/types/std/string.hpp>
 
+#include <tracy/Tracy.hpp>
+
 #include "nf7.hh"
 
 #include "common/config.hh"

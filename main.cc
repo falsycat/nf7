@@ -126,6 +126,7 @@ void WorkerThread() noexcept {
 
     FrameMarkEnd(kThreadId);
   }
+  TracyMessageL("SyncWorker exitting");
 }
 
 void AsyncThread() noexcept {
@@ -160,10 +161,11 @@ void AsyncThread() noexcept {
 
     FrameMarkEnd(kThreadId);
   }
+  TracyMessageL("AsyncWorker exitting");
 }
 
 void GLThread(GLFWwindow* window) noexcept {
-  [[maybe_unused]] const char kThreadId[] = "AsyncWorker";
+  [[maybe_unused]] const char kThreadId[] = "GLWorker";
   tracy::SetThreadName("GLWorker");
 
   std::unique_lock<std::mutex> k {cycle_mtx_};
@@ -210,6 +212,7 @@ void GLThread(GLFWwindow* window) noexcept {
 
     FrameMarkEnd(kThreadId);
   }
+  TracyMessageL("GLWorker exitting");
 }
 
 
@@ -487,16 +490,15 @@ int main(int, char**) {
 
   // load GUI font
   if (std::filesystem::exists(kFontPath)) {
+    ZoneScopedN("load GUI font");
     io.Fonts->AddFontFromFileTTF(
         kFontPath, 16.f, nullptr, io.Fonts->GetGlyphRangesJapanese());
   }
 
   // main loop
-  [[maybe_unused]] const char kThreadId[] = "GUI";
   ::Env env;
   glfwShowWindow(window);
   while (!glfwWindowShouldClose(window) && !env.exitRequested()) {
-    FrameMarkStart(kThreadId);
     nf7::Stopwatch sw;
 
     {
@@ -553,7 +555,7 @@ int main(int, char**) {
     }
     std::this_thread::sleep_for(kFrameDur - sw.dur());
 
-    FrameMarkEnd(kThreadId);
+    FrameMark;
   }
 
   // sync with worker thread and tear down filesystem
@@ -563,8 +565,12 @@ int main(int, char**) {
     cycle_cv_.notify_all();
     cycle_cv_.wait(k, []() { return cycle_ == kUpdate; });
   }
-  assert(cycle_ == kUpdate);
-  env.TearDownRoot();
+
+  {
+    ZoneScopedN("teardown root");
+    assert(cycle_ == kUpdate);
+    env.TearDownRoot();
+  }
 
   // notify other threads that the destruction is done
   {
@@ -573,16 +579,21 @@ int main(int, char**) {
     cycle_cv_.notify_all();
   }
 
-  TracyMessageL("waiting for all tasks");
-  for (;;) {
-    std::unique_lock<std::shared_mutex> sk {task_mtx_};
-    if (!mainq_.size() && !subq_.size() && !asyncq_.size() && !glq_.size()) {
-      break;
+  {
+    ZoneScopedN("wait for all tasks");
+    for (;;) {
+      {
+        ZoneScopedN("check remained tasks");
+        std::unique_lock<std::shared_mutex> sk {task_mtx_};
+        if (!mainq_.size() && !subq_.size() && !asyncq_.size() && !glq_.size()) {
+          break;
+        }
+      }
+      std::this_thread::sleep_for(30ms);
     }
-    std::this_thread::sleep_for(30ms);
   }
 
-  TracyMessageL("exitting SyncWorker and AsyncWorker");
+  // request SyncWorker and AsyncWorker to exit
   {
     alive_ = false;
     cycle_ = kSyncUpdate;
@@ -591,14 +602,16 @@ int main(int, char**) {
   }
   for (auto& th : th_async) th.join();
   th_worker.join();
+  TracyMessageL("SyncWorker and AsyncWorker exited");
 
-  TracyMessageL("exitting GLWorker");
+  // wake up GLWorker to exit
   {
     cycle_ = kSyncDraw;
     std::unique_lock<std::mutex> k {cycle_mtx_};
     cycle_cv_.notify_all();
   }
   th_gl.join();
+  TracyMessageL("GLWorker exited");
 
   {
     ZoneScopedN("tear down everything");
