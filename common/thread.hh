@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <type_traits>
 #include <utility>
 
 #include <tracy/Tracy.hpp>
@@ -74,8 +75,14 @@ class Thread final : public nf7::Context,
       ZoneScopedN("thread task execution");
       for (nf7::Stopwatch sw; sw.dur() < kTaskDur; ++tasks_done_) {
         auto t = q_.Pop();
-        if (!t) break;
-        runner_(std::move(t->second));
+        if (t) {
+          runner_(std::move(t->second));
+        } else {
+          if constexpr (std::is_invocable_v<Runner>) {
+            runner_();  // idle task
+          }
+          break;
+        }
       }
     }
 

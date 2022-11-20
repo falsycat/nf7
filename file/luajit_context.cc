@@ -45,6 +45,7 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
     return std::make_unique<LuaContext>(env, async_);
   }
 
+  void Handle(const nf7::File::Event&) noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
@@ -69,17 +70,19 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
     Runner(const std::shared_ptr<SharedData>& data) noexcept : data_(data) {
     }
     void operator()(Task&& t) {
-      {
-        ZoneScopedN("LuaJIT task");
-        t(data_->L);
-      }
-      if (data_->L) {
+      ZoneScopedN("LuaJIT task");
+      t(data_->L);
+      require_gc_ = true;
+    }
+    void operator()() noexcept {
+      if (data_->L && std::exchange(require_gc_, false)) {
         ZoneScopedNC("GC", tracy::Color::Gray);
         lua_gc(data_->L, LUA_GCCOLLECT, 0);
       }
     }
    private:
     std::shared_ptr<SharedData> data_;
+    bool require_gc_ = false;
   };
   using Thread = nf7::Thread<Runner, Task>;
 
@@ -128,6 +131,16 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   std::shared_ptr<Thread>     th_;
   std::shared_ptr<SharedData> data_;
 };
+
+void LuaContext::Handle(const nf7::File::Event& e) noexcept {
+  switch (e.type) {
+  case nf7::File::Event::kAdd:
+    q_->SetAsync(async_);
+    return;
+  default:
+    return;
+  }
+}
 
 void LuaContext::UpdateMenu() noexcept {
   if (ImGui::MenuItem("async", nullptr, &async_)) {
