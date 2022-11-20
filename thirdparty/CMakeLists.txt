@@ -264,6 +264,18 @@ target_sources(stb
 )
 
 
+# ---- Tracy ----
+# repository: https://github.com/wolfpld/tracy
+# license   : 3-clause BSD
+
+FetchContent_Declare(
+  tracy
+  URL "https://github.com/wolfpld/tracy/archive/refs/tags/v0.9.zip"
+)
+option(TRACY_ENABLE "" ${NF7_PROFILE})
+FetchContent_MakeAvailable(tracy)
+
+
 # ---- yaml-cpp ----
 # repository: https://github.com/jbeder/yaml-cpp
 # license   : MIT

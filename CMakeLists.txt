@@ -6,6 +6,15 @@ project(nf7 C CXX)
 
 option(NF7_STATIC          "link all libs statically" ON)
 option(NF7_SANITIZE_THREAD "use thread sanitizer"     OFF)
+option(NF7_SANITIZE        "use various sanitizer"    OFF)
+option(NF7_PROFILE         "profiler"                 OFF)
+
+if (NF7_SANITIZE_THREAD AND NF7_PROFILE)
+  message(FATAL_ERROR "NF7_SANITIZE_THREAD cannot be enabled with NF7_PROFILE")
+endif()
+if (NF7_SANITIZE AND NF7_SANITIZE_THREAD)
+  message(FATAL_ERROR "NF7_SANITIZE_THREAD cannot be enabled with NF7_SANITIZE")
+endif()
 
 set(NF7_OPTIONS_WARNING
   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
@@ -15,15 +24,17 @@ set(NF7_OPTIONS_WARNING
   $<$<CXX_COMPILER_ID:MSVC>:
     /W4 /WX /Zc:__cplusplus /external:anglebrackets /external:W0>
 )
+
+if (NF7_SANITZE)
+  set(NF7_OPTIONS_SANITIZE
+    $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
+      -fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-omit-frame-pointer>>
+  )
+endif()
 if (NF7_SANITIZE_THREAD)
   set(NF7_OPTIONS_SANITIZE
     $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
       -fsanitize=thread -fno-omit-frame-pointer>>
-  )
-else()
-  set(NF7_OPTIONS_SANITIZE
-    $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
-      -fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-omit-frame-pointer>>
   )
 endif()
 
@@ -181,6 +192,7 @@ target_link_libraries(nf7
     miniaudio
     source_location
     stb
+    TracyClient
     yas
     yaml-cpp
 )
