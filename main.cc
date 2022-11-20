@@ -2,6 +2,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -613,4 +614,21 @@ int main(int, char**) {
     glfwTerminate();
   }
   return 0;
+}
+
+
+void* operator new(size_t n) {
+  auto ptr = std::malloc(n);
+  if (!ptr) {
+    throw nf7::Exception {"allocation failure"};
+  }
+  TracyAlloc(ptr, n);
+  return ptr;
+}
+void operator delete(void* ptr) noexcept {
+  TracyFree(ptr);
+  std::free(ptr);
+}
+void operator delete(void* ptr, size_t) noexcept {
+  operator delete(ptr);
 }
