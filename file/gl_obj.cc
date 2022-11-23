@@ -150,7 +150,7 @@ class ObjBase : public nf7::FileBase,
 
     ResourcePromise pro {ctx};
     mtx_.AcquireLock(ctx, ex).ThenIf([this, ctx, pro](auto& k) mutable {
-      if (!fu_) {
+      if (!fu_ || fu_->error()) {
         watch_ = std::make_shared<nf7::GenericWatcher>(env());
 
         const auto handler = [self = life_.ref()](auto&) {
