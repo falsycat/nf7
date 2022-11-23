@@ -158,6 +158,7 @@ target_sources(nf7
     file/gl_obj.cc
     file/luajit_context.cc
     file/luajit_node.cc
+    file/node_exprtk.cc
     file/node_mutex.cc
     file/node_network.cc
     file/node_ref.cc

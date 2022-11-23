@@ -65,8 +65,7 @@ class Node final : public nf7::FileBase,
   Node(nf7::Env& env, Data&& data = {}) noexcept :
       nf7::FileBase(kType, env),
       nf7::GenericConfig(mem_),
-      nf7::DirItem(nf7::DirItem::kMenu |
-                   nf7::DirItem::kTooltip),
+      nf7::DirItem(nf7::DirItem::kTooltip),
       nf7::Node(nf7::Node::kCustomNode),
       life_(*this),
       log_(std::make_shared<nf7::LoggerRef>(*this)),
@@ -99,7 +98,6 @@ class Node final : public nf7::FileBase,
   nf7::Future<std::shared_ptr<nf7::luajit::Ref>> Build() noexcept;
 
   void PostUpdate() noexcept override;
-  void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
 
@@ -247,12 +245,6 @@ void Node::PostUpdate() noexcept {
   }
 }
 
-void Node::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("build")) {
-    Build();
-  }
-}
-
 void Node::UpdateTooltip() noexcept {
   const char* state = "unused";
   if (cache_) {
@@ -275,13 +267,6 @@ void Node::UpdateNode(nf7::Node::Editor&) noexcept {
     static nf7::gui::ConfigEditor ed;
     ed(*this);
     ImGui::EndPopup();
-  }
-  ImGui::SameLine();
-  if (ImGui::SmallButton("build")) {
-    Build();
-  }
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("try to compile the script (for syntax check)");
   }
 
   nf7::gui::NodeInputSockets(mem_->inputs);

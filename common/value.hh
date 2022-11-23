@@ -96,7 +96,7 @@ class Value {
   Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
   Value& operator=(DataPtr&& v) noexcept { value_ = std::move(v); return *this; }
 
-  auto Visit(auto visitor) const noexcept {
+  auto Visit(auto visitor) const {
     return std::visit(visitor, value_);
   }
 
@@ -224,15 +224,6 @@ class Value {
     std::stringstream st;
     st << "expected " << typeid(T).name() << " but it's " << typeName();
     throw IncompatibleException(st.str());
-  }
-  template <typename T>
-  std::shared_ptr<typename std::remove_const<typename T::element_type>::type> getUniq() {
-    auto v = std::move(get<T>());
-    if (v.use_count() == 1) {
-      return std::const_pointer_cast<typename std::remove_const<typename T::element_type>::type>(v);
-    } else {
-      return std::make_shared<typename std::remove_const<typename T::element_type>::type>(*v);
-    }
   }
 
   template <typename R, typename N>
