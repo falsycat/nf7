@@ -50,26 +50,28 @@ class ZipTie final : public nf7::FileBase, public nf7::Node {
 
   class Lambda;
 
-  enum Algorithm {
+  static constexpr uint8_t kNto1Flag  = 0x10;
+  static constexpr uint8_t kNamedFlag = 0x20;
+  enum Algorithm : uint8_t {
     // N to 1
-    kPassthruN1,
-    kAwait,
-    kMakeArray,
-    kMakeTuple,
-    kUpdateArray,
-    kUpdateTuple,
+    kPassthruN1  = 0x0 | kNto1Flag,
+    kAwait       = 0x1 | kNto1Flag,
+    kMakeArray   = 0x2 | kNto1Flag,
+    kMakeTuple   = 0x3 | kNto1Flag | kNamedFlag,
+    kUpdateArray = 0x4 | kNto1Flag,
+    kUpdateTuple = 0x5 | kNto1Flag | kNamedFlag,
 
     // 1 to N
-    kPassthru1N,
-    kOrderedPulse,
-    kExtractArray,
-    kExtractTuple,
+    kPassthru1N   = 0x6,
+    kOrderedPulse = 0x7,
+    kExtractArray = 0x8,
+    kExtractTuple = 0x9 | kNamedFlag,
   };
   static bool IsNto1(Algorithm algo) noexcept {
-    return algo == kAwait || algo == kMakeTuple || algo == kUpdateTuple;
+    return algo & kNto1Flag;
   }
   static bool IsNameRequired(Algorithm algo) noexcept {
-    return algo == kMakeTuple || algo == kUpdateTuple || algo == kExtractTuple;
+    return algo & kNamedFlag;
   }
 
   struct AlgoMeta final {
@@ -186,8 +188,14 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
     case kAwait:
       Await(in);
       return;
+    case kMakeArray:
+      MakeArray(in, d);
+      return;
     case kMakeTuple:
       MakeTuple(in, d);
+      return;
+    case kUpdateArray:
+      UpdateArray(in, d);
       return;
     case kUpdateTuple:
       UpdateTuple(in, d);
@@ -198,11 +206,11 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
     case kOrderedPulse:
       OrderedPulse(in, d);
       return;
+    case kExtractArray:
+      ExtractArray(in, d);
+      return;
     case kExtractTuple:
       ExtractTuple(in, d);
-      return;
-    default:
-      assert(false);
       return;
     }
   } catch (std::invalid_argument&) {
@@ -227,11 +235,27 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
       values_.clear();
     }
   }
+  void MakeArray(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
+    if (AllSatisifed()) {
+      UpdateArray(in, d);
+      values_.clear();
+    }
+  }
   void MakeTuple(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
     if (AllSatisifed()) {
       UpdateTuple(in, d);
       values_.clear();
     }
+  }
+  void UpdateArray(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
+    std::vector<nf7::Value::TuplePair> pairs;
+    pairs.reserve(d.names.size());
+
+    for (size_t i = 0; i < d.names.size(); ++i) {
+      if (!values_[i]) continue;
+      pairs.emplace_back(std::string {}, *values_[i]);
+    }
+    in.sender->Handle("out", std::move(pairs), shared_from_this());
   }
   void UpdateTuple(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
     std::vector<nf7::Value::TuplePair> pairs;
@@ -254,6 +278,13 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
       in.sender->Handle(kIndexStrings[i], nf7::Value::Pulse {}, shared_from_this());
     }
   }
+  void ExtractArray(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
+    for (size_t i = 0; i < d.names.size(); ++i)
+    try {
+      in.sender->Handle(kIndexStrings[i], in.value.tuple(i), shared_from_this());
+    } catch (nf7::Exception&) {
+    }
+  }
   void ExtractTuple(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
     for (size_t i = 0; i < d.names.size(); ++i)
     try {
@@ -261,7 +292,6 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
     } catch (nf7::Exception&) {
     }
   }
-
 
   bool AllSatisifed() const noexcept {
     return std::all_of(values_.begin(), values_.end(), [](auto& x) { return !!x; });
