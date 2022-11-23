@@ -174,7 +174,6 @@ target_sources(nf7
     file/system_nfile.cc
     file/system_node.cc
     file/value_curve.cc
-    file/value_expr.cc
     file/value_imm.cc
     file/value_plot.cc
 )
