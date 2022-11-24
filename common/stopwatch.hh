@@ -29,7 +29,7 @@ class Stopwatch final {
   nf7::Env::Time begin_;
 };
 inline std::ostream& operator << (std::ostream& out, const Stopwatch& sw) {
-  return out << std::chrono::duration_cast<std::chrono::microseconds>(sw.dur());
+  return out << std::chrono::duration_cast<std::chrono::microseconds>(sw.dur()).count() << " usecs";
 }
 
 struct Stopwatch::Benchmark final {
