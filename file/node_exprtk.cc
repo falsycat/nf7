@@ -1,8 +1,8 @@
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -114,67 +114,31 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
     public std::enable_shared_from_this<ExprTk::Lambda> {
  public:
   Lambda(ExprTk& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
-      nf7::Node::Lambda(f, parent), f_(f.life_) {
+      nf7::Node::Lambda(f, parent), f_(f.life_),
+      load_func_(mem_), store_func_(mem_) {
   }
 
   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override
   try {
     f_.EnforceAlive();
-    ZoneScoped;
 
-    vars_.emplace(in.name, in.value);
+    RecordInput(in);
+    if (!Satisfy()) return;
 
-    const auto& inputs = f_->mem_->inputs;
-
-    exprtk::symbol_table<Scalar> sym;
-
-    // check if satisfied all inputs and serialize input values
-    std::vector<nf7::Value*> vars;
-    vars.resize(inputs.size());
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      auto itr = vars_.find(inputs[i]);
-      if (itr != vars_.end()) {
-        vars[i] = &itr->second;
-      } else {
-        return;  // abort when required input is not satisfied
-      }
+    const auto ptag = std::exchange(tag_, f_->mem_.Save());
+    if (!expr_ || tag_ != ptag) {
+      Build();
     }
-    assert(vars.size() == inputs.size());
+    assert(sym_);
+    assert(expr_);
 
-    // assign input values
-    ConstRegisterVisitor::Zone z;
-    z.reserve(inputs.size());
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      vars[i]->Visit(ConstRegisterVisitor {sym, inputs[i], z});
-    }
-    vars_.clear();
-
-    // register system functions
-    OutputFunction yield_func {in.sender, shared_from_this()};
-    sym.add_function("yield", yield_func);
-
-    LoadFunction load_func {mem_};
-    sym.add_function("load", load_func);
-
-    StoreFunction store_func {mem_};
-    sym.add_function("store", store_func);
-
-    // compile the expr
-    exprtk::parser<Scalar>     parser;
-    exprtk::expression<Scalar> expr;
-    expr.register_symbol_table(sym);
-    {
-      ZoneScopedN("ExprTk compile");
-      if (!parser.compile(f_->mem_->script, expr)) {
-        throw nf7::Exception {parser.error()};
-      }
-    }
-
-    // calculate the expression!
+    AssignInputs();
     {
       ZoneScopedN("ExprTk calc");
-      expr.value();
+      yield_func_.SetUp(in.sender, shared_from_this());
+      expr_->value();
     }
+    inputs_.clear();
   } catch (nf7::ExpiredException&) {
   } catch (nf7::Exception& e) {
     f_->log_.Error(e);
@@ -182,75 +146,155 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
 
  private:
   nf7::Life<ExprTk>::Ref f_;
+  std::shared_ptr<nf7::Memento::Tag> tag_;
 
-  std::unordered_map<std::string, nf7::Value> vars_;
+  std::vector<std::pair<std::string, nf7::Value>> inputs_;
+
+  using Var = std::variant<Scalar, std::string, std::vector<Scalar>>;
+  std::vector<std::pair<std::string, Var>> vars_;
 
   std::vector<Scalar> mem_;
 
+  std::optional<exprtk::symbol_table<Scalar>> sym_;
+  std::optional<exprtk::expression<Scalar>>   expr_;
 
+
+  void RecordInput(const nf7::Node::Lambda::Msg& in) noexcept {
+    auto itr = std::find_if(inputs_.begin(), inputs_.end(),
+                            [&](auto& x) { return x.first == in.name; });
+    if (itr != inputs_.end()) {
+      itr->second = in.value;
+    } else {
+      inputs_.emplace_back(in.name, in.value);
+    }
+  }
   bool Satisfy() noexcept {
-    for (const auto& in : f_->mem_->inputs) {
-      if (vars_.end() == vars_.find(in)) {
+    for (const auto& name : f_->mem_->inputs) {
+      auto itr = std::find_if(inputs_.begin(), inputs_.end(),
+                              [&](auto& x) { return x.first == name; });
+      if (itr == inputs_.end()) {
         return false;
       }
     }
     return true;
   }
 
+  void Build() {
+    AllocateVars();
 
-  struct ConstRegisterVisitor final {
-   public:
-    using Zone = std::vector<std::variant<std::string, std::unique_ptr<Scalar[]>>>;
+    sym_.emplace();
+    expr_.emplace();
 
-    ConstRegisterVisitor(exprtk::symbol_table<Scalar>& sym,
-                         const std::string&            name,
-                         Zone&                         zone) noexcept :
-        sym_(sym), name_(name), zone_(zone) {
-    }
+    sym_->add_function("yield", yield_func_);
+    sym_->add_function("load", load_func_);
+    sym_->add_function("store", store_func_);
 
-    void operator()(const nf7::Value::Pulse&) noexcept {
-      sym_.add_constant(name_, Scalar {0});
+    for (auto& var : vars_) {
+      std::visit(Register {*sym_, var.first}, var.second);
     }
-    void operator()(const nf7::Value::Scalar& v) noexcept {
-      sym_.add_constant(name_, v);
-    }
-    void operator()(const nf7::Value::Integer& v) noexcept {
-      sym_.add_constant(name_, static_cast<Scalar>(v));
-    }
-    void operator()(const nf7::Value::Boolean& v) noexcept {
-      sym_.add_constant(name_, v? Scalar {1}: Scalar {0});
-    }
-    void operator()(const nf7::Value::String& v) noexcept {
-      zone_.emplace_back(v);
-      sym_.add_stringvar(name_, std::get<std::string>(zone_.back()), true);
-    }
-    void operator()(const nf7::Value::ConstTuple& v) {
-      const auto& tup = *v;
+    expr_->register_symbol_table(*sym_);
 
-      auto uptr = std::make_unique<Scalar[]>(tup.size());
-      for (size_t i = 0; i < tup.size(); ++i) {
-        uptr[i] = tup[i].second.scalarOrInteger<Scalar>();
+    ZoneScopedN("ExprTk compile");
+    exprtk::parser<Scalar> p;
+    if (!p.compile(f_->mem_->script, *expr_)) {
+      throw nf7::Exception {p.error()};
+    }
+  }
+  void AllocateVars() {
+    const auto& inputs = f_->mem_->inputs;
+
+    vars_.clear();
+    vars_.reserve(inputs.size());
+    for (const auto& name : f_->mem_->inputs) {
+      if (name.starts_with("v_")) {
+        auto itr = std::find_if(
+            inputs_.begin(), inputs_.end(), [&](auto& x) { return x.first == name; });
+        assert(itr != inputs_.end());
+
+        const auto n = itr->second.tuple()->size();
+        if (n == 0) {
+          throw nf7::Exception {"got empty tuple: "+name};
+        }
+        vars_.emplace_back(name, std::vector<Scalar>(n));
+      } else if (name.starts_with("s_")) {
+        vars_.emplace_back(name, std::string {});
+      } else {
+        vars_.emplace_back(name, Scalar {0});
       }
-      sym_.add_vector(name_, uptr.get(), tup.size());
-
-      zone_.push_back(std::move(uptr));
     }
+  }
 
-    void operator()(auto) {
-      throw nf7::Exception {"unsupported input value type"};
+  void AssignInputs() {
+    for (auto& var : vars_) {
+      auto itr = std::find_if(inputs_.begin(), inputs_.end(),
+                              [&](auto& x) { return x.first == var.first; });
+      assert(itr != inputs_.end());
+      std::visit(Cast {}, var.second, itr->second.value());
+    }
+  }
+
+
+  struct Register final {
+   public:
+    Register(exprtk::symbol_table<Scalar>& sym, const std::string& name) noexcept :
+        sym_(sym), name_(name) {
+    }
+    void operator()(Scalar& y) noexcept {
+      sym_.add_variable(name_, y);
+    }
+    void operator()(std::string& y) noexcept {
+      sym_.add_stringvar(name_, y);
+    }
+    void operator()(std::vector<Scalar>& y) noexcept {
+      sym_.add_vector(name_, y);
     }
    private:
     exprtk::symbol_table<Scalar>& sym_;
     const std::string&            name_;
-    Zone&                         zone_;
   };
 
-  struct OutputFunction final : exprtk::igeneric_function<Scalar> {
+  struct Cast final {
    public:
-    OutputFunction(const std::shared_ptr<nf7::Node::Lambda>& callee,
-                   const std::shared_ptr<nf7::Node::Lambda>& caller) :
-        exprtk::igeneric_function<Scalar>("S|ST|SS|SV"),
-        callee_(callee), caller_(caller) {
+    void operator()(Scalar& y, const nf7::Value::Pulse&) noexcept {
+      y = 0;
+    }
+    void operator()(Scalar& y, const nf7::Value::Scalar& x) noexcept {
+      y = x;
+    }
+    void operator()(Scalar& y, const nf7::Value::Integer& x) noexcept {
+      y = static_cast<Scalar>(x);
+    }
+    void operator()(Scalar& y, const nf7::Value::Boolean& x) noexcept {
+      y = x? Scalar {1}: Scalar {0};
+    }
+    void operator()(std::string& y, const nf7::Value::String& x) noexcept {
+      y = x;
+    }
+    void operator()(std::vector<Scalar>& y, const nf7::Value::ConstTuple& x) {
+      const auto& tup = *x;
+
+      const auto n = std::min(y.size(), tup.size());
+      for (size_t i = 0; i < n; ++i) {
+        y[i] = tup[i].second.scalarOrInteger<Scalar>();
+      }
+      std::fill(y.begin()+static_cast<intmax_t>(n), y.end(), Scalar {0});
+    }
+
+    void operator()(auto&, auto&) {
+      throw nf7::Exception {"unsupported input value type"};
+    }
+  };
+
+
+  struct YieldFunction final : exprtk::igeneric_function<Scalar> {
+   public:
+    YieldFunction() noexcept : exprtk::igeneric_function<Scalar>("S|ST|SS|SV") {
+    }
+
+    void SetUp(const std::shared_ptr<nf7::Node::Lambda>& callee,
+               const std::shared_ptr<nf7::Node::Lambda>& caller) noexcept {
+      callee_ = callee;
+      caller_ = caller;
     }
 
     Scalar operator()(const std::size_t& idx, parameter_list_t params) {
@@ -285,15 +329,20 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
       generic_type::string_view n {params[0]};
       const std::string name {n.begin(), n.size()};
 
-      callee_->env().ExecSub(callee_, [=, *this]() {
-        callee_->Handle(name, ret, caller_);
-      });
+      auto callee = callee_.lock();
+      auto caller = caller_.lock();
+      if (callee && caller) {
+        callee->env().ExecSub(callee, [=, *this]() {
+          callee->Handle(name, ret, caller);
+        });
+      }
       return 0;
     }
 
    private:
-    std::shared_ptr<nf7::Node::Lambda> callee_, caller_;
+    std::weak_ptr<nf7::Node::Lambda> callee_, caller_;
   };
+  YieldFunction yield_func_;
 
   struct LoadFunction final : exprtk::ifunction<Scalar> {
    public:
@@ -301,15 +350,13 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
         exprtk::ifunction<Scalar>(1), mem_(mem) {
     }
     Scalar operator()(const Scalar& addr_f) {
-      if (addr_f < 0) {
-        throw nf7::Exception {"negative address"};
-      }
       const auto addr = static_cast<uint64_t>(addr_f);
       return addr < mem_.size()? mem_[addr]: Scalar {0};
     }
    private:
     const std::vector<Scalar>& mem_;
   };
+  LoadFunction load_func_;
 
   struct StoreFunction final : exprtk::ifunction<Scalar> {
    public:
@@ -317,6 +364,9 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
         exprtk::ifunction<Scalar>(2), mem_(mem) {
     }
     Scalar operator()(const Scalar& addr_f, const Scalar& v) {
+      if (addr_f < 0) {
+        throw nf7::Exception {"negative address"};
+      }
       const auto addr = static_cast<uint64_t>(addr_f);
       if (addr >= 1024) {
         throw nf7::Exception {"out of memory (max 1024)"};
@@ -329,6 +379,7 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
    private:
     std::vector<Scalar>& mem_;
   };
+  StoreFunction store_func_;
 };
 std::shared_ptr<nf7::Node::Lambda> ExprTk::CreateLambda(
     const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept {

@@ -7,6 +7,7 @@
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <lua.hpp>
 
@@ -44,18 +45,17 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
         const auto& v = CheckRef<nf7::Value>(L, 1, "nf7::Value");
 
         struct Visitor final {
-          lua_State*        L;
-          const nf7::Value& v;
-          auto operator()(Value::Pulse)       noexcept { lua_pushnil(L);    }
-          auto operator()(Value::Boolean)     noexcept { lua_pushboolean(L, v.boolean());        }
-          auto operator()(Value::Integer)     noexcept { lua_pushinteger(L, v.integer());        }
-          auto operator()(Value::Scalar)      noexcept { lua_pushnumber(L,  v.scalar());         }
-          auto operator()(Value::String)      noexcept { lua_pushstring(L,  v.string().c_str()); }
-          auto operator()(Value::ConstVector) noexcept { PushVector(L,      v.vector());         }
-          auto operator()(Value::DataPtr)     noexcept { lua_pushnil(L);    }
+          lua_State* L;
+          auto operator()(const Value::Pulse&) noexcept { lua_pushnil(L); }
+          auto operator()(const Value::Boolean& v) noexcept { lua_pushboolean(L, v); }
+          auto operator()(const Value::Integer& v) noexcept { lua_pushinteger(L, v); }
+          auto operator()(const Value::Scalar& v) noexcept { lua_pushnumber(L, v); }
+          auto operator()(const Value::String& v) noexcept { lua_pushstring(L, v.c_str()); }
+          auto operator()(const Value::ConstVector& v) noexcept { PushVector(L, v); }
+          auto operator()(const Value::DataPtr&) noexcept { lua_pushnil(L); }
 
-          auto operator()(Value::ConstTuple) noexcept {
-            const auto& tup = *v.tuple();
+          auto operator()(const Value::ConstTuple& v) noexcept {
+            const auto& tup = *v;
             lua_createtable(L, 0, 0);
             size_t arridx = 0;
             for (auto& p : tup) {
@@ -68,7 +68,7 @@ void PushValue(lua_State* L, const nf7::Value& v) noexcept {
             }
           }
         };
-        v.Visit(Visitor{.L = L, .v = v});
+        std::visit(Visitor {.L = L}, v.value());
         return 1;
       });
       lua_setfield(L, -2, "value");

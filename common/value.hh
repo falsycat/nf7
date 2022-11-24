@@ -96,10 +96,6 @@ class Value {
   Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
   Value& operator=(DataPtr&& v) noexcept { value_ = std::move(v); return *this; }
 
-  auto Visit(auto visitor) const {
-    return std::visit(visitor, value_);
-  }
-
   bool isPulse() const noexcept { return std::holds_alternative<Pulse>(value_); }
   bool isBoolean() const noexcept { return std::holds_alternative<Boolean>(value_); }
   bool isInteger() const noexcept { return std::holds_alternative<Integer>(value_); }
@@ -117,6 +113,7 @@ class Value {
   const ConstVector& vector() const { return get<ConstVector>(); }
   const ConstTuple& tuple() const { return get<ConstTuple>(); }
   const DataPtr& data() const { return get<DataPtr>(); }
+  const auto& value() const noexcept { return value_; }
 
   // direct reference accessor
   Integer& integer() { return get<Integer>(); }
@@ -199,7 +196,7 @@ class Value {
       auto operator()(ConstTuple)  noexcept { return "tuple";   }
       auto operator()(DataPtr)     noexcept { return "data";    }
     };
-    return Visit(Visitor{});
+    return std::visit(Visitor {}, value_);
   }
 
   template <typename Ar>
