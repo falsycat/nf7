@@ -41,9 +41,10 @@ class NodeRootLambda : public nf7::Node::Lambda,
 
      if (names_.contains(in.name)) {
        names_.clear();
-       auto pro = std::exchange(pro_, std::nullopt);
-       lk.unlock();
-       pro->Return({in.name, in.value});
+       if (auto pro = std::exchange(pro_, std::nullopt)) {
+         lk.unlock();
+         pro->Return({in.name, in.value});
+       }
      } else {
        q_.push_back({in.name, in.value});
      }
