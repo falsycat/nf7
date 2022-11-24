@@ -25,7 +25,7 @@ set(NF7_OPTIONS_WARNING
     /W4 /WX /Zc:__cplusplus /external:anglebrackets /external:W0>
 )
 
-if (NF7_SANITZE)
+if (NF7_SANITIZE)
   set(NF7_OPTIONS_SANITIZE
     $<$<CONFIG:Debug>:$<$<CXX_COMPILER_ID:GNU>:
       -fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-omit-frame-pointer>>
