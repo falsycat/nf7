@@ -13,8 +13,7 @@
 
 namespace nf7::luajit {
 
-constexpr size_t kInstructionLimit = 10000000;
-constexpr size_t kBufferSizeMax    = 64 * 1024 * 1024;
+constexpr size_t kInstructionLimit = 100000;
 
 
 // Pushes a metatable for Thread object, available on global table as 'nf7'.
@@ -36,11 +35,6 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   if (state_ == kAborted) return;
   assert(L      == th_);
   assert(state_ == kPaused);
-
-  static const auto kHook = [](auto L, auto) {
-    luaL_error(L, "reached instruction limit (<=1e7)");
-  };
-  lua_sethook(L, kHook, LUA_MASKCOUNT, kInstructionLimit);
 
   // set global table
   PushGlobalTable(L);

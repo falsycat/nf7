@@ -1,4 +1,8 @@
+#include <atomic>
+#include <chrono>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include <imgui.h>
 #include <lua.hpp>
@@ -8,8 +12,10 @@
 #include "nf7.hh"
 
 #include "common/dir_item.hh"
+#include "common/file_base.hh"
 #include "common/generic_context.hh"
 #include "common/generic_type_info.hh"
+#include "common/logger_ref.hh"
 #include "common/luajit.hh"
 #include "common/luajit_queue.hh"
 #include "common/ptr_selector.hh"
@@ -17,10 +23,12 @@
 #include "common/thread.hh"
 
 
+using namespace std::literals;
+
 namespace nf7 {
 namespace {
 
-class LuaContext final : public nf7::File, public nf7::DirItem {
+class LuaContext final : public nf7::FileBase, public nf7::DirItem {
  public:
   static inline const nf7::GenericTypeInfo<nf7::LuaContext> kType = {
     "LuaJIT/Context", {"nf7::DirItem",},
@@ -29,10 +37,12 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
   class Queue;
 
   LuaContext(nf7::Env& env, bool async = false) noexcept :
-      nf7::File(kType, env),
+      nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kMenu |
                    nf7::DirItem::kTooltip),
-      q_(std::make_shared<Queue>(*this, async)), async_(async) {
+      log_(*this),
+      q_(std::make_shared<Queue>(*this, async)),
+      async_(async) {
   }
 
   LuaContext(nf7::Deserializer& ar) : LuaContext(ar.env()) {
@@ -45,7 +55,8 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
     return std::make_unique<LuaContext>(env, async_);
   }
 
-  void Handle(const nf7::File::Event&) noexcept override;
+  void PostHandle(const nf7::File::Event&) noexcept override;
+  void PostUpdate() noexcept override;
   void UpdateMenu() noexcept override;
   void UpdateTooltip() noexcept override;
 
@@ -55,6 +66,8 @@ class LuaContext final : public nf7::File, public nf7::DirItem {
   }
 
  private:
+  nf7::LoggerRef log_;
+
   std::shared_ptr<Queue> q_;
 
   bool async_;
@@ -65,14 +78,29 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
  public:
   struct SharedData final {
     lua_State* L;
+
+    std::atomic_flag lock;
+    std::optional<nf7::Env::Time> begin;
   };
   struct Runner final {
     Runner(const std::shared_ptr<SharedData>& data) noexcept : data_(data) {
     }
     void operator()(Task&& t) {
-      ZoneScopedN("LuaJIT task");
-      t(data_->L);
+      auto& k = data_->lock;
+
+      while (k.test_and_set());
+      data_->begin = nf7::Env::Clock::now();
+      k.clear();
+
+      {
+        ZoneScopedN("LuaJIT task");
+        t(data_->L);
+      }
       require_gc_ = true;
+
+      while (k.test_and_set());
+      data_->begin = std::nullopt;
+      k.clear();
     }
     void operator()() noexcept {
       if (data_->L && std::exchange(require_gc_, false)) {
@@ -125,20 +153,36 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
   }
   std::shared_ptr<luajit::Queue> self() noexcept override { return shared_from_this(); }
 
-  size_t tasksDone() const noexcept { return th_->tasksDone(); }
+  size_t tasksDone() const noexcept {
+    return th_->tasksDone();
+  }
+  std::optional<nf7::Env::Time> currentTaskBegin() const noexcept {
+    auto& k = data_->lock;
+    while (k.test_and_set());
+    const auto ret = data_->begin;
+    k.clear();
+    return ret;
+  }
 
  private:
   std::shared_ptr<Thread>     th_;
   std::shared_ptr<SharedData> data_;
 };
 
-void LuaContext::Handle(const nf7::File::Event& e) noexcept {
+void LuaContext::PostHandle(const nf7::File::Event& e) noexcept {
   switch (e.type) {
   case nf7::File::Event::kAdd:
     q_->SetAsync(async_);
     return;
   default:
     return;
+  }
+}
+void LuaContext::PostUpdate() noexcept {
+  if (auto beg = q_->currentTaskBegin()) {
+    if (nf7::Env::Clock::now()-*beg > 10ms) {
+      log_.Warn("detected stall of LuaJIT thread, you should save and restart Nf7 immediately");
+    }
   }
 }
 
