@@ -216,7 +216,10 @@ FetchContent_Declare(
   magic_enum
   URL "https://github.com/Neargye/magic_enum/archive/refs/tags/v0.8.1.zip"
 )
-FetchContent_MakeAvailable(magic_enum)
+FetchContent_Populate(magic_enum)
+
+add_library(magic_enum INTERFACE)
+target_include_directories(magic_enum SYSTEM INTERFACE ${magic_enum_SOURCE_DIR}/include)
 
 
 # ---- miniaudio ----
@@ -230,7 +233,7 @@ FetchContent_Declare(
 FetchContent_Populate(miniaudio)
 
 add_library(miniaudio)
-target_include_directories(miniaudio PUBLIC SYSTEM ${miniaudio_SOURCE_DIR})
+target_include_directories(miniaudio SYSTEM PUBLIC ${miniaudio_SOURCE_DIR})
 target_sources(miniaudio
   PUBLIC
     "${miniaudio_SOURCE_DIR}/miniaudio.h"
@@ -255,7 +258,7 @@ FetchContent_Declare(
 FetchContent_Populate(stb)
 
 add_library(stb)
-target_include_directories(stb PUBLIC SYSTEM ${stb_SOURCE_DIR})
+target_include_directories(stb SYSTEM PUBLIC ${stb_SOURCE_DIR})
 target_sources(stb
   PUBLIC
     ${stb_SOURCE_DIR}/stb_image.h

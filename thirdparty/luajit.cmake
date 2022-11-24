@@ -11,6 +11,9 @@ if (UNIX)
     VERBATIM
   )
 
+  # To enable assertions, add the following options:
+  #   XCFLAGS="-DLUA_USE_APICHECK -DLUA_USE_ASSERT -Og -g"
+
 elseif (MINGW)
   find_program(MAKE mingw32-make REQUIRED)
 
