@@ -245,7 +245,8 @@ void Event::PostUpdate() noexcept {
 }
 
 void Event::UpdateMenu() noexcept {
-  if (ImGui::MenuItem("drop handler lambda")) {
+  if (ImGui::MenuItem("abort and drop lambda", nullptr, false, !!la_)) {
+    la_->Abort();
     la_ = nullptr;
   }
 }
