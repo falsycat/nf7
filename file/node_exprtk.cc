@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <exprtk.hpp>
@@ -141,14 +142,22 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
     assert(vars.size() == inputs.size());
 
     // assign input values
+    ConstRegisterVisitor::Zone z;
+    z.reserve(inputs.size());
     for (size_t i = 0; i < inputs.size(); ++i) {
-      vars[i]->Visit(ConstRegisterVisitor {sym, inputs[i]});
+      vars[i]->Visit(ConstRegisterVisitor {sym, inputs[i], z});
     }
     vars_.clear();
 
     // register system functions
     OutputFunction yield_func {in.sender, shared_from_this()};
     sym.add_function("yield", yield_func);
+
+    LoadFunction load_func {mem_};
+    sym.add_function("load", load_func);
+
+    StoreFunction store_func {mem_};
+    sym.add_function("store", store_func);
 
     // compile the expr
     exprtk::parser<Scalar>     parser;
@@ -176,6 +185,8 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
 
   std::unordered_map<std::string, nf7::Value> vars_;
 
+  std::vector<Scalar> mem_;
+
 
   bool Satisfy() noexcept {
     for (const auto& in : f_->mem_->inputs) {
@@ -186,21 +197,52 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
     return true;
   }
 
+
   struct ConstRegisterVisitor final {
    public:
-    ConstRegisterVisitor(exprtk::symbol_table<Scalar>& sym, const std::string& name) noexcept :
-        sym_(sym), name_(name) {
+    using Zone = std::vector<std::variant<std::string, std::unique_ptr<Scalar[]>>>;
+
+    ConstRegisterVisitor(exprtk::symbol_table<Scalar>& sym,
+                         const std::string&            name,
+                         Zone&                         zone) noexcept :
+        sym_(sym), name_(name), zone_(zone) {
     }
-    void operator()(nf7::Value::Scalar v) noexcept {
+
+    void operator()(const nf7::Value::Pulse&) noexcept {
+      sym_.add_constant(name_, Scalar {0});
+    }
+    void operator()(const nf7::Value::Scalar& v) noexcept {
       sym_.add_constant(name_, v);
     }
-    // TODO:
+    void operator()(const nf7::Value::Integer& v) noexcept {
+      sym_.add_constant(name_, static_cast<Scalar>(v));
+    }
+    void operator()(const nf7::Value::Boolean& v) noexcept {
+      sym_.add_constant(name_, v? Scalar {1}: Scalar {0});
+    }
+    void operator()(const nf7::Value::String& v) noexcept {
+      zone_.emplace_back(v);
+      sym_.add_stringvar(name_, std::get<std::string>(zone_.back()), true);
+    }
+    void operator()(const nf7::Value::ConstTuple& v) {
+      const auto& tup = *v;
+
+      auto uptr = std::make_unique<Scalar[]>(tup.size());
+      for (size_t i = 0; i < tup.size(); ++i) {
+        uptr[i] = tup[i].second.scalarOrInteger<Scalar>();
+      }
+      sym_.add_vector(name_, uptr.get(), tup.size());
+
+      zone_.push_back(std::move(uptr));
+    }
+
     void operator()(auto) {
       throw nf7::Exception {"unsupported input value type"};
     }
    private:
     exprtk::symbol_table<Scalar>& sym_;
     const std::string&            name_;
+    Zone&                         zone_;
   };
 
   struct OutputFunction final : exprtk::igeneric_function<Scalar> {
@@ -251,6 +293,41 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
 
    private:
     std::shared_ptr<nf7::Node::Lambda> callee_, caller_;
+  };
+
+  struct LoadFunction final : exprtk::ifunction<Scalar> {
+   public:
+    LoadFunction(const std::vector<Scalar>& mem) noexcept :
+        exprtk::ifunction<Scalar>(1), mem_(mem) {
+    }
+    Scalar operator()(const Scalar& addr_f) {
+      if (addr_f < 0) {
+        throw nf7::Exception {"negative address"};
+      }
+      const auto addr = static_cast<uint64_t>(addr_f);
+      return addr < mem_.size()? mem_[addr]: Scalar {0};
+    }
+   private:
+    const std::vector<Scalar>& mem_;
+  };
+
+  struct StoreFunction final : exprtk::ifunction<Scalar> {
+   public:
+    StoreFunction(std::vector<Scalar>& mem) noexcept :
+        exprtk::ifunction<Scalar>(2), mem_(mem) {
+    }
+    Scalar operator()(const Scalar& addr_f, const Scalar& v) {
+      const auto addr = static_cast<uint64_t>(addr_f);
+      if (addr >= 1024) {
+        throw nf7::Exception {"out of memory (max 1024)"};
+      }
+      if (addr >= mem_.size()) {
+        mem_.resize(addr+1);
+      }
+      return mem_[addr] = v;
+    }
+   private:
+    std::vector<Scalar>& mem_;
   };
 };
 std::shared_ptr<nf7::Node::Lambda> ExprTk::CreateLambda(
