@@ -206,18 +206,21 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
     vars_.clear();
     vars_.reserve(inputs.size());
     for (const auto& name : f_->mem_->inputs) {
-      if (name.starts_with("v_")) {
-        auto itr = std::find_if(
-            inputs_.begin(), inputs_.end(), [&](auto& x) { return x.first == name; });
-        assert(itr != inputs_.end());
+      auto itr = std::find_if(
+          inputs_.begin(), inputs_.end(), [&](auto& x) { return x.first == name; });
+      assert(itr != inputs_.end());
 
-        const auto n = itr->second.tuple()->size();
+      const auto& v = itr->second;
+      if (v.isTuple()) {
+        const auto n = v.tuple()->size();
         if (n == 0) {
-          throw nf7::Exception {"got empty tuple: "+name};
+          throw nf7::Exception {"got an empty tuple: "+name};
         }
         vars_.emplace_back(name, std::vector<Scalar>(n));
-      } else if (name.starts_with("s_")) {
+
+      } else if (v.isString()) {
         vars_.emplace_back(name, std::string {});
+
       } else {
         vars_.emplace_back(name, Scalar {0});
       }
