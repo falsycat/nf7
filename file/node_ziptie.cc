@@ -308,12 +308,12 @@ void ZipTie::InsertSocket(nf7::Node::Editor& ed, size_t idx) noexcept {
   assert(names.size() < kMaxN);
   assert(idx <= names.size());
 
-  for (size_t i = names.size()-1; i > idx; --i) {
-    MoveLinks(ed, kIndexStrings[i-1], kIndexStrings[i]);
-  }
   env().ExecMain(nullptr, [&names, idx](){
     names.insert(names.begin()+static_cast<intmax_t>(idx), std::string {});
   });
+  for (size_t i = names.size(); i > idx; --i) {
+    MoveLinks(ed, kIndexStrings[i-1], kIndexStrings[i]);
+  }
 }
 void ZipTie::RemoveSocket(nf7::Node::Editor& ed, size_t idx) noexcept {
   auto& names = mem_->names;
