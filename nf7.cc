@@ -88,7 +88,7 @@ void File::MakeAsRoot() noexcept {
   assert(id_ == 0);
   assert(name_.empty());
   id_   = env_->AddFile(*this);
-  name_ = "$";
+  name_ = "$"s;
 
   env_->Handle({ .id = id_, .type = File::Event::kAdd });
 }
