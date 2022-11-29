@@ -410,6 +410,9 @@ class Network::Lambda : public Node::Lambda,
       try {
         ZoneScopedN("transmit value");
 
+        last_transmission_ = nf7::Env::Clock::now();
+        ++transmission_count_;
+
         auto itr = idmap_.find(in.sender.get());
         if (itr == idmap_.end()) {
           throw nf7::Exception {"called by unknown lambda"};
@@ -480,6 +483,9 @@ class Network::Lambda : public Node::Lambda,
     return "executing Node/Network";
   }
 
+  nf7::Env::Time lastTransmission() const noexcept { return last_transmission_; }
+  size_t transmissionCount() const noexcept { return transmission_count_; }
+
  private:
   nf7::Life<Network>::Ref f_;
 
@@ -487,6 +493,9 @@ class Network::Lambda : public Node::Lambda,
   std::unordered_map<Node::Lambda*, ItemId> idmap_;
 
   bool abort_ = false;
+
+  nf7::Env::Time last_transmission_  = nf7::Env::Time::min();
+  size_t         transmission_count_ = 0;
 };
 void Network::AttachLambda(const std::shared_ptr<Network::Lambda>& la) noexcept {
   if (lambda_ && lambda_->depth() == 0) {
@@ -952,7 +961,7 @@ void Network::NetworkEditor() noexcept {
   // ---- editor window / toolbar
   ImGui::BeginGroup();
   {
-    // ---- editor window / toolbar / attached lambda combo
+    // ---- editor window / toolbar / lambda combo
     const auto current_lambda =
         !lambda_?              "(unselected)"s:
         lambda_->depth() == 0? "(isolated)"s:
@@ -986,6 +995,29 @@ void Network::NetworkEditor() noexcept {
         ImGui::TextDisabled("no running lambda found...");
       }
       ImGui::EndCombo();
+    }
+
+    // ---- editor window / toolbar / active indicator
+    if (lambda_) {
+      ImGui::SameLine();
+      const auto now     = nf7::Env::Clock::now();
+      const auto cnt     = lambda_->transmissionCount();
+      const auto elapsed = now - lambda_->lastTransmission();
+
+      if (cnt > 0 && elapsed < 2s) {
+        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+        const auto elapsed_f  = static_cast<float>(elapsed_ms) / 2000.f;
+
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, 1.f-elapsed_f));
+
+        static const char kChars[] = "/-\\|";
+        const auto idx = cnt + static_cast<size_t>(std::pow(1.f-elapsed_f, 2)*5);
+        ImGui::Text("%c", kChars[idx%(sizeof(kChars)-1)]);
+
+        ImGui::PopStyleColor(1);
+        ImGui::EndGroup();
+      }
     }
   }
   ImGui::EndGroup();
