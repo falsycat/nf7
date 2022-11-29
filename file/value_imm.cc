@@ -61,6 +61,9 @@ struct Pulse {
     if (ImGui::Button("PULSE", {6*ImGui::GetFontSize(), 0})) {
       ed.emit = nf7::Value {};
     }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("generates a pulse manually");
+    }
     ImGui::EndDisabled();
   }
   void serialize(auto&) {
@@ -206,17 +209,26 @@ struct Pos2D {
     return std::vector<nf7::Value>(values_.begin(), values_.end());
   }
   void Editor(EditorStatus& ed) noexcept {
-    const auto  em = ImGui::GetFontSize();
-    const auto& io = ImGui::GetIO();
-    auto dlist = ImGui::GetForegroundDrawList();
+    const auto em    = ImGui::GetFontSize();
+    auto       dlist = ImGui::GetForegroundDrawList();
 
     if (!ed.autosize) {
       ImGui::SetNextItemWidth(6*ImGui::GetFontSize());
     }
     ImGui::DragFloat2("##value", values_.data(), 1e-3f);
     ImGui::SameLine();
-    ImGui::Button("+");
+    ImGui::ButtonEx("+", ImVec2 {0, 0},
+                    ImGuiButtonFlags_MouseButtonLeft |
+                    ImGuiButtonFlags_MouseButtonRight);
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::TextUnformatted("LMB & drag: set a position absolutely");
+      ImGui::TextUnformatted("RMB & drag: move a position relatively");
+      ImGui::EndTooltip();
+    }
     if (ImGui::IsItemActive()) {
+      const auto ctx = ImGui::GetCurrentContext();
+
       if (ImGui::IsItemActivated()) {
         prev_[0] = values_[0], prev_[1] = values_[1];
         std::copy(values_.begin(), values_.end(), prev_.begin());
@@ -226,7 +238,7 @@ struct Pos2D {
       const auto mouse  = ImGui::GetMousePos();
       dlist->AddLine(mouse, center, fg_col);
 
-      const auto axis_size = io.KeyCtrl? 32*em: 16*em;
+      const auto axis_size = 16*em;
       const auto axis_col  = ImGui::GetColorU32(ImGuiCol_DragDropTarget, 0.4f);
       dlist->AddLine(center-ImVec2(axis_size, 0),
                      center+ImVec2(axis_size, 0),
@@ -241,7 +253,7 @@ struct Pos2D {
 
       // set origin pos to values_
       const auto rpos = apos / axis_size;
-      if (io.KeyShift) {
+      if (ctx->ActiveIdMouseButton == ImGuiMouseButton_Right) {
         std::copy(prev_.begin(), prev_.end(), values_.begin());
       } else {
         std::fill(values_.begin(), values_.end(), 0.f);
