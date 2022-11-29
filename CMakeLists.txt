@@ -186,7 +186,6 @@ target_link_libraries(nf7
     imgui
     imnodes
     implot
-    linalg.h
     luajit
     magic_enum
     miniaudio

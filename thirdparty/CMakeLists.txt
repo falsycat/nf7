@@ -174,27 +174,6 @@ target_sources(implot
 )
 
 
-# ---- linalg.h ----
-# repository: https://github.com/sgorsten/linalg
-# license   : Unlicense
-
-FetchContent_Declare(
-  linalg_h
-  URL "https://github.com/sgorsten/linalg/archive/a3e87da35e32b781a4b6c01cdd5efbe7ae51c737.zip"
-)
-FetchContent_Populate(linalg_h)
-
-add_library(linalg.h INTERFACE)
-target_include_directories(linalg.h SYSTEM
-  INTERFACE .  "${linalg_h_SOURCE_DIR}"
-)
-target_sources(linalg.h
-  INTERFACE
-    "${linalg_h_SOURCE_DIR}/linalg.h"
-    linalg.hh
-)
-
-
 # ---- luajit ----
 # repository: https://github.com/LuaJIT/LuaJIT
 # license   : MIT
@@ -212,6 +191,9 @@ include_luajit()
 
 
 # ---- magic_enum ----
+# repository: https://github.com/Neargye/magic_enum
+# license   : MIT
+
 FetchContent_Declare(
   magic_enum
   URL "https://github.com/Neargye/magic_enum/archive/refs/tags/v0.8.1.zip"
