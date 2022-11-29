@@ -580,16 +580,33 @@ int main(int, char**) {
   }
 
   {
+    bool gracefull_exit = false;
+
     ZoneScopedN("wait for all tasks");
-    for (;;) {
+    for (size_t i = 0; i < 100;) {
       {
         ZoneScopedN("check remained tasks");
+
         std::unique_lock<std::shared_mutex> sk {task_mtx_};
-        if (!mainq_.size() && !subq_.size() && !asyncq_.size() && !glq_.size()) {
+        if (mainq_.size() > 0) {
+          TracyMessageL("main task is remained");
+        } else if (!subq_.idle()) {
+          TracyMessageL("subq is not idle");
+        } else if (!asyncq_.idle()) {
+          TracyMessageL("asyncq is not idle");
+        } else if (!glq_.idle()) {
+          TracyMessageL("glq is not idle");
+        } else {
+          TracyMessageL("all tasks done");
+          gracefull_exit = true;
           break;
         }
       }
-      std::this_thread::sleep_for(30ms);
+      std::this_thread::sleep_for(10ms);
+    }
+    if (!gracefull_exit) {
+      std::cout << "workers berserking, kills them all" << std::endl;
+      return EXIT_SUCCESS;
     }
   }
 
