@@ -626,10 +626,15 @@ struct Texture {
       ImGui::Text("id: %" PRIiPTR, id);
 
       if (m.target == gl::TextureTarget::Tex2D) {
+        const auto max = 16*ImGui::GetFontSize();
+
+        auto size = ImVec2 {static_cast<float>(size_[0]), static_cast<float>(size_[1])};
+        if (size.x > max) size /= size.x/max;
+        if (size.y > max) size /= size.y/max;
+
         ImGui::Spacing();
         ImGui::TextUnformatted("preview:");
-        ImGui::Image(reinterpret_cast<void*>(id),
-                     ImVec2 {static_cast<float>(size_[0]), static_cast<float>(size_[1])});
+        ImGui::Image(reinterpret_cast<void*>(id), size);
       }
     }
   }
