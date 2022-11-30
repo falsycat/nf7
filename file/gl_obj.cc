@@ -920,8 +920,8 @@ struct Program {
       std::vector<std::pair<std::string, gl::Texture::Factory::Product>> tex_fu;
       tex_fu.reserve(tex->size());
       for (auto& pa : *tex) {
-        auto fu = base.
-            ResolveOrThrow(pa.second.string()).
+        
+        auto fu = pa.second.file(base).
             interfaceOrThrow<gl::Texture::Factory>().
             Create();
         tex_fu.emplace_back(pa.first, fu);
