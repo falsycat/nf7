@@ -32,6 +32,7 @@
 
 #include "init.hh"
 #include "theme.hh"
+#include "version.hh"
 
 
 using namespace std::literals;
@@ -460,7 +461,8 @@ int main(int, char**) {
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-  window = glfwCreateWindow(1280, 720, "Nf7", NULL, NULL);
+  const auto title = "Nf7 "s+nf7::Version::kString;
+  window = glfwCreateWindow(1280, 720, title.c_str(), NULL, NULL);
   if (window == NULL) return 1;
   glfwMakeContextCurrent(window);
   glfwSwapInterval(0);
@@ -541,6 +543,7 @@ int main(int, char**) {
       int w, h;
       glfwGetFramebufferSize(window, &w, &h);
       glViewport(0, 0, w, h);
+      glClearColor(.1f, .1f, .1f, 1.f);
       glClear(GL_COLOR_BUFFER_BIT);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);

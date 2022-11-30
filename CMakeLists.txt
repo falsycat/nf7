@@ -74,6 +74,7 @@ target_sources(nf7
     nf7.cc
     nf7.hh
     theme.hh
+    version.hh
 
     common/aggregate_command.hh
     common/aggregate_promise.hh
