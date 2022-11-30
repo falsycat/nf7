@@ -26,6 +26,7 @@
 #include "common/generic_memento.hh"
 #include "common/generic_type_info.hh"
 #include "common/gui.hh"
+#include "common/gui_dnd.hh"
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
@@ -38,6 +39,7 @@ namespace {
 
 struct EditorStatus {
   // input
+  nf7::File& file;
   const bool emittable;
   const bool autoemit;
   const bool autosize;
@@ -53,7 +55,7 @@ struct Pulse {
   static constexpr const char* kName = "pulse";
   static constexpr const char* kDesc = nullptr;
 
-  nf7::Value GetValue() const noexcept {
+  nf7::Value GetValue(const nf7::File&) const noexcept {
     return nf7::Value::Pulse {};
   }
   void Editor(EditorStatus& ed) noexcept {
@@ -74,7 +76,7 @@ struct Integer {
   static constexpr const char* kName = "integer";
   static constexpr const char* kDesc = nullptr;
 
-  nf7::Value GetValue() const noexcept {
+  nf7::Value GetValue(const nf7::File&) const noexcept {
     return {value_};
   }
   void Editor(EditorStatus& ed) noexcept {
@@ -97,7 +99,7 @@ struct Scalar {
   static constexpr const char* kName = "scalar";
   static constexpr const char* kDesc = nullptr;
 
-  nf7::Value GetValue() const noexcept {
+  nf7::Value GetValue(const nf7::File&) const noexcept {
     return nf7::Value {value_};
   }
   void Editor(EditorStatus& ed) noexcept {
@@ -120,7 +122,7 @@ struct String {
   static constexpr const char* kName = "string";
   static constexpr const char* kDesc = nullptr;
 
-  nf7::Value GetValue() const noexcept {
+  nf7::Value GetValue(const nf7::File&) const noexcept {
     return nf7::Value {value_};
   }
   void Editor(EditorStatus& ed) noexcept {
@@ -130,8 +132,15 @@ struct String {
     }
     ImGui::InputTextMultiline("##value", &value_, {0, 2.4f*em});
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      if (ed.autoemit) ed.emit = GetValue();
+      if (ed.autoemit) ed.emit = value_;
       ed.mod  = true;
+    }
+    if (ImGui::BeginDragDropTarget()) {
+      if (auto p = gui::dnd::Accept<nf7::File::Path>(gui::dnd::kFilePath)) {
+        value_ = p->Stringify();
+        ed.mod = true;
+      }
+      ImGui::EndDragDropTarget();
     }
   }
   void serialize(auto& ar) {
@@ -145,7 +154,7 @@ struct String {
 template <int kMin, int kMax>
 struct SliderBase {
  public:
-  nf7::Value GetValue() const noexcept {
+  nf7::Value GetValue(const nf7::File&) const noexcept {
     return nf7::Value {value_};
   }
   void Editor(EditorStatus& ed) noexcept {
@@ -184,6 +193,9 @@ struct Color {
   nf7::Value GetValue() const noexcept {
     return std::vector<nf7::Value>(values_.begin(), values_.end());
   }
+  nf7::Value GetValue(const nf7::File&) const noexcept {
+    return GetValue();
+  }
   void Editor(EditorStatus& ed) noexcept {
     if (!ed.autosize) {
       ImGui::SetNextItemWidth(16*ImGui::GetFontSize());
@@ -207,6 +219,9 @@ struct Pos2D {
 
   nf7::Value GetValue() const noexcept {
     return std::vector<nf7::Value>(values_.begin(), values_.end());
+  }
+  nf7::Value GetValue(const nf7::File&) const noexcept {
+    return GetValue();
   }
   void Editor(EditorStatus& ed) noexcept {
     const auto em    = ImGui::GetFontSize();
@@ -285,6 +300,38 @@ struct Pos2D {
   std::array<float, 2> prev_;
 };
 
+struct FileRef {
+ public:
+  static constexpr const char* kName = "file ref";
+  static constexpr const char* kDesc = "emits a file ID from the path";
+
+  nf7::Value GetValue(const nf7::File& f) const noexcept {
+    try {
+      const auto& target = f.ResolveOrThrow(path_);
+      return static_cast<nf7::Value::Integer>(target.id());
+    } catch (nf7::File::NotFoundException&) {
+      return nf7::Value::Integer {0};
+    }
+  }
+  void Editor(EditorStatus& ed) noexcept {
+    ImGui::SetNextItemWidth(12*ImGui::GetFontSize());
+    gui::PathButton("##path", path_, ed.file);
+
+    if (ImGui::BeginDragDropTarget()) {
+      if (auto p = gui::dnd::Accept<nf7::File::Path>(gui::dnd::kFilePath)) {
+        path_  = std::move(*p);
+        ed.mod = true;
+      }
+      ImGui::EndDragDropTarget();
+    }
+  }
+  void serialize(auto& ar) {
+    ar(path_);
+  }
+ private:
+  nf7::File::Path path_;
+};
+
 
 class Imm final : public nf7::FileBase,
     public nf7::DirItem, public nf7::Node {
@@ -297,7 +344,7 @@ class Imm final : public nf7::FileBase,
   class NodeLambda;
 
   using Value = std::variant<
-      Pulse, Integer, Scalar, String, Slider01, Slider11, Pos2D, Color>;
+      Pulse, Integer, Scalar, String, Slider01, Slider11, Pos2D, Color, FileRef>;
   struct Data {
     Value value;
     bool  autoemit;
@@ -361,7 +408,7 @@ class Imm final : public nf7::FileBase,
 
 
   nf7::Value GetValue() const noexcept {
-    return std::visit([](auto& t) { return t.GetValue(); }, mem_->value);
+    return std::visit([&](auto& t) { return t.GetValue(*this); }, mem_->value);
   }
   const char* GetTypeName() const noexcept {
     return std::visit([](auto& t) { return t.kName; }, mem_->value);
@@ -411,6 +458,7 @@ void Imm::UpdateNode(nf7::Node::Editor& ed) noexcept {
 
   ImGui::BeginGroup();
   EditorStatus stat = {
+    .file      = *this,
     .emittable = true,
     .autoemit  = mem_->autoemit,
     .autosize  = false,
@@ -443,6 +491,7 @@ void Imm::UpdateMenu() noexcept {
 }
 void Imm::UpdateTree() noexcept {
   EditorStatus stat {
+    .file      = *this,
     .emittable = false,
     .autoemit  = false,
     .autosize  = true,
@@ -457,6 +506,7 @@ void Imm::UpdateTooltip() noexcept {
 
   ImGui::TextUnformatted("preview:");
   EditorStatus stat {
+    .file      = *this,
     .emittable = false,
     .autoemit  = false,
     .autosize  = false,
@@ -477,6 +527,8 @@ void Imm::MenuItems() noexcept {
   ImGui::Separator();
   MenuItem<Pos2D>();
   MenuItem<Color>();
+  ImGui::Separator();
+  MenuItem<FileRef>();
 }
 template <typename T>
 void Imm::MenuItem() noexcept {
