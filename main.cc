@@ -591,13 +591,14 @@ int main(int, char**) {
         ZoneScopedN("check remained tasks");
 
         std::unique_lock<std::shared_mutex> sk {task_mtx_};
+        const auto t = nf7::Env::Clock::now() + 1s;
         if (mainq_.size() > 0) {
           TracyMessageL("main task is remained");
-        } else if (!subq_.idle()) {
+        } else if (!subq_.idle(t)) {
           TracyMessageL("subq is not idle");
-        } else if (!asyncq_.idle()) {
+        } else if (!asyncq_.idle(t)) {
           TracyMessageL("asyncq is not idle");
-        } else if (!glq_.idle()) {
+        } else if (!glq_.idle(t)) {
           TracyMessageL("glq is not idle");
         } else {
           TracyMessageL("all tasks done");
