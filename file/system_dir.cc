@@ -149,7 +149,7 @@ void Dir::UpdateTree() noexcept {
 
     // send nf7::File::Event::kReqFocus on double click
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      env().Handle({.id = file.id(), .type = nf7::File::Event::kReqFocus});
+      file.RequestFocus();
     }
 
     // context menu

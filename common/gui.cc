@@ -22,7 +22,7 @@ void FileMenuItems(nf7::File& f) noexcept {
   auto config = f.interface<nf7::Config>();
 
   if (ImGui::MenuItem("request focus")) {
-    f.env().Handle({.id = f.id(), .type = nf7::File::Event::kReqFocus});
+    f.RequestFocus();
   }
   if (ImGui::MenuItem("copy path")) {
     ImGui::SetClipboardText(f.abspath().Stringify().c_str());

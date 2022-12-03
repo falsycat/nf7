@@ -114,6 +114,9 @@ void File::Touch() noexcept {
         }
       });
 }
+void File::RequestFocus() noexcept {
+  env().Handle({ .id = id_, .type = nf7::File::Event::kReqFocus });
+}
 File& File::FindOrThrow(std::string_view name) const {
   if (auto ret = Find(name)) return *ret;
   throw NotFoundException("missing child: "+std::string(name));

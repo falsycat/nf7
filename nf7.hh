@@ -95,6 +95,7 @@ class File {
   void Isolate() noexcept;
 
   void Touch() noexcept;
+  void RequestFocus() noexcept;
 
   virtual void Update() noexcept { }
   virtual void Handle(const Event&) noexcept { }
@@ -137,14 +138,9 @@ class File {
 struct File::Event final {
  public:
   enum Type {
-    // emitted by system (do not emit manually)
     kAdd,
     kRemove,
-
-    // can be emitted from inside of File
     kUpdate,
-
-    // can be emitted from outside of File
     kReqFocus,
   };
   Id   id;
