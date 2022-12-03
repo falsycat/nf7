@@ -249,7 +249,7 @@ class Network final : public nf7::FileBase,
   void Config() noexcept;
 
   ImVec2 GetCanvasPosFromScreenPos(const ImVec2& pos) noexcept {
-    return pos - canvas_pos_ - canvas_.Offset/canvas_.Zoom;
+    return (pos - canvas_pos_ - canvas_.Offset)/canvas_.Zoom;
   }
 };
 
@@ -916,6 +916,14 @@ void Network::Item::Watcher::Handle(const File::Event& ev) noexcept {
       if (auto cmd = item.mem_->CreateCommandIf()) {
         net.history_.Add(std::move(cmd));
       }
+    }
+    return;
+
+  case nf7::File::Event::kReqFocus:
+    if (item.owner_) {
+      auto& net = *item.owner_;
+      net.win_.SetFocus();
+      net.canvas_.Offset = item.pos_ * -net.canvas_.Zoom;
     }
     return;
 
