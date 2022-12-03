@@ -273,6 +273,9 @@ void Logger::UpdateMenu() noexcept {
   win_.MenuItem();
 }
 void Logger::UpdateRowMenu(const Row& row) noexcept {
+  if (row.file && ImGui::MenuItem("request focus")) {
+    env().Handle({.id = row.file, .type = nf7::File::Event::kReqFocus,});
+  }
   if (ImGui::MenuItem("copy as text")) {
     ImGui::SetClipboardText(row.Stringify().c_str());
   }
@@ -316,7 +319,11 @@ void Logger::LogView() noexcept {
         constexpr auto kFlags =
             ImGuiSelectableFlags_SpanAllColumns |
             ImGuiSelectableFlags_AllowItemOverlap;
-        ImGui::Selectable(row.level, false, kFlags);
+        if (ImGui::Selectable(row.level, false, kFlags)) {
+          if (row.file) {
+            env().Handle({.id = row.file, .type = nf7::File::Event::kReqFocus,});
+          }
+        }
         if (ImGui::BeginPopupContextItem()) {
           UpdateRowMenu(row);
           ImGui::EndPopup();
