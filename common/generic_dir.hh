@@ -110,6 +110,13 @@ class GenericDir : public nf7::FileBase::Feature, public nf7::Dir {
     return Rename(name, name);
   }
 
+  void Clear() noexcept {
+    if (f_.id()) {
+      for (auto& p : items_) p.second->Isolate();
+    }
+    items_.clear();
+  }
+
   const ItemMap& items() const noexcept { return items_; }
 
  private:
