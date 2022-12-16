@@ -83,6 +83,7 @@ target_sources(nf7
     common/context_owner.hh
     common/dir.hh
     common/dir_item.hh
+    common/dll.hh
     common/factory.hh
     common/file_base.hh
     common/font_queue.hh
@@ -124,6 +125,7 @@ target_sources(nf7
     common/mutex.hh
     common/nfile.hh
     common/nfile_watcher.hh
+    common/node.h
     common/node.hh
     common/node_link_store.hh
     common/node_root_lambda.hh
@@ -160,6 +162,7 @@ target_sources(nf7
     file/luajit_context.cc
     file/luajit_node.cc
     file/node_comment.cc
+    file/node_dll.cc
     file/node_exprtk.cc
     file/node_mutex.cc
     file/node_network.cc
