@@ -3,6 +3,7 @@
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 #include "nf7.hh"
@@ -16,8 +17,10 @@ namespace nf7::gui {
 void FileMenuItems(nf7::File& f) noexcept;
 void FileTooltip(nf7::File& f) noexcept;
 
-bool PathButton(const char* id, nf7::File::Path&, nf7::File&) noexcept;
+bool PathButton (const char* id, nf7::File::Path&, nf7::File&) noexcept;
 void ContextStack(const nf7::Context&) noexcept;
+
+bool NPathButton(const char* id, std::filesystem::path&, nf7::Env&) noexcept;
 
 void NodeSocket() noexcept;
 void NodeInputSockets(std::span<const std::string>) noexcept;

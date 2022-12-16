@@ -153,6 +153,67 @@ void ContextStack(const nf7::Context& ctx) noexcept {
   }
 }
 
+bool NPathButton(const char* id, std::filesystem::path& p, nf7::Env& env) noexcept {
+  const auto pstr = p.string();
+  const auto w    = ImGui::CalcItemWidth();
+
+  const auto dstr = pstr == ""? "(empty)": pstr.c_str();
+
+  const auto base = env.npath();
+  const auto full = base / p;
+
+  bool ret = false;
+
+  ImGui::PushID(id);
+  if (ImGui::Button(dstr, {w, 0})) {
+    ImGui::OpenPopup("editor");
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(dstr);
+    ImGui::Text("abs : %s", full.string().c_str());
+    ImGui::Text("base: %s", base.string().c_str());
+    ImGui::Indent();
+    if (!std::filesystem::exists(full)) {
+      ImGui::Bullet();
+      ImGui::TextUnformatted("the file doesn't seem to be existing");
+    }
+    ImGui::Unindent();
+    ImGui::EndTooltip();
+  }
+  if (id[0] != '#') {
+    ImGui::SameLine();
+    ImGui::TextUnformatted(id);
+  }
+
+  if (ImGui::BeginPopup("editor")) {
+    static std::string text;
+    if (ImGui::IsWindowAppearing()) {
+      text = pstr;
+    }
+
+    bool submit = false;
+    if (ImGui::InputText("npath", &text, ImGuiInputTextFlags_EnterReturnsTrue)) {
+      submit = true;
+    }
+    if (ImGui::Button("ok")) {
+      submit = true;
+    }
+
+    if (!std::filesystem::exists(base/text)) {
+      ImGui::Bullet();
+      ImGui::TextUnformatted("the file doesn't seem to be existing");
+    }
+    if (submit) {
+      p   = text;
+      ret = true;
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::PopID();
+  return ret;
+}
+
 void NodeSocket() noexcept {
   auto win = ImGui::GetCurrentWindow();
 
