@@ -29,8 +29,11 @@ typedef struct nf7_vtable_t {
 
   // ---- context methods ----
   struct {
+    void (*emit)(nf7_ctx_t*, const char* name, nf7_value_t*);
+
     // thread-safe
-    void (*exec_async)(nf7_ctx_t*, void (*f)(nf7_ctx_t*));
+    void (*exec_async)(nf7_ctx_t*, void (*f)(nf7_ctx_t*), uint64_t ms);
+    void (*exec_sub)  (nf7_ctx_t*, void (*f)(nf7_ctx_t*), uint64_t ms);
   } ctx;
 
   // ---- value accessor/mutator ----
@@ -69,7 +72,8 @@ typedef struct nf7_init_t {
 } nf7_init_t;
 
 typedef struct nf7_ctx_t {
-  void* ptr;
+  nf7_value_t* value;
+  void*        ptr;
 } nf7_ctx_t;
 
 typedef struct nf7_node_t {
@@ -87,7 +91,6 @@ typedef struct nf7_node_msg_t {
   const char*  name;
   nf7_value_t* value;
   nf7_ctx_t*   ctx;
-  void*        ptr;
 } nf7_node_msg_t;
 
 

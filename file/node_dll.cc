@@ -38,8 +38,10 @@ struct InitParam {
   std::shared_ptr<nf7::DLL>      dll;
   std::vector<const nf7_node_t*> nodes;
 };
-struct NodeMsg {
-  nf7_node_msg_t base;
+struct Context {
+  nf7_ctx_t base;
+  std::shared_ptr<nf7::Node::Lambda> caller;
+  std::shared_ptr<nf7::Node::Lambda> callee;
 };
 }  // namespace adaptor
 
@@ -51,7 +53,12 @@ static const nf7_vtable_t kVtable = {
     },
   },
   .ctx = {
+    .emit = [](nf7_ctx_t* ptr, const char* name, nf7_value_t* v) {
+      auto& p = *reinterpret_cast<adaptor::Context*>(ptr);
+      p.caller->Handle(name, *reinterpret_cast<nf7::Value*>(v), p.callee);
+    },
     .exec_async = nullptr,  // TODO
+    .exec_sub   = nullptr,  // TODO
   },
   .value = {
     .get_type = [](nf7_value_t* vptr) {
@@ -210,27 +217,36 @@ class Loader::Node final : public nf7::File, public nf7::DirItem, public nf7::No
   }
 };
 
-class Loader::Node::Lambda final : public nf7::Node::Lambda {
+class Loader::Node::Lambda final : public nf7::Node::Lambda,
+    public std::enable_shared_from_this<Loader::Node::Lambda> {
  public:
   Lambda(Loader::Node& f, const std::shared_ptr<nf7::Node::Lambda>& parent) noexcept :
       nf7::Node::Lambda(f, parent),
-      dll_(f.dll_), meta_(f.meta_), ptr_(meta_.init()) {
+      dll_(f.dll_), meta_(f.meta_), ptr_(meta_.init? meta_.init(): nullptr) {
   }
   ~Lambda() noexcept {
-    meta_.deinit(ptr_);
+    if (meta_.deinit) {
+      meta_.deinit(ptr_);
+    }
   }
   void Handle(const nf7::Node::Lambda::Msg& in) noexcept override {
     nf7::Value v = in.value;
+    nf7::Value temp;
 
-    const adaptor::NodeMsg msg = {
-      .base = {
-        .name  = in.name.c_str(),
-        .value = reinterpret_cast<nf7_value_t*>(&v),
-        .ctx   = reinterpret_cast<nf7_ctx_t*>(this),
+    adaptor::Context ctx = {
+      .base   = {
+        .value = reinterpret_cast<nf7_value_t*>(&temp),
         .ptr   = ptr_,
       },
+      .caller = in.sender,
+      .callee = shared_from_this(),
     };
-    meta_.handle(&msg.base);
+    const nf7_node_msg_t msg = {
+      .name  = in.name.c_str(),
+      .value = reinterpret_cast<nf7_value_t*>(&v),
+      .ctx   = &ctx.base,
+    };
+    meta_.handle(&msg);
   }
 
  private:
