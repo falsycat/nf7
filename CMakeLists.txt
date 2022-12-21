@@ -155,7 +155,6 @@ target_sources(nf7
 
     file/audio_context.cc
     file/audio_device.cc
-    file/codec_stbimage.cc
     file/font_context.cc
     file/font_face.cc
     file/gl_obj.cc
@@ -195,7 +194,6 @@ target_link_libraries(nf7
     magic_enum
     miniaudio
     source_location
-    stb
     TracyClient
     yas
     yaml-cpp

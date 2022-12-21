@@ -21,11 +21,6 @@ inline std::unique_ptr<nf7::File> CreateRoot(nf7::Env& env) noexcept {
 
   auto& node = Add(root, "node", "System/Dir").interfaceOrThrow<nf7::Dir>();
   {
-    auto& codec = Add(node, "codec", "System/Dir").interfaceOrThrow<nf7::Dir>();
-    {
-      Add(codec, "stbimage",  "Codec/StbImage");
-    }
-
     auto& system = Add(node, "system", "System/Dir").interfaceOrThrow<nf7::Dir>();
     {
       Add(system, "save",  "System/Node/Save");
