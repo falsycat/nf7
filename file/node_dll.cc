@@ -1,3 +1,4 @@
+#include <cassert>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -53,15 +54,48 @@ static const nf7_vtable_t kVtable = {
     },
   },
   .ctx = {
-    .emit = [](nf7_ctx_t* ptr, const char* name, nf7_value_t* v) {
+    .emit = [](nf7_ctx_t* ptr, const char* name, const nf7_value_t* v) {
       auto& p = *reinterpret_cast<adaptor::Context*>(ptr);
-      p.caller->Handle(name, *reinterpret_cast<nf7::Value*>(v), p.callee);
+      p.caller->Handle(name, *reinterpret_cast<const nf7::Value*>(v), p.callee);
     },
-    .exec_async = nullptr,  // TODO
-    .exec_sub   = nullptr,  // TODO
+    .exec_async = [](nf7_ctx_t* ptr, void* udata, void (*f)(nf7_ctx_t*, void*), uint64_t ms) {
+      auto& p = *reinterpret_cast<adaptor::Context*>(ptr);
+
+      const auto time = ms?
+          nf7::Env::Clock::now() + std::chrono::milliseconds(ms):
+          nf7::Env::Time::min();
+      p.callee->env().ExecAsync(p.callee, [udata, f, p]() mutable {
+        nf7::Value temp;
+        p.base.value = reinterpret_cast<nf7_value_t*>(&temp);
+        f(&p.base, udata);
+      }, time);
+    },
+    .exec_emit = [](nf7_ctx_t* ptr, const char* n, const nf7_value_t* vptr, uint64_t ms) {
+      auto& p    = *reinterpret_cast<adaptor::Context*>(ptr);
+      auto  name = std::string {n};
+      auto& v    = *reinterpret_cast<const nf7::Value*>(vptr);
+
+      const auto time = ms?
+          nf7::Env::Clock::now() + std::chrono::milliseconds(ms):
+          nf7::Env::Time::min();
+      p.callee->env().ExecSub(p.callee, [p, name, v]() mutable {
+        p.caller->Handle(name, v, p.callee);
+      }, time);
+    },
   },
   .value = {
-    .get_type = [](nf7_value_t* vptr) {
+    .create = [](const nf7_value_t* vptr) {
+      if (vptr) {
+        const auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+        return reinterpret_cast<nf7_value_t*>(new nf7::Value {v});
+      } else {
+        return reinterpret_cast<nf7_value_t*>(new nf7::Value {});
+      }
+    },
+    .destroy = [](nf7_value_t* vptr) {
+      delete reinterpret_cast<nf7::Value*>(vptr);
+    },
+    .get_type = [](const nf7_value_t* vptr) {
       struct Visitor {
         uint8_t operator()(nf7::Value::Pulse)              { return NF7_PULSE;   }
         uint8_t operator()(nf7::Value::Boolean)            { return NF7_BOOLEAN; }
@@ -72,43 +106,94 @@ static const nf7_vtable_t kVtable = {
         uint8_t operator()(const nf7::Value::ConstTuple&)  { return NF7_TUPLE;   }
         uint8_t operator()(const nf7::Value::DataPtr&)     { return NF7_UNKNOWN; }
       };
-      const auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      const auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
       return std::visit(Visitor {}, v.value());
     },
-    .get_boolean = [](nf7_value_t* vptr) {
-      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
-      return v.isBoolean()? &v.boolean(): nullptr;
+    .get_boolean = [](const nf7_value_t* vptr, bool* ret) {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      if (!v.isBoolean()) return false;
+      *ret = v.boolean();
+      return true;
     },
-    .get_integer = [](nf7_value_t* vptr) {
-      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
-      return v.isInteger()? &v.integer(): nullptr;
+    .get_integer = [](const nf7_value_t* vptr, int64_t* ret) {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      if (!v.isInteger()) return false;
+      *ret = v.integer();
+      return true;
     },
-    .get_scalar = [](nf7_value_t* vptr) {
-      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
-      return v.isScalar()? &v.scalar(): nullptr;
+    .get_scalar = [](const nf7_value_t* vptr, double* ret) {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      if (!v.isScalar()) return false;
+      *ret = v.scalar();
+      return true;
     },
-    .get_string = [](nf7_value_t* vptr, size_t* n) -> char* {
-      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
-      if (v.isString()) {
-        auto& str = v.string();
-        *n = str.size();
-        return str.data();
-      } else {
+    .get_string = [](const nf7_value_t* vptr, size_t* n) -> const char* {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      if (!v.isString()) return nullptr;
+      auto& str = v.string();
+      if (n) *n = str.size();
+      return str.data();
+    },
+    .get_vector = [](const nf7_value_t* vptr, size_t* n) -> const uint8_t* {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      if (!v.isVector()) return nullptr;
+      auto& vec = v.vector();
+      *n = vec->size();
+      return vec->data();
+    },
+    .get_tuple = [](const nf7_value_t* vptr, const char* name) -> const nf7_value_t* {
+      auto& v = *reinterpret_cast<const nf7::Value*>(vptr);
+      try {
+        return reinterpret_cast<const nf7_value_t*>(&v.tuple(name));
+      } catch (nf7::Exception&) {
         return nullptr;
       }
     },
 
-    // TODO
-    .get_vector  = nullptr,
-    .get_mvector = nullptr,
-    .get_tuple   = nullptr,
-    .set_pulse   = nullptr,
-    .set_boolean = nullptr,
-    .set_integer = nullptr,
-    .set_scalar  = nullptr,
-    .set_string  = nullptr,
-    .set_vector  = nullptr,
-    .set_tuple   = nullptr,
+    .set_pulse = [](nf7_value_t* vptr) {
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = nf7::Value::Pulse {};
+    },
+    .set_boolean = [](nf7_value_t* vptr, nf7::Value::Boolean b) {
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = b;
+    },
+    .set_integer = [](nf7_value_t* vptr, nf7::Value::Integer i) {
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = i;
+    },
+    .set_scalar = [](nf7_value_t* vptr, nf7::Value::Scalar s) {
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = s;
+    },
+    .set_string = [](nf7_value_t* vptr, size_t n) {
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = nf7::Value::String(n, ' ');
+      return v.string().data();
+    },
+    .set_vector = [](nf7_value_t* vptr, size_t n) {
+      auto& v   = *reinterpret_cast<nf7::Value*>(vptr);
+      auto  vec = std::vector<uint8_t>(n);
+      auto  ret = vec.data();
+      v = std::move(vec);
+      assert(v.vector()->data() == ret);
+      return ret;
+    },
+    .set_tuple = [](nf7_value_t* vptr, const char** names, nf7_value_t** ret) {
+      const char** itr = names;
+      while (*itr) ++itr;
+      const auto n = static_cast<size_t>(itr-names);
+
+      std::vector<nf7::Value::TuplePair> ps;
+      ps.reserve(n);
+      for (size_t i = 0; i < n; ++i) {
+        ps.emplace_back(names[i], nf7::Value {});
+        ret[i] = reinterpret_cast<nf7_value_t*>(&ps.back().second);
+      }
+
+      auto& v = *reinterpret_cast<nf7::Value*>(vptr);
+      v = std::move(ps);
+    },
   },
 };
 

@@ -29,16 +29,19 @@ typedef struct nf7_vtable_t {
 
   // ---- context methods ----
   struct {
-    void (*emit)(nf7_ctx_t*, const char* name, nf7_value_t*);
+    void (*emit)(nf7_ctx_t*, const char* name, const nf7_value_t*);
 
     // thread-safe
-    void (*exec_async)(nf7_ctx_t*, void (*f)(nf7_ctx_t*), uint64_t ms);
-    void (*exec_sub)  (nf7_ctx_t*, void (*f)(nf7_ctx_t*), uint64_t ms);
+    void (*exec_async)(nf7_ctx_t*, void*, void (*f)(nf7_ctx_t*, void*), uint64_t ms);
+    void (*exec_emit)(nf7_ctx_t*, const char* name, const nf7_value_t*, uint64_t ms);
   } ctx;
 
   // ---- value accessor/mutator ----
   struct {
-    uint8_t (*get_type)(nf7_value_t*);
+    nf7_value_t* (*create) (const nf7_value_t*);
+    void         (*destroy)(nf7_value_t*);
+
+    uint8_t (*get_type)(const nf7_value_t*);
 #   define NF7_PULSE   UINT8_C(0)
 #   define NF7_BOOLEAN UINT8_C(1)
 #   define NF7_INTEGER UINT8_C(2)
@@ -49,13 +52,12 @@ typedef struct nf7_vtable_t {
 #   define NF7_UNKNOWN UINT8_MAX
 
     // A result of value_get_type should be checked before calling the followings.
-    bool*          (*get_boolean)(nf7_value_t*);
-    int64_t*       (*get_integer)(nf7_value_t*);
-    double*        (*get_scalar) (nf7_value_t*);
-    char*          (*get_string) (nf7_value_t*, size_t*);
-    const uint8_t* (*get_vector) (nf7_value_t*, size_t*);
-    uint8_t*       (*get_mvector)(nf7_value_t*, size_t*);
-    nf7_value_t*   (*get_tuple)  (nf7_value_t*, const char*);
+    bool (*get_boolean)(const nf7_value_t*, bool*);
+    bool (*get_integer)(const nf7_value_t*, int64_t*);
+    bool (*get_scalar) (const nf7_value_t*, double*);
+    const char*        (*get_string)(const nf7_value_t*, size_t*);
+    const uint8_t*     (*get_vector)(const nf7_value_t*, size_t*);
+    const nf7_value_t* (*get_tuple) (const nf7_value_t*, const char*);
 
     void     (*set_pulse)  (nf7_value_t*);
     void     (*set_boolean)(nf7_value_t*, bool);
@@ -63,7 +65,7 @@ typedef struct nf7_vtable_t {
     void     (*set_scalar) (nf7_value_t*, double);
     char*    (*set_string) (nf7_value_t*, size_t);
     uint8_t* (*set_vector) (nf7_value_t*, size_t);
-    void     (*set_tuple)  (nf7_value_t*, const char**, size_t);
+    void     (*set_tuple)  (nf7_value_t*, const char**, nf7_value_t**);
   } value;
 } nf7_vtable_t;
 
