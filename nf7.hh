@@ -264,17 +264,17 @@ class Env {
   Env& operator=(Env&&) = delete;
 
   // thread-safe
-  virtual void Exec(Executor, const std::shared_ptr<Context>&, Task&&, Time = {}) noexcept = 0;
+  virtual void Exec(Executor, const std::shared_ptr<Context>&, Task&&, Time = Time::min()) noexcept = 0;
   void ExecMain(const std::shared_ptr<Context>& ctx, Task&& task) noexcept {
     Exec(kMain, ctx, std::move(task));
   }
-  void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task) noexcept {
-    Exec(kSub, ctx, std::move(task));
+  void ExecSub(const std::shared_ptr<Context>& ctx, Task&& task, Time t = Time::min()) noexcept {
+    Exec(kSub, ctx, std::move(task), t);
   }
-  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task, Time t = {}) noexcept {
+  void ExecAsync(const std::shared_ptr<Context>& ctx, Task&& task, Time t = Time::min()) noexcept {
     Exec(kAsync, ctx, std::move(task), t);
   }
-  void ExecGL(const std::shared_ptr<Context>& ctx, Task&& task, Time t = {}) noexcept {
+  void ExecGL(const std::shared_ptr<Context>& ctx, Task&& task, Time t = Time::min()) noexcept {
     Exec(kGL, ctx, std::move(task), t);
   }
 
