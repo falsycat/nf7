@@ -29,8 +29,6 @@ typedef struct nf7_vtable_t {
 
   // ---- context methods ----
   struct {
-    void (*emit)(nf7_ctx_t*, const char* name, const nf7_value_t*);
-
     // thread-safe
     void (*exec_async)(nf7_ctx_t*, void*, void (*f)(nf7_ctx_t*, void*), uint64_t ms);
     void (*exec_emit)(nf7_ctx_t*, const char* name, const nf7_value_t*, uint64_t ms);

@@ -54,10 +54,6 @@ static const nf7_vtable_t kVtable = {
     },
   },
   .ctx = {
-    .emit = [](nf7_ctx_t* ptr, const char* name, const nf7_value_t* v) {
-      auto& p = *reinterpret_cast<adaptor::Context*>(ptr);
-      p.caller->Handle(name, *reinterpret_cast<const nf7::Value*>(v), p.callee);
-    },
     .exec_async = [](nf7_ctx_t* ptr, void* udata, void (*f)(nf7_ctx_t*, void*), uint64_t ms) {
       auto& p = *reinterpret_cast<adaptor::Context*>(ptr);
 
