@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -127,10 +128,13 @@ struct String {
   }
   void Editor(EditorStatus& ed) noexcept {
     const auto em = ImGui::GetFontSize();
-    if (!ed.autosize) {
-      ImGui::SetNextItemWidth(12*em);
-    }
-    ImGui::InputTextMultiline("##value", &value_, {0, 2.4f*em});
+
+    auto size = (ed.autosize? ImVec2 {0, 2.4f}: size_)*em;
+    size.y = std::max(size.y, ImGui::GetFrameHeight());
+
+    ImGui::InputTextMultiline("##value", &value_, size);
+    const auto actual_size = ImGui::GetItemRectSize();
+
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       if (ed.autoemit) ed.emit = value_;
       ed.mod  = true;
@@ -142,12 +146,30 @@ struct String {
       }
       ImGui::EndDragDropTarget();
     }
+    if (!ed.autosize) {
+      ImGui::SameLine();
+      ImGui::BeginGroup();
+      ImGui::Dummy({1, actual_size.y - em});
+      gui::Resizer("value-resizer", size_);
+      FixSize();
+      if (ImGui::IsItemDeactivated()) {
+        ed.mod = true;
+      }
+      ImGui::EndGroup();
+    }
   }
   void serialize(auto& ar) {
-    ar(value_);
+    ar(value_, size_);
+    FixSize();
   }
  private:
   std::string value_;
+  ImVec2 size_ = {8.f, 0.f};
+
+  void FixSize() noexcept {
+    size_.x = std::clamp(size_.x, 6.f, 24.f);
+    size_.y = std::clamp(size_.y, 0.f, 24.f);
+  }
 };
 
 

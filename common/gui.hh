@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <string>
 
+#include <imgui.h>
+
 #include "nf7.hh"
 
 #include "common/config.hh"
@@ -22,6 +24,8 @@ void ContextStack(const nf7::Context&) noexcept;
 
 bool NPathButton(const char* id, std::filesystem::path&, nf7::Env&) noexcept;
 
+void Resizer(const char* id, ImVec2& sz) noexcept;
+
 void NodeSocket() noexcept;
 void NodeInputSockets(std::span<const std::string>) noexcept;
 void NodeOutputSockets(std::span<const std::string>) noexcept;
@@ -30,10 +34,14 @@ struct ConfigEditor {
  public:
   void operator()(nf7::Config&) noexcept;
 
+  bool resize = false;
+
  private:
   std::string text_;
   std::string msg_;
   bool        mod_;
+
+  ImVec2 size_ = {24.f, 8.f};
 };
 
 

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 
 #include <ImNodes.h>
@@ -34,6 +35,7 @@
 #include "common/memento.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
+#include "common/yas_imgui.hh"
 
 
 using namespace std::literals;
@@ -54,12 +56,25 @@ class Node final : public nf7::FileBase,
 
   struct Data {
     Data() noexcept { }
+
+    void serialize(auto& ar) {
+      ar(script, inputs, outputs, size);
+      FixSize();
+    }
+
     std::string Stringify() const noexcept;
     void Parse(const std::string&);
+
+    void FixSize() noexcept {
+      size.x = std::clamp(size.x, 8.f, 24.f);
+      size.y = std::clamp(size.y, 0.f, 16.f);
+    }
 
     std::string script;
     std::vector<std::string> inputs  = {"in"};
     std::vector<std::string> outputs = {"out"};
+
+    ImVec2 size = {12.f, 4.f};
   };
 
   Node(nf7::Env& env, Data&& data = {}) noexcept :
@@ -77,12 +92,12 @@ class Node final : public nf7::FileBase,
   }
 
   Node(nf7::Deserializer& ar) : Node(ar.env()) {
-    ar(mem_->script, mem_->inputs, mem_->outputs);
+    ar(mem_.data());
     nf7::Node::ValidateSockets(mem_->inputs);
     nf7::Node::ValidateSockets(mem_->outputs);
   }
   void Serialize(nf7::Serializer& ar) const noexcept override {
-    ar(mem_->script, mem_->inputs, mem_->outputs);
+    ar(mem_.data());
   }
   std::unique_ptr<nf7::File> Clone(nf7::Env& env) const noexcept override {
     return std::make_unique<Node>(env, Data {mem_.data()});
@@ -269,12 +284,30 @@ void Node::UpdateNode(nf7::Node::Editor&) noexcept {
     ImGui::EndPopup();
   }
 
+  // input
   nf7::gui::NodeInputSockets(mem_->inputs);
   ImGui::SameLine();
-  ImGui::InputTextMultiline("##script", &mem_->script, {24*em, 8*em});
+
+  // input
+  auto size = mem_->size * em;
+  size.y = std::max(size.y, ImGui::GetFrameHeight());
+  ImGui::InputTextMultiline("##script", &mem_->script, size);
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
+
+  // resizer
+  ImGui::SameLine();
+  ImGui::BeginGroup();
+  ImGui::Dummy({1, size.y - em});
+  gui::Resizer("script-resizer", mem_->size);
+  mem_->FixSize();
+  if (ImGui::IsItemDeactivated()) {
+    mem_.Commit();
+  }
+  ImGui::EndGroup();
+
+  // output
   ImGui::SameLine();
   nf7::gui::NodeOutputSockets(mem_->outputs);
 }

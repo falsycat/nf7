@@ -36,6 +36,7 @@ void FileMenuItems(nf7::File& f) noexcept {
     ImGui::Separator();
     if (ImGui::BeginMenu("config")) {
       static nf7::gui::ConfigEditor ed;
+      ed.resize = true;
       ed(*config);
       ImGui::EndMenu();
     }
@@ -214,6 +215,31 @@ bool NPathButton(const char* id, std::filesystem::path& p, nf7::Env& env) noexce
   return ret;
 }
 
+void Resizer(const char* id, ImVec2& sz) noexcept {
+  const auto em  = ImGui::GetFontSize();
+  const auto w   = ImGui::CalcTextSize("#").x;
+  const auto pos = ImGui::GetCursorPos();
+
+  ImGui::TextUnformatted("#");
+
+  ImGui::SetCursorPos(pos);
+  ImGui::InvisibleButton(id, {w, em});
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+  }
+  if (ImGui::IsItemActive()) {
+    auto& io = ImGui::GetIO();
+
+    static ImVec2 pos, base;
+    if (ImGui::IsItemActivated()) {
+      pos  = io.MousePos;
+      base = sz;
+    }
+    sz = (io.MousePos - pos) / em + base;
+    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+  }
+}
+
 void NodeSocket() noexcept {
   auto win = ImGui::GetCurrentWindow();
 
@@ -267,6 +293,7 @@ void NodeOutputSockets(std::span<const std::string> names) noexcept {
 
 void ConfigEditor::operator()(nf7::Config& config) noexcept {
   ImGui::PushID(this);
+  const auto em = ImGui::GetFontSize();
 
   if (ImGui::IsWindowAppearing()) {
     text_ = config.Stringify();
@@ -274,7 +301,14 @@ void ConfigEditor::operator()(nf7::Config& config) noexcept {
     mod_  = false;
   }
 
-  mod_ |= ImGui::InputTextMultiline("##config", &text_);
+  mod_ |= ImGui::InputTextMultiline("##config", &text_, size_*em);
+  ImGui::SameLine();
+  ImGui::BeginGroup();
+  ImGui::Dummy({1, size_.y*em-em});
+  gui::Resizer("resizer", size_);
+  size_.x = std::clamp(size_.x, 8.f, 32.f);
+  size_.y = std::clamp(size_.y, 8.f, 32.f);
+  ImGui::EndGroup();
 
   ImGui::BeginDisabled(!mod_);
   if (ImGui::Button("apply")) {

@@ -10,6 +10,7 @@
 #include <exprtk.hpp>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 
 #include <ImNodes.h>
@@ -59,14 +60,20 @@ class ExprTk final : public nf7::FileBase,
     std::vector<std::string> inputs  = {"x"};
     std::vector<std::string> outputs = {"out"};
     std::string              script  = "";
+    ImVec2                   size    = {12.f, 4.f};
 
     Data() noexcept { }
     void serialize(auto& ar) {
       ar(inputs, outputs, script);
+      FixSize();
     }
     std::string Stringify() const noexcept;
     void Parse(const std::string&);
     void Sanitize() const;
+    void FixSize() noexcept {
+      size.x = std::clamp(size.x, 6.f, 32.f);
+      size.y = std::clamp(size.y, 2.f, 32.f);
+    }
   };
 
   ExprTk(nf7::Env& env, Data&& data = {}) noexcept :
@@ -403,6 +410,7 @@ void ExprTk::UpdateNode(nf7::Node::Editor&) noexcept {
     ImGui::EndPopup();
   }
 
+  // input
   ImGui::BeginGroup();
   for (const auto& in : mem_->inputs) {
     if (ImNodes::BeginInputSlot(in.c_str(), 1)) {
@@ -416,11 +424,26 @@ void ExprTk::UpdateNode(nf7::Node::Editor&) noexcept {
   ImGui::EndGroup();
   ImGui::SameLine();
 
-  ImGui::InputTextMultiline("##script", &mem_->script, ImVec2 {24*em, 8*em});
+  // script
+  auto size = mem_->size * em;
+  size.y = std::max(size.y, ImGui::GetFrameHeight());
+  ImGui::InputTextMultiline("##script", &mem_->script, size);
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     mem_.Commit();
   }
 
+  // resizer
+  ImGui::SameLine();
+  ImGui::BeginGroup();
+  ImGui::Dummy({1, size.y - em});
+  gui::Resizer("script-resizer", mem_->size);
+  mem_->FixSize();
+  if (ImGui::IsItemDeactivated()) {
+    mem_.Commit();
+  }
+  ImGui::EndGroup();
+
+  // output
   ImGui::SameLine();
   gui::NodeOutputSockets(mem_->outputs);
 }
