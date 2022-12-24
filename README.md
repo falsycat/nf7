@@ -13,7 +13,7 @@ portable visual programming platform
 
 ## INSTALLING
 
-Build Nf7 by yourself, or download the binary from releases (unavailable on mirror repo).
+If you're using Windows, download a demo project from [here](http://nf7.falsy.cat) and just execute nf7.exe, otherwise build it by yourself.
 
 It's expected to copy and put the executable on each of your projects to prevent old works from corruption by Nf7's update.
 
