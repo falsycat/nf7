@@ -123,7 +123,6 @@ target_sources(nf7
     common/memento.hh
     common/memento_recorder.hh
     common/mutex.hh
-    common/nfile.hh
     common/nfile_watcher.hh
     common/node.h
     common/node.hh
@@ -149,9 +148,6 @@ target_sources(nf7
     common/yas_std_atomic.hh
     common/yas_std_filesystem.hh
     common/yas_std_variant.hh
-
-    $<$<PLATFORM_ID:Linux>:common/nfile_unix.cc>
-    $<$<PLATFORM_ID:Windows>:common/nfile_win.cc>
 
     file/audio_context.cc
     file/audio_device.cc
