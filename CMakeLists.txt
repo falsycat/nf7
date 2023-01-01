@@ -105,8 +105,6 @@ target_sources(nf7
     common/gui_dnd.hh
     common/gui_timeline.hh
     common/gui_timeline.cc
-    common/gui_value.hh
-    common/gui_value.cc
     common/gui_window.hh
     common/gui_window.cc
     common/history.hh
@@ -132,7 +130,6 @@ target_sources(nf7
     common/pure_node_file.hh
     common/queue.hh
     common/ring_buffer.hh
-    common/sequencer.hh
     common/squashed_history.hh
     common/stopwatch.hh
     common/task.hh
@@ -164,9 +161,6 @@ target_sources(nf7
     file/node_ref.cc
     file/node_singleton.cc
     file/node_ziptie.cc
-    file/sequencer_adaptor.cc
-    file/sequencer_call.cc
-    file/sequencer_timeline.cc
     file/system_dir.cc
     file/system_event.cc
     file/system_imgui.cc

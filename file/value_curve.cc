@@ -22,7 +22,6 @@
 #include "common/life.hh"
 #include "common/node.hh"
 #include "common/ptr_selector.hh"
-#include "common/sequencer.hh"
 #include "common/value.hh"
 #include "common/yas_imgui.hh"
 
@@ -32,11 +31,10 @@ namespace {
 
 class Curve final : public nf7::FileBase,
     public nf7::DirItem,
-    public nf7::Node,
-    public nf7::Sequencer {
+    public nf7::Node {
  public:
   static inline const nf7::GenericTypeInfo<Curve> kType = {
-    "Value/Curve", {"nf7::DirItem", "nf7::Node", "nf7::Sequencer"},
+    "Value/Curve", {"nf7::DirItem", "nf7::Node"},
     "bezier curve editor",
   };
 
@@ -68,8 +66,6 @@ class Curve final : public nf7::FileBase,
       nf7::FileBase(kType, env),
       nf7::DirItem(nf7::DirItem::kWidget),
       nf7::Node(nf7::Node::kCustomNode),
-      nf7::Sequencer(nf7::Sequencer::kCustomItem |
-                     nf7::Sequencer::kParamPanel),
       life_(*this), mem_(*this, std::move(data)) {
     AssignId();
     Sanitize();
@@ -89,15 +85,11 @@ class Curve final : public nf7::FileBase,
 
   std::shared_ptr<nf7::Node::Lambda> CreateLambda(
       const std::shared_ptr<nf7::Node::Lambda>&) noexcept override;
-  std::shared_ptr<nf7::Sequencer::Lambda> CreateLambda(
-      const std::shared_ptr<nf7::Context>&) noexcept override;
 
   nf7::Node::Meta GetMeta() const noexcept override {
     return {{"x"}, {"y"}};
   }
 
-  void UpdateItem(nf7::Sequencer::Editor&) noexcept override;
-  void UpdateParamPanel(nf7::Sequencer::Editor&) noexcept override;
   void UpdateNode(nf7::Node::Editor&) noexcept override;
   void UpdateWidget() noexcept override;
   void UpdateCurveEditorWindow(const ImVec2&) noexcept;
@@ -105,7 +97,7 @@ class Curve final : public nf7::FileBase,
 
   nf7::File::Interface* interface(const std::type_info& t) noexcept override {
     return InterfaceSelector<
-        nf7::DirItem, nf7::Memento, nf7::Node, nf7::Sequencer>(t).Select(this, &mem_);
+        nf7::DirItem, nf7::Memento, nf7::Node>(t).Select(this, &mem_);
   }
 
  private:
@@ -318,36 +310,6 @@ std::shared_ptr<nf7::Node::Lambda> Curve::CreateLambda(
 }
 
 
-class Curve::SeqLambda final : public nf7::Sequencer::Lambda {
- public:
-  SeqLambda(Curve& f, const std::shared_ptr<nf7::Context>& parent) noexcept :
-      nf7::Sequencer::Lambda(f, parent), f_(f.life_) {
-  }
-
-  void Run(const std::shared_ptr<nf7::Sequencer::Session>& ss) noexcept {
-    try {
-      ss->Send("y", nf7::Value {f_->Calc(ss->ReceiveOrThrow("x").scalar())});
-    } catch (nf7::Exception&) {
-    }
-    ss->Finish();
-  }
-
- private:
-  nf7::Life<Curve>::Ref f_;
-};
-std::shared_ptr<nf7::Sequencer::Lambda> Curve::CreateLambda(
-    const std::shared_ptr<nf7::Context>& parent) noexcept {
-  return std::make_shared<Curve::SeqLambda>(*this, parent);
-}
-
-
-void Curve::UpdateItem(nf7::Sequencer::Editor&) noexcept {
-  ImGui::TextUnformatted("Value/Curve");
-
-  const auto pad = ImGui::GetStyle().WindowPadding / 2;
-  ImGui::SetCursorPos(pad);
-  UpdateCurveEditor(ImGui::GetContentRegionAvail()-pad);
-}
 void Curve::UpdateNode(nf7::Node::Editor&) noexcept {
   const auto em = ImGui::GetFontSize();
   ImGui::TextUnformatted("Value/Curve");
@@ -364,12 +326,6 @@ void Curve::UpdateNode(nf7::Node::Editor&) noexcept {
     ImGui::AlignTextToFramePadding();
     nf7::gui::NodeSocket();
     ImNodes::EndSlot();
-  }
-}
-void Curve::UpdateParamPanel(nf7::Sequencer::Editor&) noexcept {
-  if (ImGui::CollapsingHeader("Value/Curve", ImGuiTreeNodeFlags_DefaultOpen)) {
-    const auto em = ImGui::GetFontSize();
-    UpdateCurveEditorWindow({0, 6*em});
   }
 }
 void Curve::UpdateWidget() noexcept {
