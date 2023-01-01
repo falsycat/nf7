@@ -219,7 +219,7 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
 
       const auto& v = itr->second;
       if (v.isTuple()) {
-        const auto n = v.tuple()->size();
+        const auto n = v.tuple().size();
         if (n == 0) {
           throw nf7::Exception {"got an empty tuple: "+name};
         }
@@ -280,14 +280,13 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
     void operator()(std::string& y, const nf7::Value::String& x) noexcept {
       y = x;
     }
-    void operator()(std::vector<Scalar>& y, const nf7::Value::ConstTuple& x) {
-      const auto& tup = *x;
-
-      const auto n = std::min(y.size(), tup.size());
+    void operator()(std::vector<Scalar>& y, const nf7::Value::Tuple& x) {
+      const auto n = std::min(y.size(), x.size());
       for (size_t i = 0; i < n; ++i) {
-        y[i] = tup[i].second.scalarOrInteger<Scalar>();
+        y[i] = x[i].scalarOrInteger<Scalar>();
       }
-      std::fill(y.begin()+static_cast<intmax_t>(n), y.end(), Scalar {0});
+      const auto ni = static_cast<intmax_t>(n);
+      std::fill(y.begin()+ni, y.end(), Scalar {0});
     }
 
     void operator()(auto&, auto&) {
@@ -323,13 +322,11 @@ class ExprTk::Lambda final : public nf7::Node::Lambda,
       case 3: {  // vector
         generic_type::vector_view v {params[1]};
 
-        std::vector<nf7::Value::TuplePair> pairs;
-        pairs.resize(v.size());
+        nf7::Value::Tuple::Factory tup {v.size()};
         for (size_t i = 0; i < v.size(); ++i) {
-          pairs[i].second = nf7::Value {static_cast<nf7::Value::Scalar>(v[i])};
+          tup.Append() = static_cast<nf7::Value::Scalar>(v[i]);
         }
-
-        ret = {std::move(pairs)};
+        ret = tup.Create();
       } break;
       default:
         assert(false);

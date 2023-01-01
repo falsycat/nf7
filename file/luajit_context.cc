@@ -121,7 +121,7 @@ class LuaContext::Queue final : public nf7::luajit::Queue,
       throw nf7::Exception("failed to create new Lua state");
     }
     lua_pushthread(L);
-    nf7::luajit::PushImmEnv(L);
+    nf7::luajit::Push(L, nf7::luajit::ImmEnv {});
     lua_setfenv(L, -2);
     lua_pop(L, 1);
 

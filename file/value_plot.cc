@@ -65,8 +65,8 @@ class Plot final : public nf7::FileBase,
   struct SeriesData {
     SeriesFormat fmt;
 
-    nf7::Value::ConstVector xs;
-    nf7::Value::ConstVector ys;
+    nf7::Value::Buffer xs;
+    nf7::Value::Buffer ys;
 
     double param[3];
     size_t count  = 0;
@@ -189,15 +189,15 @@ class Plot::Lambda final : public nf7::Node::Lambda {
 
     auto& v    = in.value;
     auto& data = *s.data;
-    if (v.isVector()) {
-      const auto& vec   = v.vector();
+    if (v.isBuffer()) {
+      const auto& buf   = v.buffer();
       const auto  fmtsz = static_cast<size_t>(s.fmt & 0xF);
       data = SeriesData {
         .fmt    = s.fmt,
-        .xs     = vec,
-        .ys     = nullptr,
+        .xs     = buf,
+        .ys     = {},
         .param  = {0},
-        .count  = vec->size() / fmtsz,
+        .count  = buf.size() / fmtsz,
         .offset = 0,
         .stride = fmtsz,
         .flags  = 0,
@@ -252,19 +252,19 @@ void Plot::Series::Update() const noexcept {
   switch (type) {
   case kLine: {
     const auto Line = [&]<typename T>() {
-      if (data->xs && data->ys) {
+      if (data->xs.size() && data->ys.size()) {
         ImPlot::PlotLine(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
-            reinterpret_cast<const T*>(data->ys->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
+            reinterpret_cast<const T*>(data->ys.ptr()),
             static_cast<int>(data->count),
             data->flags,
             static_cast<int>(data->offset),
             static_cast<int>(data->stride));
-      } else if (data->xs) {
+      } else if (data->xs.size()) {
         ImPlot::PlotLine(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
             static_cast<int>(data->count),
             data->param[0],
             data->param[1],
@@ -286,19 +286,19 @@ void Plot::Series::Update() const noexcept {
   } break;
   case kScatter: {
     const auto Scatter = [&]<typename T>() {
-      if (data->xs && data->ys) {
+      if (data->xs.size() && data->ys.size()) {
         ImPlot::PlotScatter(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
-            reinterpret_cast<const T*>(data->ys->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
+            reinterpret_cast<const T*>(data->ys.ptr()),
             static_cast<int>(data->count),
             data->flags,
             static_cast<int>(data->offset),
             static_cast<int>(data->stride));
-      } else if (data->xs) {
+      } else if (data->xs.size()) {
         ImPlot::PlotScatter(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
             static_cast<int>(data->count),
             data->param[0],
             data->param[1],
@@ -320,20 +320,20 @@ void Plot::Series::Update() const noexcept {
   } break;
   case kBars: {
     const auto Bars = [&]<typename T>() {
-      if (data->xs && data->ys) {
+      if (data->xs.size() && data->ys.size()) {
         ImPlot::PlotBars(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
-            reinterpret_cast<const T*>(data->ys->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
+            reinterpret_cast<const T*>(data->ys.ptr()),
             static_cast<int>(data->count),
             data->param[0],
             data->flags,
             static_cast<int>(data->offset),
             static_cast<int>(data->stride));
-      } else if (data->xs) {
+      } else if (data->xs.size()) {
         ImPlot::PlotBars(
             name.c_str(),
-            reinterpret_cast<const T*>(data->xs->data()),
+            reinterpret_cast<const T*>(data->xs.ptr()),
             static_cast<int>(data->count),
             data->param[0],
             data->param[1],

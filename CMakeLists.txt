@@ -118,6 +118,7 @@ target_sources(nf7
     common/luajit_ref.hh
     common/luajit_thread.hh
     common/luajit_thread.cc
+    common/luajit_value.cc
     common/memento.hh
     common/memento_recorder.hh
     common/mutex.hh

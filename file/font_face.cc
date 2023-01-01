@@ -194,24 +194,28 @@ class FontFace::Lambda final : public nf7::Node::Lambda,
     }
 
     // copy rendered bitmap
-    std::vector<uint8_t> dst(g.bitmap.width*g.bitmap.rows);
+    const auto dstn = g.bitmap.width*g.bitmap.rows;
+    const auto dstp = std::make_shared<uint8_t[]>(dstn);
+
+    auto dst = dstp.get();
     auto src = g.bitmap.buffer;
     for (unsigned int y = 0; y < g.bitmap.rows; ++y) {
-      std::memcpy(&dst[y*g.bitmap.width], src, g.bitmap.width);
+      std::memcpy(dst, src, g.bitmap.width);
+      dst += g.bitmap.width;
       src += g.bitmap.pitch;
     }
 
-    return nf7::Value { std::vector<nf7::Value::TuplePair> {
+    return nf7::Value::Tuple {
       {"w",      static_cast<nf7::Value::Integer>(g.bitmap.width)},
       {"h",      static_cast<nf7::Value::Integer>(g.bitmap.rows)},
-      {"buf",    std::move(dst)},
+      {"buf",    nf7::Value::Buffer(std::move(dstp), dstn)},
       {"hBearX", static_cast<nf7::Value::Scalar>(g.metrics.horiBearingX)/64},
       {"hBearY", static_cast<nf7::Value::Scalar>(g.metrics.horiBearingY)/64},
       {"hAdv",   static_cast<nf7::Value::Scalar>(g.metrics.horiAdvance)/64},
       {"vBearX", static_cast<nf7::Value::Scalar>(g.metrics.vertBearingX)/64},
       {"vBearY", static_cast<nf7::Value::Scalar>(g.metrics.vertBearingY)/64},
       {"vAdv",   static_cast<nf7::Value::Scalar>(g.metrics.vertAdvance)/64},
-    }};
+    };
   }
 
  private:

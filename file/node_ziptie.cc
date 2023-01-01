@@ -248,25 +248,22 @@ class ZipTie::Lambda final : public nf7::Node::Lambda,
     }
   }
   void UpdateArray(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
-    std::vector<nf7::Value::TuplePair> pairs;
-    pairs.reserve(d.names.size());
-
+    nf7::Value::Tuple::Factory tup {d.names.size()};
     for (size_t i = 0; i < d.names.size(); ++i) {
-      if (!values_[i]) continue;
-      pairs.emplace_back(std::string {}, *values_[i]);
+      if (values_[i]) {
+        tup.Append() = *values_[i];
+      }
     }
-    in.sender->Handle("out", std::move(pairs), shared_from_this());
+    in.sender->Handle("out", tup.Create(), shared_from_this());
   }
   void UpdateTuple(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
-    std::vector<nf7::Value::TuplePair> pairs;
-    pairs.reserve(d.names.size());
-
+    nf7::Value::Tuple::Factory tup {d.names.size()};
     for (size_t i = 0; i < d.names.size(); ++i) {
-      const auto& name = d.names[i];
-      if (name == "" || !values_[i]) continue;
-      pairs.emplace_back(name, *values_[i]);
+      if (const auto& v = values_[i]) {
+        tup[d.names[i]] = *v;
+      }
     }
-    in.sender->Handle("out", std::move(pairs), shared_from_this());
+    in.sender->Handle("out", tup.Create(), shared_from_this());
   }
   void Passthru1N(const nf7::Node::Lambda::Msg& in, const Data& d) noexcept {
     for (const auto& name : d.names) {

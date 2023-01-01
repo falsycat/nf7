@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -15,6 +17,14 @@
 
 namespace nf7::luajit {
 
+// special types for using with Push<T> functions
+struct Nil         { };
+struct GlobalTable { };
+struct StdTable    { };
+struct ImmEnv      { };
+struct ImmTable    { };
+
+
 // ---- utility
 inline bool MatchMetaName(lua_State* L, int idx, const char* type) noexcept {
   if (0 == lua_getmetatable(L, idx)) {
@@ -26,103 +36,75 @@ inline bool MatchMetaName(lua_State* L, int idx, const char* type) noexcept {
   return ret;
 }
 
+
+// ---- udata utility
 template <typename T, typename... Args>
-inline T& NewUserData(lua_State* L, Args&&... args) noexcept {
+inline T& NewUData(lua_State* L, Args&&... args) noexcept {
   return *(new (lua_newuserdata(L, sizeof(T))) T(std::forward<Args>(args)...));
 }
-
-
-// ---- reference conversion
 template <typename T>
-inline T* ToRef(lua_State* L, int idx, const char* type) noexcept {
+inline T* PeekUData(lua_State* L, int idx, const char* type) noexcept {
   return MatchMetaName(L, idx, type)? reinterpret_cast<T*>(lua_touserdata(L, idx)): nullptr;
 }
 template <typename T>
-inline T& CheckRef(lua_State* L, int idx, const char* type) {
+inline T& CheckUData(lua_State* L, int idx, const char* type) {
   return *reinterpret_cast<T*>(luaL_checkudata(L, idx, type));
 }
 
 
-// ---- Value conversion
-void PushValue(lua_State*, const nf7::Value&) noexcept;
-std::optional<nf7::Value> ToValue(lua_State*, int) noexcept;
-inline nf7::Value CheckValue(lua_State* L, int idx) {
-  auto v = ToValue(L, idx);
-  if (!v) luaL_error(L, "expected nf7::Value");
-  return std::move(*v);
-}
+// ---- PushMeta functions
+template <typename T> void PushMeta(lua_State*) noexcept;
 
-void PushVector(lua_State*, const nf7::Value::ConstVector&) noexcept;
-inline std::optional<nf7::Value::ConstVector> ToVector(lua_State* L, int idx) noexcept {
-  auto ptr = ToRef<nf7::Value::ConstVector>(L, idx, "nf7::Value::ConstVector");
-  if (!ptr) return std::nullopt;
-  return *ptr;
-}
+template <> void PushMeta<StdTable>(lua_State*) noexcept;
 
-void PushMutableVector(lua_State*, std::vector<uint8_t>&&) noexcept;
-inline std::optional<std::vector<uint8_t>> ToMutableVector(lua_State* L, int idx) noexcept {
-  auto ptr = ToRef<std::vector<uint8_t>>(L, idx, "nf7::Value::MutableVector");
-  if (!ptr) return std::nullopt;
-  return std::move(*ptr);
-}
+template <> void PushMeta<nf7::Value>(lua_State*) noexcept;
+template <> void PushMeta<nf7::Value::Buffer>(lua_State*) noexcept;
+template <> void PushMeta<nf7::Value::Tuple>(lua_State*) noexcept;
 
-void PushNodeRootLambda(
-    lua_State*, const std::shared_ptr<nf7::NodeRootLambda>&) noexcept;
-inline const std::shared_ptr<nf7::NodeRootLambda>& CheckNodeRootLambda(lua_State* L, int idx) {
-  return CheckRef<std::shared_ptr<nf7::NodeRootLambda>>(L, idx, "nf7::NodeRootLambda");
-}
-
-inline void ToStringList(lua_State* L, int idx, std::vector<std::string>& v) noexcept {
-  v.clear();
-  if (!lua_istable(L, idx)) {
-    if (auto str = lua_tostring(L, idx)) {
-      v.emplace_back(str);
-    }
-    return;
-  }
-
-  const size_t n = lua_objlen(L, idx);
-  v.reserve(n);
-  for (int i = 1; i <= static_cast<int>(n); ++i) {
-    lua_rawgeti(L, idx, i);
-    if (auto str = lua_tostring(L, -1)) {
-      v.push_back(str);
-    }
-    lua_pop(L, 1);
-  }
-}
+template <> void PushMeta<std::shared_ptr<nf7::NodeRootLambda>>(lua_State*) noexcept;
 
 
-// ---- overloaded Push function for template
-template <typename T>
+template <typename T> struct MetaName;
+
+#define DEF_(T) template <> struct MetaName<T> { static constexpr auto kValue = #T; };
+DEF_(StdTable);
+DEF_(nf7::Value);
+DEF_(nf7::Value::Buffer);
+DEF_(nf7::Value::Tuple);
+DEF_(std::shared_ptr<nf7::NodeRootLambda>);
+#undef DEF_
+
+template <typename T> concept HasMeta = requires (lua_State* L, T& t) {
+  MetaName<T>::kValue;
+  PushMeta<T>(L);
+};
+static_assert(HasMeta<nf7::Value>);
+
+
+// ---- Push functions
+template <std::integral T>
 void Push(lua_State* L, T v) noexcept {
-  if constexpr (std::is_integral<T>::value) {
-    lua_pushinteger(L, static_cast<lua_Integer>(v));
-  } else if constexpr (std::is_floating_point<T>::value) {
-    lua_pushnumber(L, static_cast<lua_Number>(v));
-  } else if constexpr (std::is_null_pointer<T>::value) {
-    lua_pushnil(L);
-  } else {
-    [] <bool F = false>() { static_assert(F, "T is invalid"); }();
-  }
+  lua_pushinteger(L, static_cast<lua_Integer>(v));
+}
+template <std::floating_point T>
+void Push(lua_State* L, T v) noexcept {
+  lua_pushnumber(L, static_cast<lua_Number>(v));
 }
 inline void Push(lua_State* L, const std::string& v) noexcept {
   lua_pushstring(L, v.c_str());
 }
-inline void Push(lua_State* L, const Value& v) noexcept {
-  luajit::PushValue(L, v);
-}
-inline void Push(lua_State* L, const nf7::Value::Vector& v) noexcept {
-  luajit::PushVector(L, v);
-}
-inline void Push(lua_State* L, const std::vector<uint8_t>& v) noexcept {
-  luajit::PushMutableVector(L, std::vector<uint8_t> {v});
-}
-inline void Push(lua_State* L, std::vector<uint8_t>&& v) noexcept {
-  luajit::PushMutableVector(L, std::move(v));
-}
-inline void Push(lua_State* L, const std::shared_ptr<nf7::NodeRootLambda>& la) noexcept {
-  luajit::PushNodeRootLambda(L, la);
+inline void Push(lua_State* L, Nil) noexcept { lua_pushnil(L); }
+inline void Push(lua_State* L, nf7::Value::Pulse) noexcept { lua_pushnil(L); }
+
+void Push(lua_State*, GlobalTable) noexcept;
+void Push(lua_State*, ImmEnv) noexcept;
+void Push(lua_State*, ImmTable) noexcept;
+
+template <HasMeta T>
+void Push(lua_State* L, const T& v) noexcept {
+  NewUData<T>(L, v);
+  PushMeta<T>(L);
+  lua_setmetatable(L, -2);
 }
 
 // pushes all args and returns a number of them
@@ -140,9 +122,75 @@ int PushAll(lua_State* L, T v, Args&&... args) noexcept {
 }
 
 
-// ---- global table
-void PushGlobalTable(lua_State*) noexcept;
-void PushImmEnv(lua_State*) noexcept;
-void PushImmTable(lua_State*) noexcept;
+// ---- Peek functions
+template <std::integral T>
+bool Peek(lua_State* L, int i, T& v) noexcept {
+  if (!lua_isnumber(L, i)) return false;
+  v = static_cast<T>(lua_tointeger(L, i));
+  return true;
+}
+template <std::floating_point T>
+bool Peek(lua_State* L, int i, T& v) noexcept {
+  if (!lua_isnumber(L, i)) return false;
+  v = static_cast<T>(lua_tonumber(L, i));
+  return true;
+}
+inline bool Peek(lua_State* L, int i, std::string& v) noexcept {
+  if (!lua_isstring(L, i)) return false;
+  v = lua_tostring(L, i);;
+  return true;
+}
+inline bool Peek(lua_State* L, int i, std::string_view& v) noexcept {
+  if (!lua_isstring(L, i)) return false;
+  v = lua_tostring(L, i);;
+  return true;
+}
+
+inline bool Peek(lua_State* L, int idx, std::vector<std::string>& v) noexcept {
+  v.clear();
+  if (!lua_istable(L, idx)) {
+    if (auto str = lua_tostring(L, idx)) {
+      v.emplace_back(str);
+    }
+    return true;
+  }
+  const size_t n = lua_objlen(L, idx);
+  v.reserve(n);
+  for (int i = 1; i <= static_cast<int>(n); ++i) {
+    lua_rawgeti(L, idx, i);
+    if (auto str = lua_tostring(L, -1)) {
+      v.push_back(str);
+    }
+    lua_pop(L, 1);
+  }
+  return true;
+}
+
+template <HasMeta T>
+inline bool Peek(lua_State* L, int idx, T& v) noexcept {
+  if (MatchMetaName(L, idx, MetaName<T>::kValue)) {
+    v = *reinterpret_cast<T*>(lua_touserdata(L, idx));
+    return true;
+  }
+  return false;
+}
+
+
+template <typename T>
+std::optional<T> Peek(lua_State* L, int i) noexcept {
+  T v;
+  return Peek(L, i, v)? std::optional<T> {v}: std::nullopt;
+}
+inline void Check(lua_State* L, int i, auto& v) {
+  if (!Peek(L, i, v)) {
+    luaL_error(L, "incompatible cast");
+  }
+}
+template <typename T>
+T Check(lua_State* L, int i) {
+  T v;
+  Check(L, i, v);
+  return v;
+}
 
 }  // namespace nf7

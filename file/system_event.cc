@@ -180,10 +180,10 @@ class Event final : public nf7::FileBase,
 
   void TriggerKeyEvent(const char* key, const char* type) noexcept {
     if (auto la = CreateLambdaIf()) {
-      la->Handle("key", nf7::Value {std::vector<nf7::Value::TuplePair> {
-        {"key",  std::string {key}},
-        {"type", std::string {type}},
-      }}, la_root_);
+      la->Handle("key", nf7::Value::Tuple {
+        {"key",  nf7::Value::String {key}},
+        {"type", nf7::Value::String {type}},
+      }, la_root_);
     }
   }
   void TriggerWatch(const nf7::File::Event& e) noexcept {
@@ -203,10 +203,10 @@ class Event final : public nf7::FileBase,
         type = "focus";
         break;
       }
-      la->Handle("watch", nf7::Value {std::vector<nf7::Value::TuplePair> {
+      la->Handle("watch", nf7::Value::Tuple {
         {"file", static_cast<nf7::Value::Integer>(e.id)},
         {"type", std::move(type)},
-      }}, la_root_);
+      }, la_root_);
     }
   }
 

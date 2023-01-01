@@ -12,7 +12,7 @@
 
 namespace nf7::luajit {
 
-class Ref final : public nf7::Value::Data {
+class Ref final {
  public:
   Ref() = delete;
   Ref(const std::shared_ptr<nf7::Context>& ctx,

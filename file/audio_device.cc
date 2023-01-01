@@ -308,7 +308,7 @@ class Device::Lambda final : public nf7::Node::Lambda,
     auto&       ring = inst->ring();
 
     if (in.name == "info") {
-      std::vector<nf7::Value::TuplePair> tup {
+      nf7::Value::Tuple tup {
         {"format", magic_enum::enum_name(data.fmt)},
         {"srate",  static_cast<nf7::Value::Integer>(data.srate)},
         {"ch",     static_cast<nf7::Value::Integer>(data.ch)},
@@ -319,7 +319,7 @@ class Device::Lambda final : public nf7::Node::Lambda,
       if (data.mode != Mode::Playback) {
         throw nf7::Exception {"device mode is not playback"};
       }
-      const auto& vec = *in.value.vector();
+      const auto& vec = in.value.buffer();
 
       std::unique_lock<std::mutex> lock(inst->mtx());
       if (reset) time_ = ring.cur();
@@ -327,7 +327,7 @@ class Device::Lambda final : public nf7::Node::Lambda,
 
       const auto Mix = [&]<typename T>() {
         time_ = ring.Mix(
-            time_, reinterpret_cast<const T*>(vec.data()), vec.size()/sizeof(T));
+            time_, reinterpret_cast<const T*>(vec.ptr()), vec.size()/sizeof(T));
       };
       switch (data.fmt) {
       case Format::U8 : Mix.operator()<uint8_t>(); break;

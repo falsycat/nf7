@@ -341,27 +341,28 @@ struct Buffer {
 
   bool Handle(const HandleParam<Product>& p) {
     if (p.in.name == "upload") {
-      const auto& vec   = p.in.value.vector();
+      const auto& buf   = p.in.value.buffer();
       const auto  usage = gl::ToEnum(usage_);
 
-      if (vec->size() == 0) return false;
+      if (buf.size() == 0) {
+        return false;
+      }
 
       p.la->env().ExecGL(p.la, [=]() {
-        const auto n = static_cast<GLsizeiptr>(vec->size());
+        const auto n = static_cast<GLsizeiptr>(buf.size());
 
-        auto& buf = **p.obj;
-        const auto t = gl::ToEnum(buf.meta().target);
-        glBindBuffer(t, buf.id());
+        auto& obj = **p.obj;
+        const auto t = gl::ToEnum(obj.meta().target);
+        glBindBuffer(t, obj.id());
         {
           ZoneScopedN("upload buffer");
-          ZoneValue(vec->size());
+          ZoneValue(buf.size());
 
-          auto& size = buf.param().size;
-          if (size != vec->size()) {
-            size = vec->size();
-            glBufferData(t, n, vec->data(), usage);
+          auto& size = obj.param().size;
+          if (size != std::exchange(size, buf.size())) {
+            glBufferData(t, n, buf.ptr(), usage);
           } else {
-            glBufferSubData(t, 0, n, vec->data());
+            glBufferSubData(t, 0, n, buf.ptr());
           }
         }
         glBindBuffer(t, 0);
@@ -478,7 +479,7 @@ struct Texture {
     if (p.in.name == "upload") {
       const auto& v = p.in.value;
 
-      const auto buf = v.tuple("buf").vector();
+      const auto buf = v.tuple("buf").buffer();
       auto& tex = **p.obj;
 
       static const char* kOffsetNames[] = {"x", "y", "z"};
@@ -500,7 +501,7 @@ struct Texture {
 
       const auto texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
       const auto bufsz = texel*gl::GetByteSize(ifmt_);
-      if (buf->size() < static_cast<size_t>(bufsz)) {
+      if (buf.size() < static_cast<size_t>(bufsz)) {
         throw nf7::Exception {"buffer is too small"};
       }
 
@@ -521,7 +522,7 @@ struct Texture {
                           static_cast<GLint>(offset[1]),
                           static_cast<GLsizei>(size[0]),
                           static_cast<GLsizei>(size[1]),
-                          fmt, type, buf->data());
+                          fmt, type, buf.ptr());
         } break;
         default:
           assert(false);
@@ -560,7 +561,7 @@ struct Texture {
         const auto& tex   = **p.obj;
         const auto  size  = tex.meta().size;
         const auto  texel = std::accumulate(size.begin(), size.end(), 1, std::multiplies<uint32_t> {});
-        const auto  bsize = texel*gl::GetCompCount(comp)*gl::GetByteSize(numtype);
+        const auto  bsize = static_cast<size_t>(texel*gl::GetCompCount(comp)*gl::GetByteSize(numtype));
         const auto  t     = gl::ToEnum(tex.meta().target);
 
         {
@@ -579,12 +580,11 @@ struct Texture {
         nf7::gl::ExecFenceSync(p.la).ThenIf([=, &tex](auto&) {
           glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
 
-          auto buf = std::make_shared<std::vector<uint8_t>>(bsize);
-
+          auto buf = std::make_shared<uint8_t[]>(bsize);
           {
             ZoneScopedN("download texture");
             const auto ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-            std::memcpy(buf->data(), ptr, static_cast<size_t>(bsize));
+            std::memcpy(buf.get(), ptr, bsize);
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
           }
 
@@ -593,13 +593,13 @@ struct Texture {
           assert(0 == glGetError());
 
           p.la->env().ExecSub(p.la, [=, &tex]() {
-            auto v = nf7::Value {std::vector<nf7::Value::TuplePair> {
-              {"w",   static_cast<nf7::Value::Integer>(size[0])},
-              {"h",   static_cast<nf7::Value::Integer>(size[1])},
-              {"d",   static_cast<nf7::Value::Integer>(size[2])},
-              {"buf", buf},
-            }};
-            p.in.sender->Handle("buffer", std::move(v), p.la);
+            nf7::Value::Tuple tup {
+              {"w",      static_cast<nf7::Value::Integer>(size[0])},
+              {"h",      static_cast<nf7::Value::Integer>(size[1])},
+              {"d",      static_cast<nf7::Value::Integer>(size[2])},
+              {"buffer", nf7::Value::Buffer {std::move(buf), bsize}},
+            };
+            p.in.sender->Handle("data", std::move(tup), p.la);
           });
         });
       });
@@ -880,9 +880,9 @@ struct Program {
       const auto count = v.tuple("count").integerOrScalar<GLsizei>();
       const auto inst  = v.tupleOr("instance", nf7::Value::Integer{1}).integerOrScalar<GLsizei>();
 
-      const auto uni = v.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
-      const auto tex = v.tupleOr("texture", nf7::Value::Tuple {}).tuple();
-      if (tex->size() > GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS) {
+      const auto& uni = v.tupleOr("uniform", nf7::Value::Tuple {}).tuple();
+      const auto& tex = v.tupleOr("texture", nf7::Value::Tuple {}).tuple();
+      if (tex.size() > GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS) {
         throw nf7::Exception {"too many textures specified"};
       }
 
@@ -923,9 +923,8 @@ struct Program {
 
       // find, fetch and lock textures
       std::vector<std::pair<std::string, gl::Texture::Factory::Product>> tex_fu;
-      tex_fu.reserve(tex->size());
-      for (auto& pa : *tex) {
-        
+      tex_fu.reserve(tex.size());
+      for (auto& pa : tex) {
         auto fu = pa.second.file(base).
             interfaceOrThrow<gl::Texture::Factory>().
             Create();
@@ -948,7 +947,7 @@ struct Program {
         glViewport(vp_x, vp_y, vp_w, vp_h);
 
         // setup uniforms
-        for (const auto& pa : *uni) {
+        for (const auto& pa : uni) {
           try {
             SetUniform(prog->id(), pa.first.c_str(), pa.second);
           } catch (nf7::Exception&) {
@@ -1043,18 +1042,18 @@ struct Program {
   
     // 1~4 dim float vector
     try {
-      const auto& tup = *v.tuple();
+      const auto& tup = v.tuple();
       switch (tup.size()) {
-      case 1: glUniform1f(loc, tup[0].second.scalar<GLfloat>()); break;
-      case 2: glUniform2f(loc, tup[0].second.scalar<GLfloat>(),
-                               tup[1].second.scalar<GLfloat>()); break;
-      case 3: glUniform3f(loc, tup[0].second.scalar<GLfloat>(),
-                               tup[1].second.scalar<GLfloat>(),
-                               tup[2].second.scalar<GLfloat>()); break;
-      case 4: glUniform4f(loc, tup[0].second.scalar<GLfloat>(),
-                               tup[1].second.scalar<GLfloat>(),
-                               tup[2].second.scalar<GLfloat>(),
-                               tup[3].second.scalar<GLfloat>()); break;
+      case 1: glUniform1f(loc, tup[0].scalar<GLfloat>()); break;
+      case 2: glUniform2f(loc, tup[0].scalar<GLfloat>(),
+                               tup[1].scalar<GLfloat>()); break;
+      case 3: glUniform3f(loc, tup[0].scalar<GLfloat>(),
+                               tup[1].scalar<GLfloat>(),
+                               tup[2].scalar<GLfloat>()); break;
+      case 4: glUniform4f(loc, tup[0].scalar<GLfloat>(),
+                               tup[1].scalar<GLfloat>(),
+                               tup[2].scalar<GLfloat>(),
+                               tup[3].scalar<GLfloat>()); break;
       default: throw nf7::Exception {"invalid tuple size (must be 1~4)"};
       }
       return;

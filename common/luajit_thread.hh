@@ -24,11 +24,15 @@
 
 namespace nf7::luajit {
 
+class Thread;
+template <> struct MetaName<std::weak_ptr<Thread>> {
+  static constexpr auto kValue = "std::weak_ptr<Thread>";
+};
+template <> void PushMeta<std::weak_ptr<Thread>>(lua_State*) noexcept;
+
 class Thread final : public nf7::Context,
     public std::enable_shared_from_this<Thread> {
  public:
-  static constexpr const char* kTypeName = "nf7::luajit::Thread";
-
   enum State { kInitial, kRunning, kPaused, kFinished, kAborted, };
   using Handler = std::function<void(Thread&, lua_State*)>;
 
@@ -51,7 +55,7 @@ class Thread final : public nf7::Context,
 
   // must be called on luajit thread
   static std::shared_ptr<Thread> GetPtr(lua_State* L, int idx) {
-    auto th = CheckRef<std::weak_ptr<Thread>>(L, idx, kTypeName).lock();
+    auto th = Check<std::weak_ptr<Thread>>(L, idx).lock();
     if (th) {
       th->EnsureActive(L);
       return th;

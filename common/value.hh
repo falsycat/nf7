@@ -1,14 +1,15 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <yas/serialize.hpp>
 #include <yas/types/std/pair.hpp>
@@ -27,145 +28,184 @@ namespace nf7 {
 
 class Value {
  public:
-  class IncompatibleException : public nf7::Exception {
+  class Exception : public nf7::Exception {
    public:
     using nf7::Exception::Exception;
   };
 
-  class Data;
-  using TuplePair = std::pair<std::string, nf7::Value>;
+  using Boolean    = bool;
+  using Integer    = int64_t;
+  using Scalar     = double;
+  using String     = std::string;
 
-  class Pulse { };
-  using Boolean = bool;
-  using Integer = int64_t;
-  using Scalar  = double;
-  using String  = std::string;
-  using Vector  = std::shared_ptr<std::vector<uint8_t>>;
-  using Tuple   = std::shared_ptr<std::vector<TuplePair>>;
-  using DataPtr = std::shared_ptr<Data>;
+  struct Pulse { };
+  struct Buffer {
+   public:
+    Buffer() noexcept : Buffer(nullptr, 0) {
+    }
+    Buffer(std::shared_ptr<const uint8_t[]> p, size_t s, size_t o = 0) noexcept :
+        ptr_(p), size_(s), offset_(o) {
+      assert(ptr_ || s == 0);
+    }
+    Buffer(const Buffer& src, size_t s, size_t o = 0) noexcept :
+        Buffer(src.ptr_, s, src.offset_+o) {
+      assert(s+o <= src.size_);
+    }
+    Buffer(const Buffer&) = default;
+    Buffer(Buffer&&) = default;
+    Buffer& operator=(const Buffer&) = default;
+    Buffer& operator=(Buffer&&) = default;
 
-  using ConstVector = std::shared_ptr<const std::vector<uint8_t>>;
-  using ConstTuple  = std::shared_ptr<const std::vector<TuplePair>>;
+    const uint8_t& operator[](size_t idx) const noexcept {
+      return ptr_[static_cast<std::ptrdiff_t>(offset_ + idx)];
+    }
+
+    template <typename T = uint8_t>
+    const T* ptr() const noexcept {
+      return reinterpret_cast<const T*>(ptr_.get()+offset_);
+    }
+    template <typename T = uint8_t>
+    size_t size() const noexcept {
+      return size_/sizeof(T);
+    }
+
+   private:
+    std::shared_ptr<const uint8_t[]> ptr_;
+    size_t size_   = 0;
+    size_t offset_ = 0;
+  };
+  struct Tuple {
+   public:
+    using Pair = std::pair<std::string, nf7::Value>;
+    struct Factory;
+
+    Tuple() noexcept : Tuple(nullptr, 0) {
+    }
+    Tuple(std::initializer_list<nf7::Value> v) noexcept {
+      if (v.size()) {
+        auto fields = std::make_shared<Pair[]>(v.size());
+        for (auto itr = v.begin(); itr < v.end(); ++itr) {
+          fields[itr-v.begin()].second = std::move(*itr);
+        }
+        fields_ = fields;
+      }
+      size_ = v.size();
+    }
+    Tuple(std::initializer_list<Pair> v) noexcept {
+      if (v.size()) {
+        auto fields = std::make_shared<Pair[]>(v.size());
+        for (auto itr = v.begin(); itr < v.end(); ++itr) {
+          fields[itr-v.begin()] = std::move(*itr);
+        }
+        fields_ = fields;
+      }
+      size_ = v.size();
+    }
+    Tuple(const Tuple&) = default;
+    Tuple(Tuple&&) = default;
+    Tuple& operator=(const Tuple&) = default;
+    Tuple& operator=(Tuple&&) = default;
+
+    const nf7::Value& operator[](std::string_view name) const {
+      for (size_t i = 0; i < size_; ++i) {
+        const auto si = static_cast<std::ptrdiff_t>(i);
+        if (fields_[si].first == name) {
+          return fields_[si].second;
+        }
+      }
+      throw Exception {"missing tuple field: "+std::string {name}};
+    }
+    const nf7::Value& operator[](size_t idx) const {
+      if (idx < size_) {
+        return fields_[static_cast<std::ptrdiff_t>(idx)].second;
+      }
+      throw Exception {"tuple index overflow"};
+    }
+
+    const Pair* begin() const noexcept { return fields_.get(); }
+    const Pair* end()   const noexcept { return fields_.get() + size_; }
+
+    std::span<const Pair> fields() const noexcept {
+      auto ptr = fields_.get();
+      return {ptr, ptr+size_};
+    }
+    size_t size() const noexcept { return size_; }
+
+   private:
+    std::shared_ptr<const Pair[]> fields_;
+    size_t size_;
+
+    Tuple(std::shared_ptr<const Pair[]>&& f, size_t n) noexcept :
+        fields_(std::move(f)), size_(n) {
+    }
+  };
+
+  using V = std::variant<
+      Pulse, Boolean, Integer, Scalar, String, Buffer, Tuple>;
 
   Value() noexcept {
   }
-  Value(const Value&) = default;
-  Value(Value&&) = default;
-  Value& operator=(const Value&) = default;
-  Value& operator=(Value&&) = default;
 
-  Value(Pulse v) noexcept : value_(v) { }
-  Value& operator=(Pulse v) noexcept { value_ = v; return *this; }
-  Value(Integer v) noexcept : value_(v) { }
-  Value& operator=(Integer v) noexcept { value_ = v; return *this; }
-  Value(Scalar v) noexcept : value_(v) { }
-  Value& operator=(Scalar v) noexcept { value_ = v; return *this; }
-  Value(Boolean v) noexcept : value_(v) { }
-  Value& operator=(Boolean v) noexcept { value_ = v; return *this; }
-
-  Value(std::string_view v) noexcept : value_(std::string {v}) { }
-  Value& operator=(std::string_view v) noexcept { value_ = std::string(v); return *this; }
-  Value(String&& v) noexcept : value_(std::move(v)) { }
-  Value& operator=(String&& v) noexcept { value_ = std::move(v); return *this; }
-
-  Value(const Vector& v) noexcept : value_(v? v: std::make_shared<std::vector<uint8_t>>()) { }
-  Value& operator=(const Vector& v) noexcept { value_ = v? v: std::make_shared<std::vector<uint8_t>>(); return *this; }
-  Value(const ConstVector& v) noexcept : value_(v? std::const_pointer_cast<std::vector<uint8_t>>(v): std::make_shared<std::vector<uint8_t>>()) { }
-  Value& operator=(const ConstVector& v) noexcept { value_ = v? std::const_pointer_cast<std::vector<uint8_t>>(v): std::make_shared<std::vector<uint8_t>>(); return *this; }
-  Value(std::vector<uint8_t>&& v) noexcept : value_(std::make_shared<std::vector<uint8_t>>(std::move(v))) { }
-  Value& operator=(std::vector<uint8_t>&& v) noexcept { value_ = std::make_shared<std::vector<uint8_t>>(std::move(v)); return *this; }
-
-  Value(const Tuple& v) noexcept : value_(v? v: std::make_shared<std::vector<TuplePair>>()) { }
-  Value& operator=(const Tuple& v) noexcept { value_ = v? v: std::make_shared<std::vector<TuplePair>>(); return *this; }
-  Value(const ConstTuple& v) noexcept : value_(v? v: std::make_shared<std::vector<TuplePair>>()) { }
-  Value& operator=(const ConstTuple& v) noexcept { value_ = v? v: std::make_shared<std::vector<TuplePair>>(); return *this; }
-  Value(std::vector<TuplePair>&& p) noexcept : value_(std::make_shared<std::vector<TuplePair>>(std::move(p))) { }
-  Value& operator=(std::vector<TuplePair>&& p) noexcept { value_ = std::make_shared<std::vector<TuplePair>>(std::move(p)); return *this; }
-  Value(std::vector<nf7::Value>&& v) noexcept { *this = std::move(v); }
-  Value& operator=(std::vector<nf7::Value>&& v) noexcept {
-    std::vector<TuplePair> pairs;
-    pairs.reserve(v.size());
-    std::transform(v.begin(), v.end(), std::back_inserter(pairs),
-                   [](auto& x) { return TuplePair {"", std::move(x)}; });
-    value_ = std::make_shared<std::vector<TuplePair>>(std::move(pairs));
-    return *this;
-  }
-
-  Value(const DataPtr& v) noexcept : value_(v) { }
-  Value& operator=(const DataPtr& v) noexcept { value_ = v; return *this; }
-  Value(DataPtr&& v) noexcept : value_(std::move(v)) { }
-  Value& operator=(DataPtr&& v) noexcept { value_ = std::move(v); return *this; }
+  Value(const auto& v) noexcept : value_(AssignCast(v)) { }
+  Value(auto&& v) noexcept : value_(AssignCast(std::move(v))) { }
+  Value& operator=(const auto& v) noexcept { value_ = AssignCast(v); return *this; }
+  Value& operator=(auto&& v) noexcept { value_ = AssignCast(std::move(v)); return *this; }
 
   bool isPulse() const noexcept { return std::holds_alternative<Pulse>(value_); }
   bool isBoolean() const noexcept { return std::holds_alternative<Boolean>(value_); }
   bool isInteger() const noexcept { return std::holds_alternative<Integer>(value_); }
   bool isScalar() const noexcept { return std::holds_alternative<Scalar>(value_); }
   bool isString() const noexcept { return std::holds_alternative<String>(value_); }
-  bool isVector() const noexcept { return std::holds_alternative<ConstVector>(value_); }
-  bool isTuple() const noexcept { return std::holds_alternative<ConstTuple>(value_); }
-  bool isData() const noexcept { return std::holds_alternative<DataPtr>(value_); }
+  bool isBuffer() const noexcept { return std::holds_alternative<Buffer>(value_); }
+  bool isTuple() const noexcept { return std::holds_alternative<Tuple>(value_); }
 
   // direct accessors
-  Integer integer() const { return get<Integer>(); }
-  Boolean boolean() const { return get<Boolean>(); }
-  Scalar scalar() const { return get<Scalar>(); }
-  const String& string() const { return get<String>(); }
-  const ConstVector& vector() const { return get<ConstVector>(); }
-  const ConstTuple& tuple() const { return get<ConstTuple>(); }
-  const DataPtr& data() const { return get<DataPtr>(); }
-  const auto& value() const noexcept { return value_; }
+  Integer       integer() const { return get<Integer>(); }
+  Boolean       boolean() const { return get<Boolean>(); }
+  Scalar        scalar()  const { return get<Scalar>();  }
+  const String& string()  const { return get<String>(); }
+  const Buffer& buffer()  const { return get<Buffer>(); }
+  const Tuple&  tuple()   const { return get<Tuple>();  }
+  const V& value() const noexcept { return value_; }
 
   // direct reference accessor
   Integer& integer() { return get<Integer>(); }
   Boolean& boolean() { return get<Boolean>(); }
-  Scalar& scalar() { return get<Scalar>(); }
-  String& string() { return get<String>(); }
+  Scalar&  scalar()  { return get<Scalar>(); }
+  String&  string()  { return get<String>(); }
+  Buffer&  buffer()  { return get<Buffer>(); }
+  Tuple&   tuple()   { return get<Tuple>();  }
 
   // conversion accessor
   template <typename N>
-  N integer() const {
-    return SafeCast<N>(integer());
-  }
+  N integer() const { return SafeCast<N>(integer()); }
   template <typename N>
-  N scalar() const {
-    return SafeCast<N>(scalar());
-  }
+  N scalar() const { return SafeCast<N>(scalar()); }
   template <typename N>
   N integerOrScalar() const {
-    try {
-      return SafeCast<N>(integer());
-    } catch (nf7::Exception&) {
-      return SafeCast<N>(scalar());
+    if (isInteger()) {
+      return integer<N>();
+    } else if (isScalar()) {
+      return scalar<N>();
+    } else {
+      throw Exception {"expected integer or scalar"};
     }
   }
   template <typename N>
   N scalarOrInteger() const {
-    try {
-      return SafeCast<N>(scalar());
-    } catch (nf7::Exception&) {
-      return SafeCast<N>(integer());
+    if (isScalar()) {
+      return scalar<N>();
+    } else if (isInteger()) {
+      return integer<N>();
+    } else {
+      throw Exception {"expected scalar or integer"};
     }
-  }
-  template <typename T>
-  std::shared_ptr<T> data() const {
-    if (auto ptr = std::dynamic_pointer_cast<T>(data())) return ptr;
-    throw IncompatibleException("data pointer downcast failure");
   }
 
   // tuple element accessor
-  const Value& tuple(size_t idx) const {
-    auto& tup = *tuple();
-    return idx < tup.size()? tup[idx].second:
-        throw IncompatibleException("tuple index overflow");
-  }
-  const Value& tuple(std::string_view name) const {
-    auto& tup = *tuple();
-    auto  itr = std::find_if(tup.begin(), tup.end(),
-                             [&name](auto& x) { return x.first == name; });
-    return itr < tup.end()? itr->second:
-        throw IncompatibleException("unknown tuple field: "+std::string {name});
-  }
-  Value tupleOr(auto idx, const Value& v) const noexcept {
+  const Value& tuple(size_t           idx) const { return tuple()[idx]; }
+  const Value& tuple(std::string_view idx) const { return tuple()[idx]; }
+  const Value& tupleOr(auto idx, const Value& v) const noexcept {
     try {
       return tuple(idx);
     } catch (nf7::Exception&) {
@@ -173,40 +213,38 @@ class Value {
     }
   }
 
-  // extended accessor
+  // meta accessor
   nf7::File& file(const nf7::File& base) const {
     if (isInteger()) {
       return base.env().GetFileOrThrow(integerOrScalar<nf7::File::Id>());
     } else if (isString()) {
       return base.ResolveOrThrow(string());
     } else {
-      throw IncompatibleException {"expected file id or file path"};
+      throw Exception {"expected file id or file path"};
     }
   }
 
   const char* typeName() const noexcept {
     struct Visitor final {
      public:
-      auto operator()(Pulse)       noexcept { return "pulse";   }
-      auto operator()(Boolean)     noexcept { return "boolean"; }
-      auto operator()(Integer)     noexcept { return "integer"; }
-      auto operator()(Scalar)      noexcept { return "scalar";  }
-      auto operator()(String)      noexcept { return "string";  }
-      auto operator()(ConstVector) noexcept { return "vector";  }
-      auto operator()(ConstTuple)  noexcept { return "tuple";   }
-      auto operator()(DataPtr)     noexcept { return "data";    }
+      auto operator()(Pulse)   noexcept { return "pulse";   }
+      auto operator()(Boolean) noexcept { return "boolean"; }
+      auto operator()(Integer) noexcept { return "integer"; }
+      auto operator()(Scalar)  noexcept { return "scalar";  }
+      auto operator()(String)  noexcept { return "string";  }
+      auto operator()(Buffer)  noexcept { return "buffer";  }
+      auto operator()(Tuple)   noexcept { return "tuple";   }
     };
     return std::visit(Visitor {}, value_);
   }
 
-  template <typename Ar>
-  Ar& serialize(Ar& ar) noexcept {
+  auto& serialize(auto& ar) {
     ar & value_;
     return ar;
   }
 
  private:
-  std::variant<Pulse, Boolean, Integer, Scalar, String, ConstVector, ConstTuple, DataPtr> value_;
+  V value_;
 
 
   template <typename T>
@@ -220,7 +258,44 @@ class Value {
   } catch (std::bad_variant_access&) {
     std::stringstream st;
     st << "expected " << typeid(T).name() << " but it's " << typeName();
-    throw IncompatibleException(st.str());
+    throw Exception(st.str());
+  }
+
+  template <typename T>
+  static auto AssignCast(T&& v) noexcept {
+    if constexpr (std::is_same_v<T, nf7::Value>) {
+      return std::move(v.value_);
+    } else if constexpr (
+        std::is_same_v<T, std::string> ||
+        std::is_same_v<T, Pulse>       ||
+        std::is_same_v<T, Buffer>      ||
+        std::is_same_v<T, Tuple>) {
+      return std::move(v);
+    } else {
+      return AssignCast(static_cast<const T&>(v));
+    }
+  }
+  template <typename T>
+  static auto AssignCast(const T& v) noexcept {
+    if constexpr (std::is_same_v<T, nf7::Value>) {
+      return v.value_;
+    } else if constexpr (std::is_integral_v<T>) {
+      return static_cast<Integer>(v);
+    } else if constexpr (std::is_floating_point_v<T>) {
+      return static_cast<Scalar>(v);
+    } else if constexpr (std::is_same_v<T, std::string_view> ||
+                         std::is_same_v<T, std::string>) {
+      return std::string {v};
+    } else if constexpr (std::is_same_v<T, Pulse>  ||
+                         std::is_same_v<T, Buffer> ||
+                         std::is_same_v<T, Tuple>) {
+      return T {v};
+    } else {
+      []<bool flag = false>(){
+        static_assert(flag, "no type conversion found to assign");
+      }();
+      return 0;  // to suppress 'invalid use of void expression' warning
+    }
   }
 
   template <typename R, typename N>
@@ -229,31 +304,61 @@ class Value {
     const auto retn = static_cast<N>(ret);
     if constexpr (std::is_unsigned<R>::value) {
       if (in < 0) {
-        throw IncompatibleException("integer underflow");
+        throw Exception("integer underflow");
       }
     }
     if constexpr (std::is_integral<R>::value && std::is_integral<N>::value) {
       if (in != retn) {
-        throw IncompatibleException("integer out of range");
+        throw Exception("integer out of range");
       }
     }
     if constexpr (std::is_integral<R>::value && std::is_floating_point<N>::value) {
       if (std::max(retn, in) - std::min(retn, in) > 1) {
-        throw IncompatibleException("bad precision while conversion of floating point");
+        throw Exception("bad precision while conversion of floating point");
       }
     }
     return ret;
   }
 };
 
-class Value::Data {
+struct Value::Tuple::Factory final {
  public:
-  Data() = default;
-  virtual ~Data() = default;
-  Data(const Data&) = default;
-  Data(Data&&) = default;
-  Data& operator=(const Data&) = default;
-  Data& operator=(Data&&) = default;
+  Factory() = delete;
+  Factory(size_t max) noexcept :
+      ptr_(std::make_unique<Pair[]>(max)), max_(max) {
+  }
+  Factory(const Factory&) = delete;
+  Factory(Factory&&) = delete;
+  Factory& operator=(const Factory&) = delete;
+  Factory& operator=(Factory&&) = delete;
+
+  nf7::Value& operator[](std::string_view str) noexcept {
+    assert(size_ < max_);
+    auto& p = ptr_[size_++];
+    p.first = str;
+    return p.second;
+  }
+
+  nf7::Value& Append() noexcept {
+    return ptr_[size_++].second;
+  }
+  nf7::Value& Append(auto&& v) noexcept {
+    return Append() = std::move(v);
+  }
+  nf7::Value& Append(const auto& v) noexcept {
+    return Append() = v;
+  }
+
+  Tuple Create() noexcept {
+    return size_?
+        Tuple(std::shared_ptr<const Pair[]> {std::move(ptr_)}, size_):
+        Tuple(nullptr, 0);
+  }
+
+ private:
+  std::unique_ptr<Pair[]> ptr_;
+  size_t max_;
+  size_t size_ = 0;
 };
 
 }  // namespace nf7
@@ -283,31 +388,15 @@ struct serializer<
     type_prop::not_a_fundamental,
     ser_case::use_internal_serializer,
     F,
-    nf7::Value::Vector> {
+    nf7::Value::Buffer> {
  public:
   template <typename Archive>
-  static Archive& save(Archive&, const nf7::Value::Vector&) {
-    throw nf7::Exception("cannot serialize Value::Vector");
+  static Archive& save(Archive&, const nf7::Value::Buffer&) {
+    throw nf7::Exception("cannot serialize Value::Buffer");
   }
   template <typename Archive>
-  static Archive& load(Archive&, nf7::Value::Vector&) {
-    throw nf7::DeserializeException("cannot deserialize Value::Vector");
-  }
-};
-template <size_t F>
-struct serializer<
-    type_prop::not_a_fundamental,
-    ser_case::use_internal_serializer,
-    F,
-    nf7::Value::ConstVector> {
- public:
-  template <typename Archive>
-  static Archive& save(Archive&, const nf7::Value::ConstVector&) {
-    throw nf7::Exception("cannot serialize Value::Vector");
-  }
-  template <typename Archive>
-  static Archive& load(Archive&, nf7::Value::ConstVector&) {
-    throw nf7::DeserializeException("cannot deserialize Value::Vector");
+  static Archive& load(Archive&, nf7::Value::Buffer&) {
+    throw nf7::DeserializeException("cannot deserialize Value::Buffer");
   }
 };
 
@@ -319,51 +408,12 @@ struct serializer<
     nf7::Value::Tuple> {
  public:
   template <typename Archive>
-  static Archive& save(Archive& ar, const nf7::Value::Tuple& tup) {
-    ar(*tup);
-    return ar;
+  static Archive& save(Archive&, const nf7::Value::Tuple&) {
+    throw nf7::Exception("cannot serialize Value::Tuple");
   }
   template <typename Archive>
-  static Archive& load(Archive& ar, nf7::Value::Tuple& tup) {
-    ar(*tup);
-    return ar;
-  }
-};
-template <size_t F>
-struct serializer<
-    type_prop::not_a_fundamental,
-    ser_case::use_internal_serializer,
-    F,
-    nf7::Value::ConstTuple> {
- public:
-  template <typename Archive>
-  static Archive& save(Archive& ar, const nf7::Value::ConstTuple& tup) {
-    ar(*tup);
-    return ar;
-  }
-  template <typename Archive>
-  static Archive& load(Archive& ar, nf7::Value::ConstTuple& tup) {
-    auto ptr = std::make_shared<std::vector<nf7::Value::TuplePair>>();
-    ar(*ptr);
-    tup = std::move(ptr);
-    return ar;
-  }
-};
-
-template <size_t F>
-struct serializer<
-    type_prop::not_a_fundamental,
-    ser_case::use_internal_serializer,
-    F,
-    nf7::Value::DataPtr> {
- public:
-  template <typename Archive>
-  static Archive& save(Archive&, const nf7::Value::DataPtr&) {
-    throw nf7::Exception("cannot serialize Value::DataPtr");
-  }
-  template <typename Archive>
-  static Archive& load(Archive&, nf7::Value::DataPtr&) {
-    throw nf7::DeserializeException("cannot deserialize Value::DataPtr");
+  static Archive& load(Archive&, nf7::Value::Tuple&) {
+    throw nf7::DeserializeException("cannot deserialize Value::Tuple");
   }
 };
 

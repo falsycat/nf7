@@ -213,7 +213,12 @@ struct Color {
   static constexpr const char* kDesc = nullptr;
 
   nf7::Value GetValue() const noexcept {
-    return std::vector<nf7::Value>(values_.begin(), values_.end());
+    return nf7::Value::Tuple {
+      static_cast<nf7::Value::Scalar>(values_[0]),
+      static_cast<nf7::Value::Scalar>(values_[1]),
+      static_cast<nf7::Value::Scalar>(values_[2]),
+      static_cast<nf7::Value::Scalar>(values_[3]),
+    };
   }
   nf7::Value GetValue(const nf7::File&) const noexcept {
     return GetValue();
@@ -240,7 +245,10 @@ struct Pos2D {
   static constexpr const char* kDesc = nullptr;
 
   nf7::Value GetValue() const noexcept {
-    return std::vector<nf7::Value>(values_.begin(), values_.end());
+    return nf7::Value::Tuple {
+      static_cast<nf7::Value::Scalar>(values_[0]),
+      static_cast<nf7::Value::Scalar>(values_[1]),
+    };
   }
   nf7::Value GetValue(const nf7::File&) const noexcept {
     return GetValue();

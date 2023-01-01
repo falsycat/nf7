@@ -16,10 +16,6 @@ namespace nf7::luajit {
 constexpr size_t kInstructionLimit = 100000;
 
 
-// Pushes a metatable for Thread object, available on global table as 'nf7'.
-static void PushMeta(lua_State*) noexcept;
-
-
 lua_State* Thread::Init(lua_State* L) noexcept {
   assert(state_ == kInitial);
 
@@ -37,10 +33,8 @@ void Thread::Resume(lua_State* L, int narg) noexcept {
   assert(state_ == kPaused);
 
   // set global table
-  PushGlobalTable(L);
-  NewUserData<std::weak_ptr<Thread>>(L, weak_from_this());
-  PushMeta(L);
-  lua_setmetatable(L, -2);
+  Push(L, GlobalTable {});
+  Push(L, weak_from_this());
   lua_setfield(L, -2, "nf7");
   lua_pop(L, 1);
 
@@ -102,7 +96,7 @@ Thread::Handler Thread::CreateNodeLambdaHandler(
         th.ExecResume(L);
         return;
       case 2:
-        if (auto v = nf7::luajit::ToValue(L, 2)) {
+        if (auto v = nf7::luajit::Peek<nf7::Value>(L, 2)) {
           auto k = luaL_checkstring(L, 1);
           caller->env().ExecSub(
               caller, [caller, callee, k = std::string {k}, v = std::move(v)]() {
@@ -134,10 +128,10 @@ Thread::Handler Thread::CreateNodeLambdaHandler(
 }
 
 
-static void PushMeta(lua_State* L) noexcept {
-  if (luaL_newmetatable(L, Thread::kTypeName)) {
+template <> void PushMeta<std::weak_ptr<Thread>>(lua_State* L) noexcept {
+  if (luaL_newmetatable(L, MetaName<std::weak_ptr<Thread>>::kValue)) {
     lua_pushcfunction(L, [](auto L) {
-      CheckRef<std::weak_ptr<Thread>>(L, 1, Thread::kTypeName).~weak_ptr();
+      Check<std::weak_ptr<Thread>>(L, 1).~weak_ptr();
       return 0;
     });
     lua_setfield(L, -2, "__gc");
@@ -184,17 +178,6 @@ static void PushMeta(lua_State* L) noexcept {
         return th->Yield(L);
       });
       lua_setfield(L, -2, "resolve");
-
-      // nf7:ref(obj)
-      lua_pushcfunction(L, [](auto L) {
-        auto th = Thread::GetPtr(L, 1);
-        lua_pushvalue(L, 2);
-
-        auto ref = std::make_shared<nf7::luajit::Ref>(th, th->ljq(), L);
-        PushValue(L, nf7::Value {std::move(ref)});
-        return 1;
-      });
-      lua_setfield(L, -2, "ref");
 
       // nf7:query(file_id, interface)
       lua_pushcfunction(L, [](auto L) {
