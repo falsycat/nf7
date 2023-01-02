@@ -130,7 +130,7 @@ template <> void PushMeta<nf7::Value::Tuple>(lua_State* L) noexcept {
       const auto& v = Check<nf7::Value::Tuple>(L, 1);
       try {
         if (lua_isnumber(L, 2)) {
-          Push(L, v[*Peek<size_t>(L, 2)]);
+          Push(L, v[*Peek<size_t>(L, 2)-1]);
         } else if (lua_isstring(L, 2)) {
           Push(L, v[*Peek<std::string_view>(L, 2)]);
         } else {

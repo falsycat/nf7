@@ -16,6 +16,8 @@
 #include "common/luajit_thread.hh"
 
 
+using namespace std::literals;
+
 namespace nf7::luajit {
 
 template <> void PushMeta<StdTable>(lua_State* L) noexcept {
@@ -39,40 +41,78 @@ template <> void PushMeta<StdTable>(lua_State* L) noexcept {
 
     // ---- value lib ----
 
-    // value(entity) -> value
-    lua_pushcfunction(L, [](auto L) {
-      if (lua_isstring(L, 2)) {
-        const auto type = std::string_view {lua_tostring(L, 2)};
-        if (type == "integer" || type == "int") {
-          Push(L, static_cast<nf7::Value::Integer>(luaL_checkinteger(L, 1)));
-        } else {
-          return luaL_error(L, "unknown type specifier: %s", type);
-        }
-      } else {
-        Push(L, Check<nf7::Value>(L, 1));
-      }
-      return 1;
-    });
-    lua_setfield(L, -2, "value");
+    lua_newuserdata(L, 0);
+    lua_createtable(L, 0, 0);
+      lua_createtable(L, 0, 0);
+        lua_pushcfunction(L, [](auto L) {
+          Push(L, nf7::Value {nf7::Value::Pulse {}});
+          return 1;
+        });
+        lua_setfield(L, -2, "pulse");
 
-    //// mvector(vector or mutable vector) -> mutable vector
-    //lua_pushcfunction(L, [](auto L) {
-    //  if (auto imm = ToVector(L, 1)) {
-    //    if (imm->use_count() == 1) {
-    //      PushMutableVector(L, std::move(const_cast<std::vector<uint8_t>&>(**imm)));
-    //    } else {
-    //      PushMutableVector(L, std::vector<uint8_t> {**imm});
-    //    }
-    //    return 1;
-    //  } else if (auto mut = ToMutableVector(L, 1)) {
-    //    PushMutableVector(L, std::vector<uint8_t> {*mut});
-    //    return 1;
-    //  } else {
-    //    PushMutableVector(L, {});
-    //    return 1;
-    //  }
-    //});
-    //lua_setfield(L, -2, "mvector");
+        lua_pushcfunction(L, [](auto L) {
+          Push(L, nf7::Value {lua_toboolean(L, 1)});
+          return 1;
+        });
+        lua_setfield(L, -2, "boolean");
+
+        lua_pushcfunction(L, [](auto L) {
+          Push(L, nf7::Value {static_cast<nf7::Value::Integer>(lua_tointeger(L, 1))});
+          return 1;
+        });
+        lua_setfield(L, -2, "integer");
+
+        lua_pushcfunction(L, [](auto L) {
+          Push(L, nf7::Value {static_cast<nf7::Value::Scalar>(lua_tonumber(L, 1))});
+          return 1;
+        });
+        lua_setfield(L, -2, "scalar");
+
+        lua_pushcfunction(L, [](auto L) {
+          const char* str = lua_tostring(L, 1);
+          Push(L, nf7::Value {std::string_view {str? str: ""}});
+          return 1;
+        });
+        lua_setfield(L, -2, "string");
+
+        lua_pushcfunction(L, [](auto L) {
+          Push(L, nf7::Value::Buffer {});
+          return 1;
+        });
+        lua_setfield(L, -2, "buffer");
+
+        lua_pushcfunction(L, ([](auto L) {
+          luaL_checktype(L, 1, LUA_TTABLE);
+          if (auto n = lua_objlen(L, 1)) {
+            nf7::Value::Tuple::Factory tup {n};
+            for (int i = 1; i <= static_cast<int>(n); ++i) {
+              lua_rawgeti(L, 1, i);
+              tup.Append() = Check<nf7::Value>(L, -1);
+              lua_pop(L, 1);
+            }
+            Push(L, tup.Create());
+          } else {
+            lua_pushnil(L);
+            while (lua_next(L, 1)) lua_pop(L, 1), ++n;
+
+            nf7::Value::Tuple::Factory tup {n};
+            lua_pushnil(L);
+            while (lua_next(L, 1)) {
+              const char* name = "";
+              if (lua_isstring(L, -2)) {
+                name = lua_tostring(L, -2);
+              }
+              tup[name] = Check<nf7::Value>(L, -1);
+              lua_pop(L, 1);
+            }
+            Push(L, tup.Create());
+          }
+          return 1;
+        }));
+        lua_setfield(L, -2, "tuple");
+      lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
+    lua_setfield(L, -2, "value");
 
 
     // ---- lua std libs ----
