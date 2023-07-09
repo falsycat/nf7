@@ -9,5 +9,21 @@ target_sources(nf7_iface
   PRIVATE
     version.cc
   PUBLIC
+    observer.hh
     version.hh
 )
+
+add_executable(nf7_iface_test)
+target_sources(nf7_iface_test
+  PRIVATE
+    observer_test.hh
+    observer_test.cc
+)
+target_link_libraries(nf7_iface_test
+  PRIVATE
+    nf7_iface
+    GTest::gmock_main
+    GTest::gtest_main
+)
+include(GoogleTest)
+gtest_discover_tests(nf7_iface_test)
