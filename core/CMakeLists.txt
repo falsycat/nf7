@@ -1,0 +1,9 @@
+add_library(nf7_core)
+target_link_libraries(nf7_core PRIVATE git_hash nf7_iface)
+
+target_sources(nf7_core
+  PRIVATE
+    version.cc
+  PUBLIC
+    version.hh
+)
