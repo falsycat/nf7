@@ -1,10 +1,12 @@
-FROM alpine:3.14
+FROM debian:unstable-slim
 
-RUN apk add --no-cache  \
+RUN apt update && apt install -y --no-install-recommends  \
+  ca-certificates  \
   cmake  \
   gdb  \
   git  \
-  g++  \
-  make
+  g++-13  \
+  make  \
+  && apt -y clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo
