@@ -1,12 +1,12 @@
 // No copyright
 #pragma once
 
-#include "iface/observer.hh"
+#include "iface/common/observer.hh"
 
 #include <gmock/gmock.h>
 
 
-namespace nf7::iface::test {
+namespace nf7::test {
 
 template <typename T>
 class ObserverMock : public Observer<T> {
@@ -26,4 +26,4 @@ class ObserverTargetMock : public Observer<T>::Target {
   using Observer<T>::Target::Notify;
 };
 
-}  // namespace nf7::iface::test
+}  // namespace nf7::test

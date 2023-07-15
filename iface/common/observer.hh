@@ -7,7 +7,7 @@
 #include <utility>
 
 
-namespace nf7::iface {
+namespace nf7 {
 
 // T is notified to Observer<T> by Observer<T>::Target.
 // All observers should be based on this.
@@ -96,4 +96,4 @@ Observer<T>::~Observer() noexcept {
   target_.Unregister(*this);
 }
 
-}  // namespace nf7::iface
+}  // namespace nf7

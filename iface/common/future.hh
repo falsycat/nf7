@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-#include "iface/exception.hh"
+#include "iface/common/exception.hh"
 
 namespace nf7 {
 

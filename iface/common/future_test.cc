@@ -1,12 +1,12 @@
 // No copyright
-#include "iface/future.hh"
+#include "iface/common/future.hh"
 
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <optional>
 
-#include "iface/exception.hh"
+#include "iface/common/exception.hh"
 
 
 TEST(Future, ImmediateValue) {

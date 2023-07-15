@@ -1,6 +1,6 @@
 // No copyright
-#include "iface/observer.hh"
-#include "iface/observer_test.hh"
+#include "iface/common/observer.hh"
+#include "iface/common/observer_test.hh"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -8,12 +8,9 @@
 #include <cstdint>
 #include <optional>
 
-using namespace nf7::iface;
-using namespace nf7::iface::test;
-
 TEST(Observer, NotifyWithMove) {
-  ObserverTargetMock<int32_t> target;
-  ObserverMock<int32_t> sut {target};
+  nf7::test::ObserverTargetMock<int32_t> target;
+  nf7::test::ObserverMock<int32_t> sut {target};
 
   EXPECT_CALL(sut, NotifyWithMove(111)).Times(1);
 
@@ -21,9 +18,9 @@ TEST(Observer, NotifyWithMove) {
 }
 
 TEST(Observer, NotifyWithRef) {
-  ObserverTargetMock<int32_t> target;
-  ObserverMock<int32_t> sut1 {target};
-  ObserverMock<int32_t> sut2 {target};
+  nf7::test::ObserverTargetMock<int32_t> target;
+  nf7::test::ObserverMock<int32_t> sut1 {target};
+  nf7::test::ObserverMock<int32_t> sut2 {target};
 
   EXPECT_CALL(sut1, Notify(111)).Times(1);
   EXPECT_CALL(sut2, Notify(111)).Times(1);
@@ -32,9 +29,9 @@ TEST(Observer, NotifyWithRef) {
 }
 
 TEST(Observer, NotifyDestruction) {
-  std::optional<ObserverTargetMock<int32_t>> target;
+  std::optional<nf7::test::ObserverTargetMock<int32_t>> target;
   target.emplace();
-  ObserverMock<int32_t> sut {*target};
+  nf7::test::ObserverMock<int32_t> sut {*target};
 
   EXPECT_CALL(sut, NotifyDestruction(testing::_)).Times(1);
 

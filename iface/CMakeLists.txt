@@ -9,16 +9,17 @@ target_sources(nf7_iface
   PRIVATE
     version.cc
   PUBLIC
-    observer.hh
+    common/future.hh
+    common/observer.hh
     version.hh
 )
 
 add_executable(nf7_iface_test)
 target_sources(nf7_iface_test
   PRIVATE
-    future_test.cc
-    observer_test.hh
-    observer_test.cc
+    common/future_test.cc
+    common/observer_test.hh
+    common/observer_test.cc
 )
 target_link_libraries(nf7_iface_test
   PRIVATE
