@@ -4,7 +4,6 @@
 #include <cassert>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -14,140 +13,143 @@
 namespace nf7 {
 
 template <typename T>
-class InternalFuture final :
-    public std::enable_shared_from_this<InternalFuture<T>> {
- public:
-  using Listener =
-      std::function<void(std::shared_ptr<InternalFuture<T>>&&) noexcept>;
-
-  InternalFuture() = default;
-  InternalFuture(T&& v) noexcept : result_(std::move(v)) { }
-  explicitInternalFuture(std::exception_ptr e) noexcept : result_(e) { }
-
-  void Complete(T&& v) noexcept {
-    assert(yet());
-    result_ = std::move(v);
-    Finalize();
-  }
-  void Throw(std::exception_ptr e = std::current_exception()) noexcept {
-    assert(yet());
-    result_ = e;
-    Finalize();
-  }
-  void Listen(Listener&& listener) {
-    if (yet()) {
-      try {
-        listeners_.push_back(std::move(listener));
-      } catch (const std::exception&) {
-        throw Exception("memory shortage");
-      }
-    } else {
-      listener(shared_from_this());
-    }
-  }
-
-  void Ref() noexcept {
-    ++refcnt_;
-  }
-  void Unref() noexcept {
-    --refcnt_;
-    if (0 == refcnt_ && yet()) {
-      Throw(std::make_exception_ptr(Exception("future is forgotten")));
-    }
-  }
-
-  bool yet() const noexcept {
-    return std::nullopt == result_;
-  }
-  bool done() const noexcept {
-    return !yet() && std::holds_alternative<T>(*result_);
-  }
-  bool error() const noexcept {
-    return !yet() && std::holds_alternative<std::exception_ptr>(*result_);
-  }
-
- private:
-  void Finalize() noexcept {
-    for (const auto& listener : listeners_) {
-      listener(shared_from_this());
-    }
-    listeners_.clear();
-  }
-
-  std::optional<std::variant<T, std::exception_ptr>> result_;
-
-  std::vector<Listener> listeners_;
-
-  uint32_t refcnt_ = 0;
-};
-
-template <typename T>
 class Future final {
  public:
+  // !! Listener MUST NOT throw any exceptions !!
+  using Listener = std::function<void()>;
+
   class Completer;
+  class Internal final {
+   public:
+    Internal() = default;
+    Internal(T&& v) noexcept : result_(std::move(v)) { }
+    explicit Internal(std::exception_ptr e) noexcept : result_(e) { }
+
+    Internal(const Internal& src) = default;
+    Internal(Internal&& src) = default;
+    Internal& operator=(const Internal& src) = default;
+    Internal& operator=(Internal&& src) = default;
+
+    void Complete(T&& v) noexcept {
+      assert(yet());
+      result_ = std::move(v);
+      Finalize();
+    }
+    void Throw(std::exception_ptr e = std::current_exception()) noexcept {
+      assert(yet());
+      assert(nullptr != e);
+      result_ = e;
+      Finalize();
+    }
+    void Listen(Listener&& listener) {
+      assert(!calling_listener_ &&
+             "do not add listener while listener callback");
+      if (yet()) {
+        try {
+          listeners_.push_back(std::move(listener));
+        } catch (const std::exception&) {
+          throw Exception("memory shortage");
+        }
+      } else {
+        calling_listener_ = true;
+        listener();
+        calling_listener_ = false;
+      }
+    }
+
+    bool yet() const noexcept { return std::holds_alternative<Yet>(result_); }
+    bool done() const noexcept { return std::holds_alternative<T>(result_); }
+    std::exception_ptr error() const noexcept {
+      return std::holds_alternative<std::exception_ptr>(result_)
+          ? std::get<std::exception_ptr>(result_)
+          : std::exception_ptr {};
+    }
+
+    const T& value() const noexcept {
+      assert(done());
+      return std::get<T>(result_);
+    }
+
+   private:
+    void Finalize() noexcept {
+      calling_listener_ = true;
+      for (auto& listener : listeners_) {
+        listener();
+      }
+      listeners_.clear();
+      calling_listener_ = false;
+    }
+
+    struct Yet {};
+    std::variant<Yet, T, std::exception_ptr> result_;
+
+    std::vector<Listener> listeners_;
+
+    bool calling_listener_ = false;
+  };
 
   Future() = delete;
-  Future(std::shared_ptr<InternalFuture>&& in) noexcept
-      : internal_(std::move(in));
+  Future(T&& v) : internal_(Internal(std::move(v))) {
+  }
+  Future(std::exception_ptr e) : internal_(Internal(e)) {
+  }
 
-  void Listen(std::function<void(const Future<T>&)>&& listener) {
+  Future(const Future&) = default;
+  Future(Future&&) = default;
+  Future& operator=(const Future&) = default;
+  Future& operator=(Future&&) = default;
+
+  void Listen(Listener&& listener) {
     internal().Listen(std::move(listener));
   }
 
   bool yet() const noexcept { return internal().yet(); }
   bool done() const noexcept { return internal().done(); }
-  bool error() const noexcept { return internal().error(); }
+  std::exception_ptr error() const noexcept { return internal().error(); }
+  const T& value() { return internal().value(); }
 
  private:
-  InternalFuture& internal() noexcept {
-    struct Visitor {
-      InternalFuture& operator(InernalFuture& i) noexcept {
-        return i;
-      }
-      InternalFuture& operator(std::shared_ptr<InternalFuture>& i) noexcept {
-        return *i;
-      }
-    };
-    return std::visit(InternalGetter(), internal_);
+  Future(std::shared_ptr<Internal>&& in) noexcept
+      : internal_(std::move(in)) { }
+  Future(const std::shared_ptr<Internal>& in) noexcept
+      : internal_(std::move(in)) { }
+
+  Internal& internal() noexcept {
+    return std::holds_alternative<Internal>(internal_)
+        ? std::get<Internal>(internal_)
+        : *std::get<std::shared_ptr<Internal>>(internal_);
   }
-  const InternalFuture& internal() const noexcept {
-    struct Visitor {
-      const InternalFuture& operator(const InernalFuture& i) noexcept {
-        return i;
-      }
-      const InternalFuture& operator(
-          const std::shared_ptr<InternalFuture>& i) noexcept {
-        return *i;
-      }
-    };
-    return std::visit(InternalGetter(), internal_);
+  const Internal& internal() const noexcept {
+    return std::holds_alternative<Internal>(internal_)
+        ? std::get<Internal>(internal_)
+        : *std::get<std::shared_ptr<Internal>>(internal_);
   }
 
-  std::variant<InternalFuture, std::shared_ptr<InternalFuture>> internal_;
+  std::variant<Internal, std::shared_ptr<Internal>> internal_;
 };
 
 template <typename T>
 class Future<T>::Completer final {
  public:
-  Completer() : Completer(std::make_shared<InternalFuture>())
-  try {
+  Completer()
+  try : internal_(std::make_shared<Internal>()) {
   } catch (const std::exception&) {
     throw Exception("memory shortage");
   }
-  explicit Completer(std::shared_ptr<InternalFuture>&& internal) noexcept
-      : internal_(std::move(internal)) {
-    internal_->Ref();
-  }
   ~Completer() noexcept {
-    if (nullptr != internal_) {
-      internal_->Unref();
-    }
+    Finalize();
   }
 
-  Completer(const Completer&) = default;
+  Completer(const Completer& src) = delete;
   Completer(Completer&&) = default;
-  Completer& operator=(const Completer&) = default;
-  Completer& operator=(Completer&&) = default;
+  Completer& operator=(const Completer&) = delete;
+  Completer& operator=(Completer&& src) noexcept {
+    if (this != &src) {
+      Finalize();
+      internal_ = std::move(src.internal_);
+    }
+    return *this;
+  }
 
   void Complete(T&& v) noexcept {
     internal_->Complete(std::move(v));
@@ -156,8 +158,16 @@ class Future<T>::Completer final {
     internal_->Throw(e);
   }
 
+  Future<T> future() const noexcept { return {internal_}; }
+
  private:
-  std::shared_ptr<InternalFuture> internal_;
+  void Finalize() noexcept {
+    if (internal_->yet()) {
+      internal_->Throw(std::make_exception_ptr(Exception {"forgotten"}));
+    }
+  }
+
+  std::shared_ptr<Internal> internal_;
 };
 
 }  // namespace nf7

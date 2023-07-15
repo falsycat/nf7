@@ -16,6 +16,7 @@ target_sources(nf7_iface
 add_executable(nf7_iface_test)
 target_sources(nf7_iface_test
   PRIVATE
+    future_test.cc
     observer_test.hh
     observer_test.cc
 )
