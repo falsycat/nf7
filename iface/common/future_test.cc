@@ -148,6 +148,80 @@ TEST(Future, ListenLazyForgotten) {
   EXPECT_EQ(called, 1);
 }
 
+TEST(Future, ThenWhenDone) {
+  nf7::Future<int32_t> sut {int32_t {777}};
+
+  auto called = int32_t {0};
+  sut.Then([&](auto& x) {
+    ++called;
+    EXPECT_EQ(x, int32_t {777});
+  });
+
+  EXPECT_EQ(called, 1);
+}
+TEST(Future, ThenWhenError) {
+  nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
+
+  auto called = int32_t {0};
+  sut.Then([&](auto& x) { ++called; });
+
+  EXPECT_EQ(called, 0);
+}
+
+TEST(Future, CatchWhenDone) {
+  nf7::Future<int32_t> sut {int32_t {777}};
+
+  auto called = int32_t {0};
+  sut.Catch([&](auto&) { ++called; });
+
+  EXPECT_EQ(called, int32_t {0});
+}
+TEST(Future, CatchWhenError) {
+  nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
+
+  auto called = int32_t {0};
+  sut.Catch([&](auto& e) { ++called; });
+
+  EXPECT_EQ(called, 1);
+}
+
+TEST(Future, ThenAndWhenDone) {
+  nf7::Future<int32_t> sut {int32_t {777}};
+
+  auto called1 = int32_t {0};
+  auto called2 = int32_t {0};
+  sut
+    .ThenAnd<int32_t>([&](auto& x) {
+      ++called1;
+      EXPECT_EQ(x, int32_t {777});
+      return int32_t {666};
+    })
+    .Then([&](auto& x) {
+      ++called2;
+      EXPECT_EQ(x, int32_t {666});
+    });
+
+  EXPECT_EQ(called1, 1);
+  EXPECT_EQ(called2, 1);
+}
+TEST(Future, ThenAndWhenError) {
+  nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
+
+  auto called1 = int32_t {0};
+  auto called2 = int32_t {0};
+  sut
+    .ThenAnd<int32_t>([&](auto&) {
+      ++called1;
+      return int32_t {666};
+    })
+    .Then([&](auto&) {
+      ++called2;
+    });
+
+  EXPECT_EQ(called1, 0);
+  EXPECT_EQ(called2, 0);
+}
+
 #if !defined(NDEBUG)
 TEST(Future, DeathByListenInCallback) {
   nf7::Future<int32_t> sut {int32_t{777}};

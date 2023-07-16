@@ -116,8 +116,42 @@ class Future final {
   Future& operator=(const Future&) = default;
   Future& operator=(Future&&) = default;
 
-  void Listen(Listener&& listener) {
+  Future<T>& Listen(Listener&& listener) {
     internal().Listen(std::move(listener));
+    return *this;
+  }
+  Future<T>& Then(std::function<void(const T&)>&& f) {
+    Listen([f = std::move(f)](auto& fu) noexcept {
+      if (fu.done()) {
+        f(fu.value());
+      }
+    });
+    return *this;
+  }
+  Future<T>& Catch(std::function<void(const Exception&)>&& f) {
+    Listen([f = std::move(f)](auto& fu) noexcept {
+      try {
+        fu.value();
+      } catch (const Exception& e) {
+        f(e);
+      }
+    });
+    return *this;
+  }
+
+  template <typename R>
+  Future<R> ThenAnd(std::function<R(const T&)>&& f) {
+    typename Future<R>::Completer comp;
+    auto fu = comp.future();
+    Listen([f = std::move(f), comp = std::move(comp)]
+           (auto& fu) mutable noexcept {
+      try {
+        comp.Complete(f(fu.value()));
+      } catch (...) {
+        comp.Throw();
+      }
+    });
+    return fu;
   }
 
   bool yet() const noexcept { return internal().yet(); }
