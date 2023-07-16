@@ -59,6 +59,15 @@ class Future final {
       }
     }
 
+    void Ref() noexcept {
+      ++refcnt_;
+    }
+    void Unref() noexcept {
+      if (--refcnt_ == 0 && yet()) {
+        Throw(std::make_exception_ptr(Exception {"forgotten"}));
+      }
+    }
+
     bool yet() const noexcept { return std::holds_alternative<Yet>(result_); }
     bool done() const noexcept { return std::holds_alternative<T>(result_); }
     std::exception_ptr error() const noexcept {
@@ -91,13 +100,15 @@ class Future final {
 
     std::vector<Listener> listeners_;
 
+    uint64_t refcnt_ = 0;
+
     bool calling_listener_ = false;
   };
 
   Future() = delete;
-  Future(T&& v) : internal_(Internal(std::move(v))) {
+  explicit Future(T&& v) : internal_(Internal(std::move(v))) {
   }
-  Future(std::exception_ptr e) : internal_(Internal(e)) {
+  explicit Future(std::exception_ptr e) : internal_(Internal(e)) {
   }
 
   Future(const Future&) = default;
@@ -139,19 +150,39 @@ class Future<T>::Completer final {
  public:
   Completer()
   try : internal_(std::make_shared<Internal>()) {
+    internal_->Ref();
   } catch (const std::exception&) {
     throw Exception("memory shortage");
   }
   ~Completer() noexcept {
-    Finalize();
+    if (nullptr != internal_) {
+      internal_->Unref();
+    }
   }
 
-  Completer(const Completer& src) = delete;
+  Completer(const Completer& src) noexcept : internal_(src.internal_) {
+    if (nullptr != internal_) {
+      internal_->Ref();
+    }
+  }
   Completer(Completer&&) = default;
-  Completer& operator=(const Completer&) = delete;
+  Completer& operator=(const Completer& src) noexcept {
+    if (this != &src) {
+      if (nullptr != internal_) {
+        internal_->Unref();
+      }
+      internal_ = src.internal_;
+      if (nullptr != internal_) {
+        internal_->Ref();
+      }
+    }
+    return *this;
+  }
   Completer& operator=(Completer&& src) noexcept {
     if (this != &src) {
-      Finalize();
+      if (nullptr != internal_) {
+        internal_->Unref();
+      }
       internal_ = std::move(src.internal_);
     }
     return *this;
@@ -174,12 +205,6 @@ class Future<T>::Completer final {
   Future<T> future() const noexcept { return {internal_}; }
 
  private:
-  void Finalize() noexcept {
-    if (internal_->yet()) {
-      internal_->Throw(std::make_exception_ptr(Exception {"forgotten"}));
-    }
-  }
-
   std::shared_ptr<Internal> internal_;
 };
 

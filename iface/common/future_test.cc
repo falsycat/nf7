@@ -60,10 +60,17 @@ TEST(Future, LazyIncomplete) {
 }
 TEST(Future, LazyForgotten) {
   std::optional<nf7::Future<int32_t>> sut;
-  nf7::Future<int32_t> sut2 {*sut};
   {
-    nf7::Future<int32_t>::Completer completer;
-    sut.emplace(completer.future());
+    std::optional<nf7::Future<int32_t>::Completer> completer;
+    nf7::Future<int32_t> sut2 {*sut};
+    {
+      nf7::Future<int32_t>::Completer completer2;
+      sut.emplace(completer2.future());
+      completer.emplace(completer2);
+    }
+    EXPECT_TRUE(sut->yet());
+    EXPECT_FALSE(sut->done());
+    EXPECT_FALSE(sut->error());
   }
   EXPECT_FALSE(sut->yet());
   EXPECT_FALSE(sut->done());
