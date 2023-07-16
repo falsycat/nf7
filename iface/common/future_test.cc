@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "iface/common/exception.hh"
 
@@ -220,6 +221,33 @@ TEST(Future, ThenAndWhenError) {
 
   EXPECT_EQ(called1, 0);
   EXPECT_EQ(called2, 0);
+}
+
+TEST(Future_Completer, CompleteAfterCopy) {
+  std::optional<nf7::Future<int32_t>> fut;
+  {
+    std::optional<nf7::Future<int32_t>::Completer> sut;
+    {
+      nf7::Future<int32_t>::Completer sut2;
+      fut.emplace(sut2.future());
+      sut.emplace(sut2);
+    }
+    sut->Complete(int32_t {777});
+  }
+  EXPECT_TRUE(fut->done());
+}
+TEST(Future_Completer, CompleteAfterMove) {
+  std::optional<nf7::Future<int32_t>> fut;
+  {
+    std::optional<nf7::Future<int32_t>::Completer> sut;
+    {
+      nf7::Future<int32_t>::Completer sut2;
+      fut.emplace(sut2.future());
+      sut.emplace(std::move(sut2));
+    }
+    sut->Complete(int32_t {777});
+  }
+  EXPECT_TRUE(fut->done());
 }
 
 #if !defined(NDEBUG)
