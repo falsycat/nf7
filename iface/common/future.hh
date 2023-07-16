@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cassert>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -66,7 +67,11 @@ class Future final {
           : std::exception_ptr {};
     }
 
-    const T& value() const noexcept {
+    const T& value() const {
+      assert(!yet());
+      if (auto err = error()) {
+        std::rethrow_exception(err);
+      }
       assert(done());
       return std::get<T>(result_);
     }
@@ -107,7 +112,7 @@ class Future final {
   bool yet() const noexcept { return internal().yet(); }
   bool done() const noexcept { return internal().done(); }
   std::exception_ptr error() const noexcept { return internal().error(); }
-  const T& value() { return internal().value(); }
+  const T& value() const { return internal().value(); }
 
  private:
   Future(std::shared_ptr<Internal>&& in) noexcept

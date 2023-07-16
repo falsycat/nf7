@@ -24,6 +24,7 @@ TEST(Future, ImmediateError) {
   EXPECT_FALSE(sut.done());
   EXPECT_TRUE(sut.error());
   EXPECT_THROW(std::rethrow_exception(sut.error()), nf7::Exception);
+  EXPECT_THROW(sut.value(), nf7::Exception);
 }
 
 TEST(Future, LazyComplete) {
@@ -47,6 +48,7 @@ TEST(Future, LazyThrow) {
   EXPECT_FALSE(sut.done());
   EXPECT_TRUE(sut.error());
   EXPECT_THROW(std::rethrow_exception(sut.error()), nf7::Exception);
+  EXPECT_THROW(sut.value(), nf7::Exception);
 }
 TEST(Future, LazyIncomplete) {
   nf7::Future<int32_t>::Completer completer;
@@ -85,7 +87,7 @@ TEST(Future, ListenImmediateError) {
   auto called = int32_t {0};
   sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
+    EXPECT_THROW(fu.value(), nf7::Exception);
   });
 
   EXPECT_EQ(called, 1);
@@ -110,7 +112,7 @@ TEST(Future, ListenLazyThrow) {
   auto called = int32_t {0};
   sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
+    EXPECT_THROW(fu.value(), nf7::Exception);
   });
   completer.Throw(std::make_exception_ptr(nf7::Exception {"hello"}));
 
@@ -133,7 +135,7 @@ TEST(Future, ListenLazyForgotten) {
 
     sut.Listen([&](auto& fu) {
       ++called;
-      EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
+      EXPECT_THROW(fu.value(), nf7::Exception);
     });
   }
   EXPECT_EQ(called, 1);
