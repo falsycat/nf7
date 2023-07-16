@@ -223,12 +223,15 @@ class Future<T>::Completer final {
   }
 
   void Complete(T&& v) noexcept {
+    assert(nullptr != internal_);
     internal_->Complete(std::move(v));
   }
   void Throw(std::exception_ptr e = std::current_exception()) noexcept {
+    assert(nullptr != internal_);
     internal_->Throw(e);
   }
   void Run(std::function<T()>& f) noexcept {
+    assert(nullptr != internal_);
     try {
       Complete(f());
     } catch (...) {
@@ -236,7 +239,10 @@ class Future<T>::Completer final {
     }
   }
 
-  Future<T> future() const noexcept { return {internal_}; }
+  Future<T> future() const noexcept {
+    assert(nullptr != internal_);
+    return {internal_};
+  }
 
  private:
   std::shared_ptr<Internal> internal_;
