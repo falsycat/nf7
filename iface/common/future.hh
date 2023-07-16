@@ -16,7 +16,8 @@ template <typename T>
 class Future final {
  public:
   // !! Listener MUST NOT throw any exceptions !!
-  using Listener = std::function<void()>;
+  class Internal;
+  using Listener = std::function<void(const Internal&)>;
 
   class Completer;
   class Internal final {
@@ -52,7 +53,7 @@ class Future final {
         }
       } else {
         calling_listener_ = true;
-        listener();
+        listener(*this);
         calling_listener_ = false;
       }
     }
@@ -74,7 +75,7 @@ class Future final {
     void Finalize() noexcept {
       calling_listener_ = true;
       for (auto& listener : listeners_) {
-        listener();
+        listener(*this);
       }
       listeners_.clear();
       calling_listener_ = false;
@@ -156,6 +157,13 @@ class Future<T>::Completer final {
   }
   void Throw(std::exception_ptr e = std::current_exception()) noexcept {
     internal_->Throw(e);
+  }
+  void Run(std::function<T()>& f) noexcept {
+    try {
+      Complete(f());
+    } catch (...) {
+      Throw();
+    }
   }
 
   Future<T> future() const noexcept { return {internal_}; }

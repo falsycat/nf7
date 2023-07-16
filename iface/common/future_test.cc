@@ -72,9 +72,9 @@ TEST(Future, ListenImmediateValue) {
   nf7::Future<int32_t> sut {int32_t {777}};
 
   auto called = int32_t {0};
-  sut.Listen([&]() {
+  sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_EQ(sut.value(), int32_t {777});
+    EXPECT_EQ(fu.value(), int32_t {777});
   });
 
   EXPECT_EQ(called, 1);
@@ -83,9 +83,9 @@ TEST(Future, ListenImmediateError) {
   nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
 
   auto called = int32_t {0};
-  sut.Listen([&]() {
+  sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_THROW(std::rethrow_exception(sut.error()), nf7::Exception);
+    EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
   });
 
   EXPECT_EQ(called, 1);
@@ -95,9 +95,9 @@ TEST(Future, ListenLazyComplete) {
   nf7::Future<int32_t> sut = completer.future();
 
   auto called = int32_t {0};
-  sut.Listen([&]() {
+  sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_EQ(sut.value(), int32_t {777});
+    EXPECT_EQ(fu.value(), int32_t {777});
   });
   completer.Complete(int32_t {777});
 
@@ -108,9 +108,9 @@ TEST(Future, ListenLazyThrow) {
   nf7::Future<int32_t> sut = completer.future();
 
   auto called = int32_t {0};
-  sut.Listen([&]() {
+  sut.Listen([&](auto& fu) {
     ++called;
-    EXPECT_THROW(std::rethrow_exception(sut.error()), nf7::Exception);
+    EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
   });
   completer.Throw(std::make_exception_ptr(nf7::Exception {"hello"}));
 
@@ -121,7 +121,7 @@ TEST(Future, ListenLazyIncomplete) {
   nf7::Future<int32_t> sut = completer.future();
 
   auto called = int32_t {0};
-  sut.Listen([&]() { ++called; });
+  sut.Listen([&](auto&) { ++called; });
 
   EXPECT_EQ(called, 0);
 }
@@ -131,9 +131,9 @@ TEST(Future, ListenLazyForgotten) {
     nf7::Future<int32_t>::Completer completer;
     nf7::Future<int32_t> sut = completer.future();
 
-    sut.Listen([&, sut]() {
+    sut.Listen([&](auto& fu) {
       ++called;
-      EXPECT_THROW(std::rethrow_exception(sut.error()), nf7::Exception);
+      EXPECT_THROW(std::rethrow_exception(fu.error()), nf7::Exception);
     });
   }
   EXPECT_EQ(called, 1);
@@ -143,16 +143,16 @@ TEST(Future, ListenLazyForgotten) {
 TEST(Future, DeathByListenInCallback) {
   nf7::Future<int32_t> sut {int32_t{777}};
 
-  sut.Listen([&]() {
-    ASSERT_DEATH_IF_SUPPORTED(sut.Listen([](){}), "");
+  sut.Listen([&](auto&) {
+    ASSERT_DEATH_IF_SUPPORTED(sut.Listen([](auto&){}), "");
   });
 }
 TEST(Future, DeathByListenInLazyCallback) {
   nf7::Future<int32_t>::Completer completer;
   nf7::Future<int32_t> sut = completer.future();
 
-  sut.Listen([&]() {
-    ASSERT_DEATH_IF_SUPPORTED(sut.Listen([](){}), "");
+  sut.Listen([&](auto&) {
+    ASSERT_DEATH_IF_SUPPORTED(sut.Listen([](auto&){}), "");
   });
 
   completer.Complete(int32_t{777});
