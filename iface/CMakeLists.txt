@@ -13,6 +13,7 @@ target_sources(nf7_iface
     common/container.hh
     common/future.hh
     common/observer.hh
+    common/task.hh
     common/value.hh
     version.hh
 )
@@ -25,6 +26,7 @@ target_sources(nf7_iface_test
     common/future_test.cc
     common/observer_test.hh
     common/observer_test.cc
+    common/task_test.cc
     common/value_test.cc
 )
 target_link_libraries(nf7_iface_test
