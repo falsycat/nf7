@@ -4,7 +4,7 @@
 #include <exception>
 #include <source_location>
 
-namespace nf7::iface {
+namespace nf7 {
 
 class Exception : public std::exception, std::nested_exception {
  public:
@@ -22,4 +22,4 @@ class Exception : public std::exception, std::nested_exception {
   std::source_location location_;
 };
 
-}  // namespace nf7::iface
+}  // namespace nf7

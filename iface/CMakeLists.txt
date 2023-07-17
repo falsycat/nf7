@@ -9,5 +9,31 @@ target_sources(nf7_iface
   PRIVATE
     version.cc
   PUBLIC
+    common/dealer.hh
+    common/container.hh
+    common/future.hh
+    common/observer.hh
+    common/task.hh
+    common/value.hh
     version.hh
 )
+
+add_executable(nf7_iface_test)
+target_sources(nf7_iface_test
+  PRIVATE
+    common/dealer_test.cc
+    common/container_test.cc
+    common/future_test.cc
+    common/observer_test.hh
+    common/observer_test.cc
+    common/task_test.cc
+    common/value_test.cc
+)
+target_link_libraries(nf7_iface_test
+  PRIVATE
+    nf7_iface
+    GTest::gmock_main
+    GTest::gtest_main
+)
+include(GoogleTest)
+gtest_discover_tests(nf7_iface_test)
