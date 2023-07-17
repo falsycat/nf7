@@ -139,8 +139,9 @@ class Future final {
     return *this;
   }
 
-  template <typename R>
-  Future<R> ThenAnd(std::function<R(const T&)>&& f) {
+  template <typename F>
+  auto ThenAnd(F&& f) -> Future<decltype(f(*(T*)0))> {
+    using R = decltype(f(*(T*)0));
     typename Future<R>::Completer comp;
     auto fu = comp.future();
     Listen([f = std::move(f), comp = std::move(comp)]

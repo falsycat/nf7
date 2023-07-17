@@ -192,7 +192,7 @@ TEST(Future, ThenAndWhenDone) {
   auto called1 = int32_t {0};
   auto called2 = int32_t {0};
   sut
-    .ThenAnd<int32_t>([&](auto& x) {
+    .ThenAnd([&](auto& x) {
       ++called1;
       EXPECT_EQ(x, int32_t {777});
       return int32_t {666};
@@ -211,7 +211,7 @@ TEST(Future, ThenAndWhenError) {
   auto called1 = int32_t {0};
   auto called2 = int32_t {0};
   sut
-    .ThenAnd<int32_t>([&](auto&) {
+    .ThenAnd([&](auto&) {
       ++called1;
       return int32_t {666};
     })
