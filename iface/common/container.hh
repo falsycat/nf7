@@ -16,7 +16,56 @@
 namespace nf7 {
 
 template <typename I>
-class Container final {
+class Container {
+ public:
+  Container() = default;
+  virtual ~Container() = default;
+
+  Container(const Container&) = delete;
+  Container(Container&&) = delete;
+  Container& operator=(const Container&) = delete;
+  Container& operator=(Container&&) = delete;
+
+  virtual std::shared_ptr<I> Get(std::type_index) = 0;
+  virtual bool installed(std::type_index) const noexcept = 0;
+
+  template <typename I2>
+  void Get(std::shared_ptr<I2>& out) {
+    out = Get<I2>();
+  }
+  template <typename I2>
+  std::shared_ptr<I2> Get() {
+    auto ptr  = GetOr<I2>();
+    if (nullptr == ptr) {
+      throw Exception {"missing dependency"};
+    }
+    return ptr;
+  }
+  template <typename I2>
+  void GetOr(std::shared_ptr<I2>&       out,
+             const std::shared_ptr<I2>& def = nullptr) {
+    out = GetOr<I2>(def);
+  }
+  template <typename I2>
+  std::shared_ptr<I2> GetOr(const std::shared_ptr<I2>& def = nullptr) {
+    auto ptr = GetOr(typeid(I2), def);
+    auto casted_ptr = std::dynamic_pointer_cast<I2>(ptr);
+    assert(nullptr == ptr || nullptr != casted_ptr);
+    return casted_ptr;
+  }
+  std::shared_ptr<I> GetOr(std::type_index idx, const std::shared_ptr<I>& def) {
+    const auto& ret = Get(idx);
+    return nullptr != ret? ret: def;
+  }
+
+  template <typename T>
+  bool installed() const noexcept {
+    return installed(typeid(T));
+  }
+};
+
+template <typename I>
+class SimpleContainer : public Container<I> {
  public:
   using Factory = std::function<std::shared_ptr<I>(Container<I>&)>;
 
@@ -43,42 +92,12 @@ class Container final {
     }
   }
 
-  Container() = delete;
-  explicit Container(std::unordered_map<std::type_index, Factory>&& factories) noexcept
+  SimpleContainer() = delete;
+  explicit SimpleContainer(
+      std::unordered_map<std::type_index, Factory>&& factories) noexcept
       : factories_(std::move(factories)) { }
 
-  Container(const Container&) = delete;
-  Container(Container&&) = delete;
-  Container& operator=(const Container&) = delete;
-  Container& operator=(Container&&) = delete;
-
-  template <typename I2>
-  void Get(std::shared_ptr<I2>& out) {
-    out = Get<I2>();
-  }
-  template <typename I2>
-  std::shared_ptr<I2> Get() {
-    auto ptr  = GetOr<I2>();
-    if (nullptr == ptr) {
-      throw Exception {"missing dependency"};
-    }
-    return ptr;
-  }
-  template <typename I2>
-  void GetOr(std::shared_ptr<I2>&       out,
-             const std::shared_ptr<I2>& def = nullptr) {
-    out = GetOr<I2>(def);
-  }
-  template <typename I2>
-  std::shared_ptr<I2> GetOr(const std::shared_ptr<I2>& def = nullptr) {
-    auto ptr = GetOr(typeid(I2), def);
-    auto casted_ptr = std::dynamic_pointer_cast<I2>(ptr);
-    assert(nullptr == ptr || nullptr != casted_ptr);
-    return casted_ptr;
-  }
-
-  std::shared_ptr<I> GetOr(
-      std::type_index idx, const std::shared_ptr<I>& def = nullptr) {
+  std::shared_ptr<I> Get(std::type_index idx) override {
     const auto obj_itr = objs_.find(idx);
     if (objs_.end() != obj_itr) {
       return obj_itr->second;
@@ -102,16 +121,16 @@ class Container final {
         throw Exception {"memory shortage"};
       }
     }
-    return def;
+    return nullptr;
   }
 
-  template <typename T>
-  bool installed() const noexcept {
-    return installed(typeid(T));
-  }
-  bool installed(std::type_index idx) const noexcept {
+  bool installed(std::type_index idx) const noexcept override {
     return factories_.contains(idx);
   }
+
+  using Container<I>::Get;
+  using Container<I>::GetOr;
+  using Container<I>::installed;
 
  private:
   std::unordered_map<std::type_index, Factory> factories_;

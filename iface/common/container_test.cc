@@ -9,36 +9,36 @@ class Object {
  public:
   virtual ~Object() = default;
 };
-using SUT = nf7::Container<Object>;
+using SUT = nf7::SimpleContainer<Object>;
 
 class IA : public Object { };
 class IB : public Object { };
 
 class A : public IA {
  public:
-  explicit A(SUT&) noexcept { }
+  explicit A(nf7::Container<Object>&) noexcept { }
 };
 class B : public IB {
  public:
-  explicit B(SUT& sut) { sut.Get(a_); }
+  explicit B(nf7::Container<Object>& sut) { sut.Get(a_); }
  private:
   std::shared_ptr<IA> a_;
 };
 class BRecursive : public IB {
  public:
-  explicit BRecursive(SUT& sut) { sut.Get(b_); }
+  explicit BRecursive(nf7::Container<Object>& sut) { sut.Get(b_); }
  private:
   std::shared_ptr<IB> b_;
 };
 
-TEST(Container, FetchIsolated) {
+TEST(SimpleContainer, FetchIsolated) {
   SUT sut {{
     SUT::MakePair<IA, A>(),
   }};
   auto ptr = sut.Get<IA>();
   EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
 }
-TEST(Container, FetchDepending) {
+TEST(SimpleContainer, FetchDepending) {
   SUT sut {{
     SUT::MakePair<IA, A>(),
     SUT::MakePair<IB, B>(),
@@ -46,17 +46,17 @@ TEST(Container, FetchDepending) {
   auto ptr = sut.Get<IB>();
   EXPECT_TRUE(std::dynamic_pointer_cast<B>(ptr));
 }
-TEST(Container, FetchUnknown) {
+TEST(SimpleContainer, FetchUnknown) {
   SUT sut {{}};
   EXPECT_THROW(sut.Get<IA>(), nf7::Exception);
 }
-TEST(Container, FetchUnknownDepending) {
+TEST(SimpleContainer, FetchUnknownDepending) {
   SUT sut {{
     SUT::MakePair<IB, B>(),
   }};
   EXPECT_THROW(sut.Get<IB>(), nf7::Exception);
 }
-TEST(Container, CheckInstalled) {
+TEST(SimpleContainer, CheckInstalled) {
   SUT sut {{
     SUT::MakePair<IA, A>(),
   }};
@@ -65,7 +65,7 @@ TEST(Container, CheckInstalled) {
 }
 
 #if !defined(NDEBUG)
-TEST(Container, DeathByFetchRecursive) {
+TEST(SimpleContainer, DeathByFetchRecursive) {
   SUT sut {{
     SUT::MakePair<IB, BRecursive>(),
   }};
