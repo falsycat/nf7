@@ -15,6 +15,9 @@ target_sources(nf7_iface
     common/observer.hh
     common/task.hh
     common/value.hh
+    subsys/interface.hh
+    env.hh
+    lambda.hh
     version.hh
 )
 
