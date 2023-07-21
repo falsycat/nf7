@@ -7,12 +7,12 @@
 #include "iface/common/future.hh"
 
 
-TEST(Task, RunAndThrow) {
+TEST(Task, ExecAndThrow) {
   const auto line = __LINE__ + 1;
   nf7::Task task {[&]() { throw nf7::Exception {"hello"}; }};
 
   try {
-    task.Run();
+    task.Exec();
     EXPECT_FALSE("unreachable (exception expected)");
   } catch (const nf7::Exception& e) {
     EXPECT_EQ(e.location().line(), line);
@@ -32,7 +32,7 @@ TEST(TaskQueue, Wrap) {
 TEST(TaskQueue, WrapInFutureThen) {
   auto sut = std::make_shared<nf7::test::TaskQueueMock>();
   ON_CALL(*sut, Push(::testing::_)).WillByDefault([](auto&& task) {
-    task.Run();
+    task.Exec();
   });
 
   nf7::Future<int32_t> fut {int32_t {777}};

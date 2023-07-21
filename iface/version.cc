@@ -6,8 +6,8 @@
 #include "generated/git_hash.hh"
 
 
-namespace nf7::iface {
+namespace nf7 {
 
 const char* version() noexcept { return GIT_HASH; }
 
-}  // namespace nf7::iface
+}  // namespace nf7

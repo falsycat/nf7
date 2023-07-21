@@ -31,7 +31,7 @@ class Task final {
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&&) = default;
 
-  void Run() {
+  void Exec() {
     if (!func_) {
       throw Exception {"double run is not allowed", location_};
     }
@@ -77,26 +77,26 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
 
   // THREAD SAFE
   template <typename R>
-  Future<R> RunAnd(
+  Future<R> ExecAnd(
       std::function<R()>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    return RunAnd({}, std::move(f));
+    return ExecAnd({}, std::move(f));
   }
 
   // THREAD SAFE
   template <typename R>
-  Future<R> RunAnd(
+  Future<R> ExecAnd(
       Future<R>::Completer&& comp,
       std::function<R()>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     Future<R> future {comp};
     Push(Task {
-         [f = std::move(f), comp = std::move(comp)]() { comp.Run(f); }, loc});
+         [f = std::move(f), comp = std::move(comp)]() { comp.Exec(f); }, loc});
     return future;
   }
 
   // THREAD SAFE
-  void Run(
+  void Exec(
       std::function<void()>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     Push(Task {std::move(f), loc});
