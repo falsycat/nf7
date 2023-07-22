@@ -14,9 +14,9 @@ class ObserverMock : public Observer<T> {
   explicit ObserverMock(Observer<T>::Target& target) : Observer<T>(target) {
   }
 
-  MOCK_METHOD1(Notify, void(const T&));
-  MOCK_METHOD1(NotifyWithMove, void(T&&));
-  MOCK_METHOD1(NotifyDestruction, void(const T*));
+  MOCK_METHOD(void, Notify, (const T&));
+  MOCK_METHOD(void, NotifyWithMove, (T&&));
+  MOCK_METHOD(void, NotifyDestruction, (const T*));
 };
 
 template <typename T>
