@@ -4,7 +4,14 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <cstdint>
+#include <thread>
+#include <vector>
+
 #include "iface/common/future.hh"
+
+using namespace std::literals;
 
 
 TEST(Task, ExecAndThrow) {
@@ -44,4 +51,147 @@ TEST(TaskQueue, WrapInFutureThen) {
   }));
 
   EXPECT_EQ(called, 1);
+}
+
+TEST(SimpleTaskQueue, PushAndDrive) {
+  nf7::test::SimpleTaskQueueMock sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+  EXPECT_CALL(sut, onErrorWhileExec).Times(0);
+
+  auto interrupt = false;
+  ::testing::NiceMock<nf7::test::SimpleTaskQueueDriverMock> driver;
+  ON_CALL(driver, EndBusy)
+      .WillByDefault([&]() { interrupt = true; });
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() { return interrupt; });
+
+  auto called = uint32_t {0};
+  sut.Push(nf7::Task {[&](){ ++called; }});
+  sut.Drive(driver);
+
+  EXPECT_EQ(called, 1);
+}
+
+TEST(SimpleTaskQueue, PushWithDelayAndDrive) {
+  constexpr auto dur = 100ms;
+
+  auto tick = 0ms;
+
+  nf7::test::SimpleTaskQueueMock sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+  EXPECT_CALL(sut, onErrorWhileExec).Times(0);
+
+  auto cycle = uint32_t {0};
+  auto interrupt = false;
+  ::testing::NiceMock<nf7::test::SimpleTaskQueueDriverMock> driver;
+  ON_CALL(driver, BeginBusy)
+      .WillByDefault([&]() {
+        if (++cycle == 2) {
+          tick += dur;
+        }
+      });
+  ON_CALL(driver, tick)
+      .WillByDefault([&]() { return nf7::Task::Time {tick}; });
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() { return interrupt; });
+
+  const auto expect_at = std::chrono::system_clock::now() + dur;
+  decltype(std::chrono::system_clock::now()) actual_at;
+
+  sut.Push(nf7::Task { nf7::Task::Time {dur}, [&](){
+    actual_at = std::chrono::system_clock::now();
+    interrupt = true;
+  }});
+
+  sut.Drive(driver);
+
+  EXPECT_GE(actual_at, expect_at);
+}
+
+TEST(SimpleTaskQueue, PushWithDelayAndDriveOrderly) {
+  auto tick = 0s;
+
+  nf7::test::SimpleTaskQueueMock sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+  EXPECT_CALL(sut, onErrorWhileExec).Times(0);
+
+  auto interrupt = false;
+  ::testing::NiceMock<nf7::test::SimpleTaskQueueDriverMock> driver;
+  ON_CALL(driver, EndBusy)
+      .WillByDefault([&]() { interrupt = true; });
+  ON_CALL(driver, tick)
+      .WillByDefault([&]() { return nf7::Task::Time {tick}; });
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() { return interrupt; });
+
+  auto called_after       = uint32_t {0};
+  auto called_immediately = uint32_t {0};
+  sut.Push(nf7::Task {nf7::Task::Time {1s}, [&](){ ++called_after; }});
+  sut.Push(nf7::Task {nf7::Task::Time {0s}, [&](){ ++called_immediately; }});
+
+  interrupt = false;
+  sut.Drive(driver);
+
+  EXPECT_EQ(called_after,       0);
+  EXPECT_EQ(called_immediately, 1);
+
+  interrupt = false;
+  ++tick;
+  sut.Drive(driver);
+
+  EXPECT_EQ(called_after,       1);
+  EXPECT_EQ(called_immediately, 1);
+}
+
+TEST(SimpleTaskQueue, ThrowInDrive) {
+  nf7::test::SimpleTaskQueueMock sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+  EXPECT_CALL(sut, onErrorWhileExec).Times(1);
+
+  auto interrupt = false;
+  ::testing::NiceMock<nf7::test::SimpleTaskQueueDriverMock> driver;
+  ON_CALL(driver, EndBusy)
+      .WillByDefault([&]() { interrupt = true; });
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() { return interrupt; });
+
+  auto called = uint32_t {0};
+  sut.Push(nf7::Task {[&](){ throw nf7::Exception {"helloworld"}; }});
+  sut.Push(nf7::Task {[&](){ ++called; }});
+  sut.Drive(driver);
+}
+
+TEST(SimpleTaskQueue, ChaoticPushAndDrive) {
+  constexpr auto kThreads = uint32_t {32};
+  constexpr auto kPushPerThread = uint32_t {100};
+
+  std::vector<uint32_t> values(kThreads);
+  std::vector<std::thread> threads(kThreads);
+  std::atomic<uint32_t> exitedThreads {0};
+
+  nf7::test::SimpleTaskQueueMock sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+  EXPECT_CALL(sut, onErrorWhileExec).Times(0);
+
+  // use NiceMock to suppress annoying warnings that slowed unittests
+  ::testing::NiceMock<nf7::test::SimpleTaskQueueDriverMock> driver;
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() { return exitedThreads >= kThreads; });
+
+  for (uint32_t i = 0; i < kThreads; ++i) {
+    threads[i] = std::thread {[&, i](){
+      for (uint32_t j = 0; j < kPushPerThread; ++j) {
+        sut.Push(nf7::Task {[&, i](){ ++values[i]; }});
+      }
+      sut.Push(nf7::Task {[&](){ ++exitedThreads; }});
+    }};
+  }
+  for (auto& th : threads) {
+    th.join();
+  }
+  sut.Drive(driver);
+
+  for (const auto execCount : values) {
+    EXPECT_EQ(execCount, kPushPerThread);
+  }
 }
