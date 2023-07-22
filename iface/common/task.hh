@@ -52,10 +52,9 @@ class Task final {
     return after_ <=> other.after_;
   }
 
-  void Exec() {
+  void operator()() {
     try {
-      auto f = std::move(func_);
-      f();
+      func_();
     } catch (...) {
       throw Exception {"task throws an exception", location_};
     }
@@ -87,12 +86,21 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
   virtual void Push(Task&&) noexcept = 0;
 
   // THREAD SAFE
+  auto Wrap(Task&& task) noexcept {
+    return [self = shared_from_this(), task = std::move(task)](auto&&... args)
+        mutable {
+      self->Push(std::move(task));
+    };
+  }
+
+  // THREAD SAFE
   auto Wrap(
       auto&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args) {
+    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args)
+        mutable {
       self->Push(Task {[f = std::move(f),
-                 ...args = std::forward<decltype(args)>(args)]() {
+                 ...args = std::forward<decltype(args)>(args)]() mutable {
           f(std::forward<decltype(args)>(args)...);
       }, loc});
     };
@@ -113,8 +121,9 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
       std::function<R()>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     Future<R> future {comp};
-    Push(Task {
-         [f = std::move(f), comp = std::move(comp)]() { comp.Exec(f); }, loc});
+    Push(Task { [f = std::move(f), comp = std::move(comp)]() mutable {
+      comp.Exec(f);
+    }, loc});
     return future;
   }
 
@@ -182,7 +191,7 @@ class SimpleTaskQueue : public TaskQueue {
           k.unlock();
 
           try {
-            task.Exec();
+            task();
           } catch (...) {
             onErrorWhileExec(task.location());
           }

@@ -19,7 +19,7 @@ TEST(Task, ExecAndThrow) {
   nf7::Task task {[&]() { throw nf7::Exception {"hello"}; }};
 
   try {
-    task.Exec();
+    task();
     EXPECT_FALSE("unreachable (exception expected)");
   } catch (const nf7::Exception& e) {
     EXPECT_EQ(e.location().line(), line);
@@ -27,7 +27,7 @@ TEST(Task, ExecAndThrow) {
   }
 }
 
-TEST(TaskQueue, Wrap) {
+TEST(TaskQueue, WrapLambda) {
   auto sut     = std::make_shared<nf7::test::TaskQueueMock>();
   auto wrapped = sut->Wrap([](){});
 
@@ -36,16 +36,24 @@ TEST(TaskQueue, Wrap) {
   wrapped();
 }
 
+TEST(TaskQueue, WrapTask) {
+  auto sut     = std::make_shared<nf7::test::TaskQueueMock>();
+  auto wrapped = sut->Wrap(nf7::Task { nf7::Task::Time {0ms}, [](){} });
+
+  EXPECT_CALL(*sut, Push(::testing::_)).Times(1);
+
+  wrapped();
+}
+
 TEST(TaskQueue, WrapInFutureThen) {
   auto sut = std::make_shared<nf7::test::TaskQueueMock>();
-  ON_CALL(*sut, Push(::testing::_)).WillByDefault([](auto&& task) {
-    task.Exec();
-  });
+  EXPECT_CALL(*sut, Push)
+      .WillOnce([](auto&& task) { task(); });
 
   nf7::Future<int32_t> fut {int32_t {777}};
 
   auto called = uint32_t {0};
-  fut.Then(sut->Wrap([&](auto& x) {
+  fut.Then(sut->Wrap([&](const auto& x) {
     ++called;
     EXPECT_EQ(x, int32_t {777});
   }));
