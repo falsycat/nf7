@@ -159,33 +159,6 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
   using std::enable_shared_from_this<TaskQueue<Args...>>::shared_from_this;
 };
 
-template <typename T, typename... Args>
-class WrappedTaskQueue : public T {
- public:
-  static_assert(std::is_base_of_v<TaskQueue<Args...>, T>,
-                "base type should be based on TaskQueue");
-
-  using Inside = TaskQueue<Args...>;
-  using Item   = Task<Args...>;
-
-  WrappedTaskQueue() = delete;
-  explicit WrappedTaskQueue(std::unique_ptr<Inside>&& q) noexcept
-      : q_(std::move(q)) {
-    assert(q_);
-  }
-
-  void Push(Item&& task) noexcept override {
-    q_->Push(std::move(task));
-  }
-
-  using Inside::Wrap;
-  using Inside::Exec;
-  using Inside::ExecAnd;
-
- private:
-  std::unique_ptr<Inside> q_;
-};
-
 template <typename... Args>
 class SimpleTaskQueue : public TaskQueue<Args...> {
  public:
