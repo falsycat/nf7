@@ -7,5 +7,6 @@
 namespace nf7 {
 
 using Env = Container<subsys::Interface>;
+using SimpleEnv = SimpleContainer<subsys::Interface>;
 
 }  // namespace nf7
