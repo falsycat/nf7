@@ -7,11 +7,28 @@
 
 namespace nf7::subsys {
 
-class Concurrency : public Interface, public TaskQueue {
+class SyncTaskContext {
  public:
-  using Interface::Interface;
+  SyncTaskContext() = default;
+
+  SyncTaskContext(const SyncTaskContext&) = delete;
+  SyncTaskContext(SyncTaskContext&&) = delete;
+  SyncTaskContext& operator=(const SyncTaskContext&) = delete;
+  SyncTaskContext& operator=(SyncTaskContext&&) = delete;
 };
 
-using WrappedConcurrency = WrappedTaskQueue<Concurrency>;
+using SyncTaskQueue = TaskQueue<const SyncTaskContext&>;
+using SyncTask      = Task<const SyncTaskContext&>;
+
+class Concurrency :
+    public Interface,
+    public SyncTaskQueue {
+ public:
+  using Interface::Interface;
+  using SyncTaskQueue::Push;
+  using SyncTaskQueue::Wrap;
+  using SyncTaskQueue::Exec;
+  using SyncTaskQueue::ExecAnd;
+};
 
 }  // namespace nf7::subsys
