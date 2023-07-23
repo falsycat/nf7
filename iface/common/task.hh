@@ -263,13 +263,17 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
         std::unique_lock<std::mutex> k{mtx_};
 
         const auto until = nextAwakeTime();
-        const auto dur   = until - driver.tick();
-        cv_.wait_for(k, dur, [&]() {
+        const auto pred  = [&]() {
           return
             !CheckIfSleeping(driver.tick()) ||
-            until > nextAwakeTime() ||
+            (until && *until > nextAwakeTime().value_or(Time::max())) ||
             driver.nextIdleInterruption();
-        });
+        };
+        if (std::nullopt != until) {
+          cv_.wait_for(k, *until - driver.tick(), pred);
+        } else {
+          cv_.wait(k, pred);
+        }
       } catch (const std::system_error&) {
         throw Exception {"mutex error"};
       }
@@ -287,8 +291,11 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
   bool CheckIfSleeping(Time now) const noexcept {
     return tasks_.empty() || tasks_.top().after() > now;
   }
-  Time nextAwakeTime() const noexcept {
-    return tasks_.empty()? Time::max(): tasks_.top().after();
+  std::optional<Time> nextAwakeTime() const noexcept {
+    if (tasks_.empty()) {
+      return std::nullopt;
+    }
+    return tasks_.top().after();
   }
 
   std::mutex mtx_;
