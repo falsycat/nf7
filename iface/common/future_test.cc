@@ -164,7 +164,7 @@ TEST(Future, ThenWhenError) {
   nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
 
   auto called = int32_t {0};
-  sut.Then([&](auto& x) { ++called; });
+  sut.Then([&](auto&) { ++called; });
 
   EXPECT_EQ(called, 0);
 }
@@ -181,7 +181,7 @@ TEST(Future, CatchWhenError) {
   nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
 
   auto called = int32_t {0};
-  sut.Catch([&](auto& e) { ++called; });
+  sut.Catch([&](auto&) { ++called; });
 
   EXPECT_EQ(called, 1);
 }
