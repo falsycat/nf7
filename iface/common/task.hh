@@ -135,6 +135,30 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
   }
 };
 
+template <typename T>
+class WrappedTaskQueue : public T {
+ public:
+  static_assert(std::is_base_of_v<TaskQueue, T>,
+                "base type should be based on TaskQueue");
+
+  WrappedTaskQueue() = delete;
+  explicit WrappedTaskQueue(std::unique_ptr<TaskQueue>&& q) noexcept
+      : q_(std::move(q)) {
+    assert(q_);
+  }
+
+  void Push(Task&& task) noexcept override {
+    q_->Push(std::move(task));
+  }
+
+  using TaskQueue::Wrap;
+  using TaskQueue::Exec;
+  using TaskQueue::ExecAnd;
+
+ private:
+  std::unique_ptr<TaskQueue> q_;
+};
+
 class SimpleTaskQueue : public TaskQueue {
  public:
   class Driver {

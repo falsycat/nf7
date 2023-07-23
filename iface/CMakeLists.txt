@@ -16,7 +16,9 @@ target_sources(nf7_iface
     common/task.hh
     common/value.hh
     data/interface.hh
+    subsys/concurrency.hh
     subsys/interface.hh
+    subsys/parallelism.hh
     env.hh
     file.hh
     lambda.hh
