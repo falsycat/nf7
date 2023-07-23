@@ -1,5 +1,14 @@
 include(FetchContent)
 
+# ---- luajit (MIT)
+FetchContent_Declare(
+  luajit
+  GIT_REPOSITORY https://github.com/LuaJIT/LuaJIT.git
+  GIT_TAG        8635cbabf3094c4d8bd00578c7d812bea87bb2d3
+)
+FetchContent_Populate(luajit)
+include(luajit.cmake)
+
 # ---- gtest (BSD-3-Clause)
 FetchContent_Declare(
   googletest
