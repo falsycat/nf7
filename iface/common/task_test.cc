@@ -100,6 +100,26 @@ TEST(TaskQueue, WrapInFutureThenWithParam) {
   EXPECT_EQ(called, 1);
 }
 
+TEST(WrappedTaskQueue, Push) {
+  auto base = std::make_unique<nf7::test::TaskQueueMock<>>();
+  EXPECT_CALL(*base, Push).Times(1);
+
+  class A : public nf7::TaskQueue<> {
+   public:
+    A() = default;
+  };
+  nf7::WrappedTaskQueue<A> sut {std::move(base)};
+  static_assert(std::is_base_of_v<A, decltype(sut)>,
+                "WrappedTaskQueue doesn't based on base type");
+
+  sut.Push(nf7::Task<> {[](){}});
+
+  // ensure all templates available
+  (std::void_t<decltype(sut.Wrap([](){}))>) 0;
+  (std::void_t<decltype(sut.ExecAnd<uint32_t>([](){ return 0; }))>) 0;
+  (std::void_t<decltype(sut.Exec([](){}))>) 0;
+}
+
 TEST(SimpleTaskQueue, PushAndDrive) {
   nf7::test::SimpleTaskQueueMock<> sut;
   EXPECT_CALL(sut, onErrorWhilePush).Times(0);
