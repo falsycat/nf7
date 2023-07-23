@@ -8,6 +8,10 @@ option(SANITIZER "ADDRESS or THREAD" "THREAD")
 
 # all targets should link to this to use common compile options
 add_library(nf7_config INTERFACE EXCLUDE_FROM_ALL)
+target_include_directories(nf7_config
+  INTERFACE
+    ${PROJECT_SOURCE_DIR}
+)
 target_compile_options(nf7_config INTERFACE
   $<$<CXX_COMPILER_ID:MSVC>:
     /W4
