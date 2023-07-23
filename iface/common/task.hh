@@ -12,6 +12,7 @@
 #include <source_location>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -21,13 +22,15 @@
 
 namespace nf7 {
 
+template <typename... Args>
 class Task final {
  public:
   using Time = std::chrono::sys_time<std::chrono::milliseconds>;
+  using Function = std::function<void(Args&&...)>;
 
   Task() = delete;
   explicit Task(
-      std::function<void()>&& func,
+      Function&& func,
       std::source_location location = std::source_location::current()) noexcept
       : func_(std::move(func)),
         location_(location) {
@@ -35,7 +38,7 @@ class Task final {
   }
   Task(
       Time after,
-      std::function<void()>&& func,
+      Function&& func,
       std::source_location location = std::source_location::current()) noexcept
       : after_(after),
         func_(std::move(func)),
@@ -52,9 +55,9 @@ class Task final {
     return after_ <=> other.after_;
   }
 
-  void operator()() {
+  void operator()(Args&&... args) {
     try {
-      func_();
+      func_(std::forward<Args>(args)...);
     } catch (...) {
       throw Exception {"task throws an exception", location_};
     }
@@ -66,13 +69,16 @@ class Task final {
  private:
   Time after_;
 
-  std::function<void()> func_;
+  Function func_;
 
   std::source_location location_;
 };
 
-class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
+template <typename... Args>
+class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
  public:
+  using Item = Task<Args...>;
+
   TaskQueue() = default;
   virtual ~TaskQueue() = default;
 
@@ -83,11 +89,11 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
 
   // THREAD SAFE
   // an implementation must handle memory errors well
-  virtual void Push(Task&&) noexcept = 0;
+  virtual void Push(Item&&) noexcept = 0;
 
   // THREAD SAFE
-  auto Wrap(Task&& task) noexcept {
-    return [self = shared_from_this(), task = std::move(task)](auto&&... args)
+  auto Wrap(Item&& task) noexcept {
+    return [self = shared_from_this(), task = std::move(task)](auto&&...)
         mutable {
       self->Push(std::move(task));
     };
@@ -97,19 +103,34 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
   auto Wrap(
       auto&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args)
+    using F = decltype(f);
+
+    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args1)
         mutable {
-      self->Push(Task {[f = std::move(f),
-                 ...args = std::forward<decltype(args)>(args)]() mutable {
-          f(std::forward<decltype(args)>(args)...);
-      }, loc});
+      self->Push(Item {
+        [f = std::move(f), ...args1 = std::forward<decltype(args1)>(args1)]
+        (auto&&... args2) mutable {
+          if constexpr (
+              std::is_invocable_v<F, decltype(args1)..., decltype(args2)...>) {
+            f(std::forward<decltype(args1)>(args1)...,
+              std::forward<decltype(args2)>(args2)...);
+          } else if constexpr (std::is_invocable_v<F, decltype(args1)...>) {
+            f(std::forward<decltype(args1)>(args1)...);
+          } else {
+            []<bool kValidFunction = false>() {
+              static_assert(kValidFunction, "a function to wrap is invalid");
+            }();
+          }
+        },
+        loc,
+      });
     };
   }
 
   // THREAD SAFE
   template <typename R>
   Future<R> ExecAnd(
-      std::function<R()>&& f,
+      std::function<R(Args&&...)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     return ExecAnd({}, std::move(f));
   }
@@ -118,10 +139,10 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
   template <typename R>
   Future<R> ExecAnd(
       Future<R>::Completer&& comp,
-      std::function<R()>&& f,
+      std::function<R(Args&&...)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     Future<R> future {comp};
-    Push(Task { [f = std::move(f), comp = std::move(comp)]() mutable {
+    Push(Item { [f = std::move(f), comp = std::move(comp)](Args&&...) mutable {
       comp.Exec(f);
     }, loc});
     return future;
@@ -131,36 +152,46 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue> {
   void Exec(
       std::function<void()>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    Push(Task {std::move(f), loc});
+    Push(Item {std::move(f), loc});
   }
+
+ private:
+  using std::enable_shared_from_this<TaskQueue<Args...>>::shared_from_this;
 };
 
-template <typename T>
+template <typename T, typename... Args>
 class WrappedTaskQueue : public T {
  public:
-  static_assert(std::is_base_of_v<TaskQueue, T>,
+  static_assert(std::is_base_of_v<TaskQueue<Args...>, T>,
                 "base type should be based on TaskQueue");
 
+  using Inside = TaskQueue<Args...>;
+  using Item   = Task<Args...>;
+
   WrappedTaskQueue() = delete;
-  explicit WrappedTaskQueue(std::unique_ptr<TaskQueue>&& q) noexcept
+  explicit WrappedTaskQueue(std::unique_ptr<Inside>&& q) noexcept
       : q_(std::move(q)) {
     assert(q_);
   }
 
-  void Push(Task&& task) noexcept override {
+  void Push(Item&& task) noexcept override {
     q_->Push(std::move(task));
   }
 
-  using TaskQueue::Wrap;
-  using TaskQueue::Exec;
-  using TaskQueue::ExecAnd;
+  using Inside::Wrap;
+  using Inside::Exec;
+  using Inside::ExecAnd;
 
  private:
-  std::unique_ptr<TaskQueue> q_;
+  std::unique_ptr<Inside> q_;
 };
 
-class SimpleTaskQueue : public TaskQueue {
+template <typename... Args>
+class SimpleTaskQueue : public TaskQueue<Args...> {
  public:
+  using Item = Task<Args...>;
+  using Time = Item::Time;
+
   class Driver {
    public:
     Driver() = default;
@@ -174,14 +205,16 @@ class SimpleTaskQueue : public TaskQueue {
     virtual void BeginBusy() noexcept { }
     virtual void EndBusy() noexcept { }
 
-    virtual Task::Time tick() const noexcept { return {}; }
+    virtual std::tuple<Args...> params() const noexcept = 0;
+    virtual Time tick() const noexcept { return {}; }
+
     virtual bool nextIdleInterruption() const noexcept { return false; }
     virtual bool nextTaskInterruption() const noexcept { return false; }
   };
 
   SimpleTaskQueue() = default;
 
-  void Push(Task&& task) noexcept override {
+  void Push(Item&& task) noexcept override {
     const auto location = task.location();
     try {
       std::unique_lock<std::mutex> k {mtx_};
@@ -215,7 +248,7 @@ class SimpleTaskQueue : public TaskQueue {
           k.unlock();
 
           try {
-            task();
+            std::apply(task, driver.params());
           } catch (...) {
             onErrorWhileExec(task.location());
           }
@@ -251,17 +284,17 @@ class SimpleTaskQueue : public TaskQueue {
   virtual void onErrorWhileExec(std::source_location) { }
 
  private:
-  bool CheckIfSleeping(Task::Time now) const noexcept {
+  bool CheckIfSleeping(Time now) const noexcept {
     return tasks_.empty() || tasks_.top().after() > now;
   }
-  Task::Time nextAwakeTime() const noexcept {
-    return tasks_.empty()? Task::Time::max(): tasks_.top().after();
+  Time nextAwakeTime() const noexcept {
+    return tasks_.empty()? Time::max(): tasks_.top().after();
   }
 
   std::mutex mtx_;
   std::condition_variable cv_;
 
-  std::priority_queue<Task, std::vector<Task>, std::greater<Task>> tasks_;
+  std::priority_queue<Item, std::vector<Item>, std::greater<Item>> tasks_;
 };
 
 }  // namespace nf7

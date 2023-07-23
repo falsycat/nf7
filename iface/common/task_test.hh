@@ -6,18 +6,23 @@
 #include <gmock/gmock.h>
 
 #include <chrono>
+#include <tuple>
 
 
 namespace nf7::test {
 
-class TaskQueueMock : public TaskQueue {
+template <typename... Args>
+class TaskQueueMock : public TaskQueue<Args...> {
  public:
+  using Item = Task<Args...>;
+
   TaskQueueMock() = default;
 
-  MOCK_METHOD(void, Push, (Task&&), (noexcept, override));
+  MOCK_METHOD(void, Push, (Item&&), (noexcept, override));
 };
 
-class SimpleTaskQueueMock : public SimpleTaskQueue {
+template <typename... Args>
+class SimpleTaskQueueMock : public SimpleTaskQueue<Args...> {
  public:
   SimpleTaskQueueMock() = default;
 
@@ -25,13 +30,18 @@ class SimpleTaskQueueMock : public SimpleTaskQueue {
   MOCK_METHOD(void, onErrorWhileExec, (std::source_location), ());
 };
 
-class SimpleTaskQueueDriverMock : public SimpleTaskQueue::Driver {
+template <typename... Args>
+class SimpleTaskQueueDriverMock : public SimpleTaskQueue<Args...>::Driver {
  public:
+  using Item = Task<Args...>;
+  using Time = typename Item::Time;
+
   SimpleTaskQueueDriverMock() = default;
 
   MOCK_METHOD(void, BeginBusy, (), (noexcept, override));
   MOCK_METHOD(void, EndBusy, (), (noexcept, override));
-  MOCK_METHOD(Task::Time, tick, (), (const, noexcept, override));
+  MOCK_METHOD(Time, tick, (), (const, noexcept, override));
+  MOCK_METHOD(std::tuple<Args...>, params, (), (const, noexcept, override));
   MOCK_METHOD(bool, nextIdleInterruption, (), (const, override, noexcept));
   MOCK_METHOD(bool, nextTaskInterruption, (), (const, override, noexcept));
 };
