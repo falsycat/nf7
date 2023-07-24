@@ -117,9 +117,7 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
           } else if constexpr (std::is_invocable_v<F, decltype(args1)...>) {
             f(std::forward<decltype(args1)>(args1)...);
           } else {
-            []<bool kValidFunction = false>() {
-              static_assert(kValidFunction, "a function to wrap is invalid");
-            }();
+            static_assert(false, "the wrapped function is invalid");
           }
         },
         loc,
