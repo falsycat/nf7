@@ -192,8 +192,7 @@ class WrappedTaskQueue : public I {
   using Inside = TaskQueue<Item>;
 
   WrappedTaskQueue() = delete;
-  explicit WrappedTaskQueue(std::unique_ptr<Inside>&& q) noexcept
-      : q_(std::move(q)) {
+  explicit WrappedTaskQueue(const std::shared_ptr<Inside>& q) noexcept : q_(q) {
     assert(q_);
   }
 
@@ -206,7 +205,7 @@ class WrappedTaskQueue : public I {
   using Inside::ExecAnd;
 
  private:
-  std::unique_ptr<Inside> q_;
+  std::shared_ptr<Inside> q_;
 };
 
 template <TaskLike T>
