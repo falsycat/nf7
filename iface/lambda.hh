@@ -2,7 +2,6 @@
 #pragma once
 
 #include <memory>
-#include <span>
 #include <utility>
 #include <vector>
 
@@ -14,9 +13,9 @@ namespace nf7 {
 class Lambda {
  public:
   Lambda() = delete;
-  Lambda(std::vector<std::shared_ptr<Taker<Value>>>&& takers,
-         std::vector<std::shared_ptr<Maker<Value>>>&& makers) noexcept
-      : takers_(std::move(takers)), makers_(makers) {
+  Lambda(std::shared_ptr<Taker<Value>>&& taker,
+         std::shared_ptr<Maker<Value>>&& maker) noexcept
+      : taker_(std::move(taker)), maker_(maker) {
   }
   virtual ~Lambda() = default;
 
@@ -25,16 +24,12 @@ class Lambda {
   Lambda& operator=(const Lambda&) = delete;
   Lambda& operator=(Lambda&&) = delete;
 
-  std::span<const std::shared_ptr<Taker<Value>>> takers() const noexcept {
-    return takers_;
-  }
-  std::span<const std::shared_ptr<Maker<Value>>> makers() const noexcept {
-    return makers_;
-  }
+  const std::shared_ptr<Taker<Value>>& taker() const noexcept { return taker_; }
+  const std::shared_ptr<Maker<Value>>& maker() const noexcept { return maker_; }
 
  private:
-  std::vector<std::shared_ptr<Taker<Value>>> takers_;
-  std::vector<std::shared_ptr<Maker<Value>>> makers_;
+  const std::shared_ptr<Taker<Value>> taker_;
+  const std::shared_ptr<Maker<Value>> maker_;
 };
 
 }  // namespace nf7
