@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <concepts>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -22,15 +23,43 @@
 
 namespace nf7 {
 
-template <typename... Args>
+template <typename T>
+concept TaskLike = requires (T& x) {
+  typename T::Param;
+  typename T::Time;
+
+  T([](typename T::Param){}, std::source_location {});
+  requires std::copy_constructible<T>;
+  requires std::move_constructible<T>;
+  requires std::invocable<T, typename T::Param>;
+
+  {x.operator<=>(x)} noexcept;
+  {x.after()} noexcept -> std::convertible_to<typename T::Time>;
+};
+
+template <typename T, typename Item>
+concept TaskDriverLike = requires (T& x, Item&& y) {
+  requires TaskLike<Item>;
+
+  {x.BeginBusy()} noexcept;
+  {x.Drive(std::move(y))} noexcept;
+  {x.EndBusy()} noexcept;
+  {x.tick()} noexcept -> std::convertible_to<typename Item::Time>;
+  {x.nextIdleInterruption()} noexcept -> std::convertible_to<bool>;
+  {x.nextTaskInterruption()} noexcept -> std::convertible_to<bool>;
+};
+
+
+template <typename P>
 class Task final {
  public:
-  using Time = std::chrono::sys_time<std::chrono::milliseconds>;
-  using Function = std::function<void(Args&&...)>;
+  using Param = P;
+  using Time  = std::chrono::sys_time<std::chrono::milliseconds>;
+  using Func  = std::function<void(Param)>;
 
   Task() = delete;
   explicit Task(
-      Function&& func,
+      Func&& func,
       std::source_location location = std::source_location::current()) noexcept
       : func_(std::move(func)),
         location_(location) {
@@ -38,7 +67,7 @@ class Task final {
   }
   Task(
       Time after,
-      Function&& func,
+      Func&& func,
       std::source_location location = std::source_location::current()) noexcept
       : after_(after),
         func_(std::move(func)),
@@ -55,9 +84,9 @@ class Task final {
     return after_ <=> other.after_;
   }
 
-  void operator()(Args&&... args) {
+  void operator()(Param param) {
     try {
-      func_(std::forward<Args>(args)...);
+      func_(std::forward<Param>(param));
     } catch (...) {
       throw Exception {"task throws an exception", location_};
     }
@@ -68,16 +97,15 @@ class Task final {
 
  private:
   Time after_;
-
-  Function func_;
-
+  Func func_;
   std::source_location location_;
 };
 
-template <typename... Args>
-class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
+template <TaskLike T>
+class TaskQueue : public std::enable_shared_from_this<TaskQueue<T>> {
  public:
-  using Item = Task<Args...>;
+  using Item  = T;
+  using Param = typename Item::Param;
 
   TaskQueue() = default;
   virtual ~TaskQueue() = default;
@@ -103,19 +131,16 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
   auto Wrap(
       auto&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    using F = decltype(f);
-
-    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args1)
+    return [self = shared_from_this(), f = std::move(f), loc](auto&&... args)
         mutable {
+      using F = decltype(f);
       self->Push(Item {
-        [f = std::move(f), ...args1 = std::forward<decltype(args1)>(args1)]
-        (auto&&... args2) mutable {
-          if constexpr (
-              std::is_invocable_v<F, decltype(args1)..., decltype(args2)...>) {
-            f(std::forward<decltype(args1)>(args1)...,
-              std::forward<decltype(args2)>(args2)...);
-          } else if constexpr (std::is_invocable_v<F, decltype(args1)...>) {
-            f(std::forward<decltype(args1)>(args1)...);
+        [f = std::move(f), ...args = std::forward<decltype(args)>(args)]
+        (Param p) mutable {
+          if constexpr (std::is_invocable_v<F, decltype(args)..., Param>) {
+            f(std::forward<decltype(args)>(args)..., std::forward<Param>(p));
+          } else if constexpr (std::is_invocable_v<F, decltype(args)...>) {
+            f(std::forward<decltype(args)>(args)...);
           } else {
             static_assert(false, "the wrapped function is invalid");
           }
@@ -128,7 +153,7 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
   // THREAD SAFE
   template <typename R>
   Future<R> ExecAnd(
-      std::function<R(Args&&...)>&& f,
+      std::function<R(Param)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     return ExecAnd({}, std::move(f));
   }
@@ -136,35 +161,35 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<Args...>> {
   // THREAD SAFE
   template <typename R>
   Future<R> ExecAnd(
-      Future<R>::Completer&& comp,
-      std::function<R(Args&&...)>&& f,
+      Future<R>::Completer&& cmp,
+      std::function<R(Param)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
-    Future<R> future {comp};
-    Push(Item { [f = std::move(f), comp = std::move(comp)](Args&&...) mutable {
-      comp.Exec(f);
+    Future<R> future {cmp};
+    Push(Item { [f = std::move(f), cmp = std::move(cmp)](Param) mutable {
+      cmp.Exec(f);
     }, loc});
     return future;
   }
 
   // THREAD SAFE
   void Exec(
-      std::function<void()>&& f,
+      std::function<void(Param)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
     Push(Item {std::move(f), loc});
   }
 
  private:
-  using std::enable_shared_from_this<TaskQueue<Args...>>::shared_from_this;
+  using std::enable_shared_from_this<TaskQueue<Item>>::shared_from_this;
 };
 
-template <typename T, typename... Args>
-class WrappedTaskQueue : public T {
+template <typename I>
+class WrappedTaskQueue : public I {
  public:
-  static_assert(std::is_base_of_v<TaskQueue<Args...>, T>,
+  static_assert(std::is_base_of_v<TaskQueue<typename I::Item>, I>,
                 "base type should be based on TaskQueue");
 
-  using Inside = TaskQueue<Args...>;
-  using Item   = Task<Args...>;
+  using Item   = typename I::Item;
+  using Inside = TaskQueue<Item>;
 
   WrappedTaskQueue() = delete;
   explicit WrappedTaskQueue(std::unique_ptr<Inside>&& q) noexcept
@@ -184,31 +209,11 @@ class WrappedTaskQueue : public T {
   std::unique_ptr<Inside> q_;
 };
 
-template <typename... Args>
-class SimpleTaskQueue : public TaskQueue<Args...> {
+template <TaskLike T>
+class SimpleTaskQueue : public TaskQueue<T> {
  public:
-  using Item = Task<Args...>;
-  using Time = Item::Time;
-
-  class Driver {
-   public:
-    Driver() = default;
-    virtual ~Driver() = default;
-
-    Driver(const Driver&) = delete;
-    Driver(Driver&&) = delete;
-    Driver& operator=(const Driver&) = delete;
-    Driver& operator=(Driver&&) = delete;
-
-    virtual void BeginBusy() noexcept { }
-    virtual void EndBusy() noexcept { }
-
-    virtual std::tuple<Args...> params() const noexcept = 0;
-    virtual Time tick() const noexcept { return {}; }
-
-    virtual bool nextIdleInterruption() const noexcept { return false; }
-    virtual bool nextTaskInterruption() const noexcept { return false; }
-  };
+  using Item = T;
+  using Time = typename Item::Time;
 
   SimpleTaskQueue() = default;
 
@@ -229,10 +234,8 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
     cv_.notify_all();
   }
 
-  template <
-    typename T,
-    typename = std::enable_if<std::is_base_of_v<Driver, T>, void>>
-  void Drive(T& driver) {
+  template <TaskDriverLike<Item> Driver>
+  void Drive(Driver& driver) {
     while (!driver.nextIdleInterruption()) {
       driver.BeginBusy();
       try {
@@ -245,11 +248,7 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
           tasks_.pop();
           k.unlock();
 
-          try {
-            std::apply(task, driver.params());
-          } catch (...) {
-            onErrorWhileExec(task.location());
-          }
+          driver.Drive(std::move(task));
         }
       } catch (const std::system_error&) {
         driver.EndBusy();
@@ -260,11 +259,11 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
       try {
         std::unique_lock<std::mutex> k{mtx_};
 
-        const auto until = nextAwakeTime();
+        const auto until = nextAwake();
         const auto pred  = [&]() {
           return
             !CheckIfSleeping(driver.tick()) ||
-            (until && *until > nextAwakeTime().value_or(Time::max())) ||
+            until.value_or(Time::max()) > nextAwake().value_or(Time::max()) ||
             driver.nextIdleInterruption();
         };
         if (std::nullopt != until) {
@@ -289,7 +288,7 @@ class SimpleTaskQueue : public TaskQueue<Args...> {
   bool CheckIfSleeping(Time now) const noexcept {
     return tasks_.empty() || tasks_.top().after() > now;
   }
-  std::optional<Time> nextAwakeTime() const noexcept {
+  std::optional<Time> nextAwake() const noexcept {
     if (tasks_.empty()) {
       return std::nullopt;
     }
