@@ -11,39 +11,43 @@
 
 namespace nf7::test {
 
-template <typename... Args>
-class TaskQueueMock : public TaskQueue<Args...> {
+template <TaskLike T>
+class TaskQueueMock : public TaskQueue<T> {
  public:
-  using Item = Task<Args...>;
+  using Item = T;
 
   TaskQueueMock() = default;
 
   MOCK_METHOD(void, Push, (Item&&), (noexcept, override));
 };
 
-template <typename... Args>
-class SimpleTaskQueueMock : public SimpleTaskQueue<Args...> {
+template <TaskLike T>
+class SimpleTaskQueueMock : public SimpleTaskQueue<T> {
  public:
   SimpleTaskQueueMock() = default;
 
   MOCK_METHOD(void, onErrorWhilePush, (std::source_location), (noexcept));
-  MOCK_METHOD(void, onErrorWhileExec, (std::source_location), ());
 };
 
-template <typename... Args>
-class SimpleTaskQueueDriverMock : public SimpleTaskQueue<Args...>::Driver {
+template <TaskLike T>
+class SimpleTaskQueueDriverMock {
  public:
-  using Item = Task<Args...>;
+  using Item = T;
   using Time = typename Item::Time;
 
   SimpleTaskQueueDriverMock() = default;
 
-  MOCK_METHOD(void, BeginBusy, (), (noexcept, override));
-  MOCK_METHOD(void, EndBusy, (), (noexcept, override));
-  MOCK_METHOD(Time, tick, (), (const, noexcept, override));
-  MOCK_METHOD(std::tuple<Args...>, params, (), (const, noexcept, override));
-  MOCK_METHOD(bool, nextIdleInterruption, (), (const, override, noexcept));
-  MOCK_METHOD(bool, nextTaskInterruption, (), (const, override, noexcept));
+  SimpleTaskQueueDriverMock(const SimpleTaskQueueDriverMock&) = delete;
+  SimpleTaskQueueDriverMock(SimpleTaskQueueDriverMock&&) = delete;
+  SimpleTaskQueueDriverMock& operator=(const SimpleTaskQueueDriverMock&) = delete;
+  SimpleTaskQueueDriverMock& operator=(SimpleTaskQueueDriverMock&&) = delete;
+
+  MOCK_METHOD(void, BeginBusy, (), (noexcept));
+  MOCK_METHOD(void, Drive, (T&&), (noexcept));
+  MOCK_METHOD(void, EndBusy, (), (noexcept));
+  MOCK_METHOD(Time, tick, (), (const, noexcept));
+  MOCK_METHOD(bool, nextIdleInterruption, (), (const, noexcept));
+  MOCK_METHOD(bool, nextTaskInterruption, (), (const, noexcept));
 };
 
 }  // namespace nf7::test
