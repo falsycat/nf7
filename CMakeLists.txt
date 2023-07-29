@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 
 option(SANITIZER "ADDRESS or THREAD" "THREAD")
 
+include(CTest)
+
 # all targets should link to this to use common compile options
 add_library(nf7_config INTERFACE EXCLUDE_FROM_ALL)
 target_include_directories(nf7_config
