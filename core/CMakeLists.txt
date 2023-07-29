@@ -1,13 +1,31 @@
 add_library(nf7_core)
 target_link_libraries(nf7_core
-  PRIVATE
+  PUBLIC
     git_hash
+    luajit
     nf7_config
     nf7_iface
 )
 target_sources(nf7_core
   PRIVATE
+    luajit/context.cc
     version.cc
   PUBLIC
+    luajit/context.hh
     version.hh
 )
+
+add_executable(nf7_core_test)
+target_sources(nf7_core_test
+  PRIVATE
+    luajit/context_test.cc
+    luajit/context_test.hh
+)
+target_link_libraries(nf7_core_test
+  PRIVATE
+    nf7_core
+    GTest::gmock_main
+    GTest::gtest_main
+)
+include(GoogleTest)
+gtest_discover_tests(nf7_core_test)

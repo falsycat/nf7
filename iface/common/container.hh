@@ -67,10 +67,13 @@ class Container {
 template <typename I>
 class SimpleContainer : public Container<I> {
  public:
-  using Factory = std::function<std::shared_ptr<I>(Container<I>&)>;
+  using Factory     = std::function<std::shared_ptr<I>(Container<I>&)>;
+  using FactoryPair = std::pair<std::type_index, Factory>;
+  using FactoryMap  = std::unordered_map<std::type_index, Factory>;
+  using ObjectMap   = std::unordered_map<std::type_index, std::shared_ptr<I>>;
 
   template <typename I2, typename T>
-  static std::pair<std::type_index, Factory> MakePair() noexcept {
+  static FactoryPair MakePair() noexcept {
     static_assert(std::is_base_of_v<I, I2>,
                   "registerable interface must be based on "
                   "container common interface");
@@ -80,11 +83,10 @@ class SimpleContainer : public Container<I> {
     static_assert(std::is_constructible_v<T, Container<I>&>,
                   "registerable concrete type must be "
                   "constructible with container");
-    return std::pair<std::type_index, Factory>{
+    return FactoryPair {
         typeid(I2), [](auto& x) { return std::make_shared<T>(x); }};
   }
-  static std::shared_ptr<Container<I>> Make(
-      std::unordered_map<std::type_index, Factory>&& factories) {
+  static std::shared_ptr<Container<I>> Make(FactoryMap&& factories) {
     try {
       return std::make_shared<Container<I>>(std::move(factories));
     } catch (const std::bad_alloc&) {
@@ -93,8 +95,7 @@ class SimpleContainer : public Container<I> {
   }
 
   SimpleContainer() = delete;
-  explicit SimpleContainer(
-      std::unordered_map<std::type_index, Factory>&& factories) noexcept
+  explicit SimpleContainer(FactoryMap&& factories) noexcept
       : factories_(std::move(factories)) { }
 
   std::shared_ptr<I> Get(std::type_index idx) override {
@@ -133,8 +134,8 @@ class SimpleContainer : public Container<I> {
   using Container<I>::installed;
 
  private:
-  std::unordered_map<std::type_index, Factory> factories_;
-  std::unordered_map<std::type_index, std::shared_ptr<I>> objs_;
+  FactoryMap factories_;
+  ObjectMap  objs_;
 
   uint32_t nest_ = 0;
 };

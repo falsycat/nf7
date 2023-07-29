@@ -11,11 +11,16 @@ class Parallelism :
     public Interface,
     public AsyncTaskQueue {
  public:
-  using Interface::Interface;
+  explicit Parallelism(const char* name = "nf7::subsys::Parallelism") noexcept
+      : Interface(name) { }
+
   using AsyncTaskQueue::Push;
   using AsyncTaskQueue::Wrap;
   using AsyncTaskQueue::Exec;
   using AsyncTaskQueue::ExecAnd;
+
+ protected:
+  using AsyncTaskQueue::shared_from_this;
 };
 
 }  // namespace nf7::subsys

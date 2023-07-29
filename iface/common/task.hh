@@ -178,7 +178,7 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<T>> {
     Push(Item {std::move(f), loc});
   }
 
- private:
+ protected:
   using std::enable_shared_from_this<TaskQueue<Item>>::shared_from_this;
 };
 
@@ -192,8 +192,7 @@ class WrappedTaskQueue : public I {
   using Inside = TaskQueue<Item>;
 
   WrappedTaskQueue() = delete;
-  explicit WrappedTaskQueue(std::unique_ptr<Inside>&& q) noexcept
-      : q_(std::move(q)) {
+  explicit WrappedTaskQueue(const std::shared_ptr<Inside>& q) noexcept : q_(q) {
     assert(q_);
   }
 
@@ -206,7 +205,7 @@ class WrappedTaskQueue : public I {
   using Inside::ExecAnd;
 
  private:
-  std::unique_ptr<Inside> q_;
+  std::shared_ptr<Inside> q_;
 };
 
 template <TaskLike T>
