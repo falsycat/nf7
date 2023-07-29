@@ -18,6 +18,9 @@ class Parallelism :
   using AsyncTaskQueue::Wrap;
   using AsyncTaskQueue::Exec;
   using AsyncTaskQueue::ExecAnd;
+
+ protected:
+  using AsyncTaskQueue::shared_from_this;
 };
 
 }  // namespace nf7::subsys

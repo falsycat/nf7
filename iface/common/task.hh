@@ -178,7 +178,7 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<T>> {
     Push(Item {std::move(f), loc});
   }
 
- private:
+ protected:
   using std::enable_shared_from_this<TaskQueue<Item>>::shared_from_this;
 };
 
