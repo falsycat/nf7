@@ -26,7 +26,7 @@ class Value final {
   struct Null { };
   using Integer = int64_t;
   using Real    = double;
-                                  //
+
   class Buffer final {
    public:
     Buffer() = default;
@@ -137,6 +137,75 @@ class Value final {
 
   using Variant = std::variant<Null, Integer, Real, Buffer, Object>;
 
+ public:
+  static Value MakeNull(Null v = {}) noexcept { return v; }
+  static Value MakeInteger(Integer v) noexcept { return v; }
+  static Value MakeReal(Real v) noexcept { return v; }
+
+  static Value MakeBuffer(
+      uint64_t n, const std::shared_ptr<uint8_t[]>& ptr) noexcept {
+    return Buffer {n, ptr};
+  }
+  template <
+      typename Itr,
+      typename T = typename std::iterator_traits<Itr>::value_type>
+  static Value MakeBuffer(Itr begin, Itr end) requires std::is_trivial_v<T>
+  try {
+    const auto n = (end-begin) * sizeof(T);
+
+    auto ptr = std::make_shared<uint8_t[]>(n);
+    std::copy(begin, end, reinterpret_cast<T*>(ptr.get()));
+
+    return MakeBuffer(n, ptr);
+  } catch (const std::bad_alloc&) {
+    throw Exception {"memory shortage"};
+  }
+  template <typename T>
+  static Value MakeBuffer(std::initializer_list<T> v)
+      requires std::is_trivial_v<T> {
+    return MakeBuffer(v.begin(), v.end());
+  }
+
+  static Value MakeObject(
+      uint64_t n, const std::shared_ptr<Object::Pair[]>& ptr) noexcept {
+    return Object {n, ptr};
+  }
+  template <typename Itr>
+  static Value MakeObject(Itr begin, Itr end)
+      requires std::convertible_to<decltype(*begin), const Object::Pair>
+  try {
+    const auto n = end - begin;
+
+    auto ptr = std::make_shared<Object::Pair[]>(n);
+    std::copy(begin, end, ptr.get());
+
+    return MakeObject(n, ptr);
+  } catch (const std::bad_alloc&) {
+    throw Exception {"memory shortage"};
+  }
+  static Value MakeObject(std::initializer_list<Object::Pair> v) {
+    return MakeObject(v.begin(), v.end());
+  }
+
+  template <typename Itr>
+  static Value MakeArray(Itr begin, Itr end)
+      requires std::convertible_to<decltype(*begin), const Value>
+  try {
+    const auto n = end - begin;
+
+    auto ptr = std::make_shared<Object::Pair[]>(n);
+    std::transform(begin, end, ptr.get(),
+                   [](auto& x) { return Object::Pair {"", x}; });
+
+    return MakeObject(n, ptr);
+  } catch (const std::bad_alloc&) {
+    throw Exception {"memory shortage"};
+  }
+  static Value MakeArray(std::initializer_list<Value> v) {
+    return MakeArray(v.begin(), v.end());
+  }
+
+ public:
   Value() noexcept : var_(Null {}) { }
   Value(Null v) noexcept : var_(v) { }
   Value(Integer v) noexcept : var_(v) { }
@@ -146,6 +215,12 @@ class Value final {
   Value(Object&& v) noexcept : var_(std::move(v)) { }
   Value(const Object& v) noexcept : var_(v) { }
 
+  Value(const Value&) = default;
+  Value(Value&&) = default;
+  Value& operator=(const Value&) = default;
+  Value& operator=(Value&&) = default;
+
+ public:
   template <typename T>
   const T& as(
       std::source_location location = std::source_location::current()) const {
@@ -188,57 +263,5 @@ class Value final {
  private:
   Variant var_;
 };
-
-template <typename T>
-auto MakeValue(const T& v) -> decltype(Value {*(T*)0}) {
-  return Value {std::forward<T>(v)};
-}
-template <typename T, typename E = typename std::iterator_traits<T>::value_type>
-auto MakeValue(T begin, T end)
-    -> std::enable_if_t<std::is_trivial_v<E>, Value>
-try {
-  const auto b = static_cast<uint64_t>(end-begin) * sizeof(E);
-  auto ptr = std::make_shared<uint8_t[]>(b);
-  auto dst = reinterpret_cast<E*>(&ptr[0]);
-  std::copy(begin, end, dst);
-  return Value {Value::Buffer {b, std::move(ptr)}};
-} catch (const std::bad_alloc&) {
-  throw Exception {"memory shortage"};
-}
-template <typename T>
-auto MakeValue(T begin, T end)
-    -> decltype(Value::Object::Pair {**(T*)0}, Value {})
-try {
-  const auto n   = static_cast<uint64_t>(end-begin);
-  auto       ptr = std::make_shared<Value::Object::Pair[]>(n);
-  std::copy(begin, end, &ptr[0]);
-  return Value {Value::Object {n, std::move(ptr)}};
-} catch (const std::bad_alloc&) {
-  throw Exception {"memory shortage"};
-}
-template <typename T>
-auto MakeValue(T begin, T end) -> decltype(Value {**(T*)0}) {
-  const auto n = static_cast<uint64_t>(end-begin);
-  try {
-    auto ptr = std::make_shared<Value::Object::Pair[]>(n);
-    std::transform(begin, end, &ptr[0],
-                   [](auto& x) { return Value::Object::Pair {{}, x}; });
-    return Value {Value::Object {n, std::move(ptr)}};
-  } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
-  }
-}
-template <typename T>
-auto MakeValue(std::initializer_list<T> v) {
-  return MakeValue(v.begin(), v.end());
-}
-template <typename T>
-auto MakeValue(const std::vector<T>& v) {
-  return MakeValue(v.begin(), v.end());
-}
-template <typename T>
-auto MakeValue(std::span<T> v) {
-  return MakeValue(v.begin(), v.end());
-}
 
 }  // namespace nf7
