@@ -5,7 +5,7 @@
 
 
 TEST(Value, NullAsNull) {
-  const nf7::Value v = nf7::Value::Null {};
+  const auto v = nf7::Value::MakeNull();
   EXPECT_TRUE(v.is<nf7::Value::Null>());
   EXPECT_FALSE(v.is<nf7::Value::Integer>());
   EXPECT_FALSE(v.is<nf7::Value::Real>());
@@ -13,7 +13,7 @@ TEST(Value, NullAsNull) {
   EXPECT_FALSE(v.is<nf7::Value::Object>());
 }
 TEST(Value, NullAsInvalid) {
-  const nf7::Value v = nf7::Value::Null {};
+  const auto v = nf7::Value::MakeNull();
   EXPECT_THROW(v.as<nf7::Value::Integer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Real>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Buffer>(), nf7::Exception);
@@ -21,7 +21,7 @@ TEST(Value, NullAsInvalid) {
 }
 
 TEST(Value, IntegerAsInteger) {
-  const nf7::Value v = nf7::Value::Integer {777};
+  const auto v = nf7::Value::MakeInteger(777);
 
   EXPECT_FALSE(v.is<nf7::Value::Null>());
   EXPECT_TRUE(v.is<nf7::Value::Integer>());
@@ -32,25 +32,25 @@ TEST(Value, IntegerAsInteger) {
   EXPECT_EQ(v.as<nf7::Value::Integer>(), nf7::Value::Integer {777});
 }
 TEST(Value, IntegerAsInvalid) {
-  const nf7::Value v = nf7::Value::Integer {777};
+  const nf7::Value v = nf7::Value::MakeInteger(777);
   EXPECT_THROW(v.as<nf7::Value::Null>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Real>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Buffer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Object>(), nf7::Exception);
 }
 TEST(Value, IntegerAsValidNum) {
-  const nf7::Value v = nf7::Value::Integer {777};
+  const nf7::Value v = nf7::Value::MakeInteger(777);
   EXPECT_EQ(v.num<int32_t>(), int32_t {777});
   EXPECT_EQ(v.num<double>(),  double {777});
 }
 TEST(Value, IntegerAsInvalidNum) {
-  const nf7::Value v = nf7::Value::Integer {777};
+  const nf7::Value v = nf7::Value::MakeInteger(777);
   EXPECT_THROW(v.num<int8_t>(), nf7::Exception);
   EXPECT_THROW(v.num<int8_t>(int8_t {77}), nf7::Exception);
 }
 
 TEST(Value, RealAsReal) {
-  const nf7::Value v = nf7::Value::Real {777};
+  const auto v = nf7::Value::MakeReal(777);
 
   EXPECT_FALSE(v.is<nf7::Value::Null>());
   EXPECT_FALSE(v.is<nf7::Value::Integer>());
@@ -61,25 +61,25 @@ TEST(Value, RealAsReal) {
   EXPECT_EQ(v.as<nf7::Value::Real>(), nf7::Value::Real {777});
 }
 TEST(Value, RealAsInvalid) {
-  const nf7::Value v = nf7::Value::Real {777};
+  const auto v = nf7::Value::MakeReal(777);
   EXPECT_THROW(v.as<nf7::Value::Null>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Integer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Buffer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Object>(), nf7::Exception);
 }
 TEST(Value, RealAsValidNum) {
-  const nf7::Value v = nf7::Value::Real {777};
+  const auto v = nf7::Value::MakeReal(777);
   EXPECT_EQ(v.num<int32_t>(), int32_t {777});
   EXPECT_EQ(v.num<double>(),  double {777});
 }
 TEST(Value, RealAsInvalidNum) {
-  const nf7::Value v = nf7::Value::Real {777};
+  const auto v = nf7::Value::MakeReal(777);
   EXPECT_THROW(v.num<int8_t>(), nf7::Exception);
   EXPECT_THROW(v.num<int8_t>(int8_t {77}), nf7::Exception);
 }
 
 TEST(Value, BufferAsBuffer) {
-  const nf7::Value v = nf7::Value::Buffer {};
+  const auto v = nf7::Value::MakeBuffer<uint8_t>({});
   EXPECT_FALSE(v.is<nf7::Value::Null>());
   EXPECT_FALSE(v.is<nf7::Value::Integer>());
   EXPECT_FALSE(v.is<nf7::Value::Real>());
@@ -87,7 +87,7 @@ TEST(Value, BufferAsBuffer) {
   EXPECT_FALSE(v.is<nf7::Value::Object>());
 }
 TEST(Value, BufferAsInvalid) {
-  const nf7::Value v = nf7::Value::Buffer {};
+  const auto v = nf7::Value::MakeBuffer<uint8_t>({});
   EXPECT_THROW(v.as<nf7::Value::Null>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Integer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Real>(), nf7::Exception);
@@ -95,7 +95,7 @@ TEST(Value, BufferAsInvalid) {
 }
 
 TEST(Value, ObjectAsObject) {
-  const nf7::Value v = nf7::Value::Object {};
+  const auto v = nf7::Value::MakeObject({});
   EXPECT_FALSE(v.is<nf7::Value::Null>());
   EXPECT_FALSE(v.is<nf7::Value::Integer>());
   EXPECT_FALSE(v.is<nf7::Value::Real>());
@@ -103,7 +103,7 @@ TEST(Value, ObjectAsObject) {
   EXPECT_TRUE(v.is<nf7::Value::Object>());
 }
 TEST(Value, ObjectAsInvalid) {
-  const nf7::Value v = nf7::Value::Object {};
+  const auto v = nf7::Value::MakeObject({});
   EXPECT_THROW(v.as<nf7::Value::Null>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Integer>(), nf7::Exception);
   EXPECT_THROW(v.as<nf7::Value::Real>(), nf7::Exception);
@@ -111,21 +111,21 @@ TEST(Value, ObjectAsInvalid) {
 }
 
 TEST(Value_Buffer, Make) {
-  const nf7::Value value = nf7::MakeValue<uint8_t>({1, 2, 3, 4});
-  const auto&      sut   = value.as<nf7::Value::Buffer>();
+  const auto  value = nf7::Value::MakeBuffer<uint8_t>({1, 2, 3, 4});
+  const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 4);
   EXPECT_EQ((std::vector<uint8_t> {sut.begin<uint8_t>(), sut.end<uint8_t>()}),
             (std::vector<uint8_t> {1, 2, 3, 4}));
 }
 TEST(Value_Buffer, AsStr) {
-  const nf7::Value value = nf7::MakeValue<char>({'h', 'e', 'l', 'l'});
-  const auto&      sut   = value.as<nf7::Value::Buffer>();
+  const auto  value = nf7::Value::MakeBuffer<char>({'h', 'e', 'l', 'l'});
+  const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 4);
   EXPECT_EQ(sut.str(), "hell");
 }
 TEST(Value_Buffer, AsU64) {
-  const nf7::Value value = nf7::MakeValue<uint64_t>({7777, 8888, 9999});
-  const auto&      sut   = value.as<nf7::Value::Buffer>();
+  const auto  value = nf7::Value::MakeBuffer<uint64_t>({7777, 8888, 9999});
+  const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 24);
   EXPECT_EQ(sut.size<uint64_t>(), 3);
   EXPECT_EQ((std::vector<uint64_t> {
@@ -134,7 +134,7 @@ TEST(Value_Buffer, AsU64) {
 }
 
 TEST(Value_Object, MakeArray) {
-  const nf7::Value value = nf7::MakeValue<nf7::Value>({
+  const auto value = nf7::Value::MakeArray({
     nf7::Value::Integer {1}, nf7::Value::Real {2.0}, nf7::Value::Integer {3},
   });
   const auto& sut = value.as<nf7::Value::Object>();
@@ -147,16 +147,15 @@ TEST(Value_Object, MakeArray) {
   EXPECT_EQ(sut.at(2).as<nf7::Value::Integer>(), 3);
 }
 TEST(Value_Object, ArrayOutOfBounds) {
-  const nf7::Value value = nf7::MakeValue<nf7::Value>({
+  const auto value = nf7::Value::MakeArray({
     nf7::Value::Integer {1}, nf7::Value::Real {2.0}, nf7::Value::Integer {3},
   });
   const auto& sut = value.as<nf7::Value::Object>();
   EXPECT_THROW(sut[4], nf7::Exception);
   EXPECT_TRUE(sut.at(4).is<nf7::Value::Null>());
 }
-
 TEST(Value_Object, MakeObject) {
-  const nf7::Value value = nf7::MakeValue<nf7::Value::Object::Pair>({
+  const auto value = nf7::Value::MakeObject({
     {"one",   nf7::Value::Integer {1}},
     {"two",   nf7::Value::Real {2.0}},
     {"three", nf7::Value::Integer {3}},
@@ -186,9 +185,8 @@ TEST(Value_Object, MakeObject) {
   EXPECT_EQ(begin[1].second.as<nf7::Value::Real>(), 2.0);
   EXPECT_EQ(begin[2].second.as<nf7::Value::Integer>(), 3);
 }
-
 TEST(Value_Object, UnknownKey) {
-  const nf7::Value value = nf7::MakeValue<nf7::Value::Object::Pair>({
+  const auto value = nf7::Value::MakeObject({
     {"one",   nf7::Value::Integer {1}},
     {"two",   nf7::Value::Real {2.0}},
     {"three", nf7::Value::Integer {3}},
