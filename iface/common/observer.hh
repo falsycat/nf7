@@ -20,9 +20,9 @@ class Observer {
   inline virtual ~Observer() noexcept;
 
  protected:
-  virtual void Notify(const T&) {}
-  virtual void NotifyWithMove(T&& v) { Notify(v); }
-  virtual void NotifyDestruction(const T* = nullptr) {}
+  virtual void Notify(const T&) noexcept {}
+  virtual void NotifyWithMove(T&& v) noexcept { Notify(v); }
+  virtual void NotifyDestruction(const T* = nullptr) noexcept {}
 
  private:
   Target& target_;
@@ -48,6 +48,15 @@ class Observer<T>::Target {
   Target& operator=(Target&&) = delete;
 
  protected:
+  void Notify(const T& v) noexcept {
+    assert(!calling_observer_ && "do not call Notify from observer callback");
+
+    calling_observer_ = true;
+    for (auto obs : obs_) {
+      obs->Notify(v);
+    }
+    calling_observer_ = false;
+  }
   void Notify(T&& v) noexcept {
     assert(!calling_observer_ && "do not call Notify from observer callback");
 
@@ -58,12 +67,7 @@ class Observer<T>::Target {
       calling_observer_ = false;
       return;
     }
-
-    calling_observer_ = true;
-    for (auto obs : obs_) {
-      obs->Notify(v);
-    }
-    calling_observer_ = false;
+    Notify(v);
   }
 
   bool observed(const T* = nullptr) const noexcept { return !obs_.empty(); }

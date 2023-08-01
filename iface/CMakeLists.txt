@@ -31,10 +31,13 @@ target_sources(nf7_iface_test
     common/dealer_test.cc
     common/container_test.cc
     common/future_test.cc
-    common/observer_test.hh
     common/observer_test.cc
+    common/observer_test.hh
     common/task_test.cc
+    common/task_test.hh
     common/value_test.cc
+    lambda_test.cc
+    lambda_test.hh
 )
 target_link_libraries(nf7_iface_test
   PRIVATE
