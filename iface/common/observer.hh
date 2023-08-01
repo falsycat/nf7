@@ -20,9 +20,9 @@ class Observer {
   inline virtual ~Observer() noexcept;
 
  protected:
-  virtual void Notify(const T&) {}
-  virtual void NotifyWithMove(T&& v) { Notify(v); }
-  virtual void NotifyDestruction(const T* = nullptr) {}
+  virtual void Notify(const T&) noexcept {}
+  virtual void NotifyWithMove(T&& v) noexcept { Notify(v); }
+  virtual void NotifyDestruction(const T* = nullptr) noexcept {}
 
  private:
   Target& target_;
