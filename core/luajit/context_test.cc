@@ -34,10 +34,10 @@ TEST_P(LuaJIT_Context, Query) {
   sut->Exec([&](auto& ctx) {
     EXPECT_TRUE(nullptr != value);
 
-    ctx.Query(value);
-    const char* value = lua_tostring(*ctx, -1);
+    ctx.Query(*value);
 
-    EXPECT_STREQ(value, "helloworld");
+    const char* str = lua_tostring(*ctx, -1);
+    EXPECT_STREQ(str, "helloworld");
   });
 
   ConsumeTasks();

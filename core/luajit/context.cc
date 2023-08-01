@@ -19,10 +19,9 @@ std::shared_ptr<Value> TaskContext::Register() noexcept {
   return std::make_shared<Value>(ctx_, index);
 }
 
-void TaskContext::Query(const std::shared_ptr<Value>& value) noexcept {
-  assert(nullptr != value);
-  assert(value->context() == ctx_);
-  lua_rawgeti(state_, LUA_REGISTRYINDEX, value->index());
+void TaskContext::Query(const Value& value) noexcept {
+  assert(value.context() == ctx_);
+  lua_rawgeti(state_, LUA_REGISTRYINDEX, value.index());
 }
 
 

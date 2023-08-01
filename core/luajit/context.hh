@@ -62,7 +62,7 @@ class TaskContext final {
   lua_State* operator*() const noexcept { return state_; }
 
   std::shared_ptr<Value> Register() noexcept;
-  void Query(const std::shared_ptr<Value>&) noexcept;
+  void Query(const Value&) noexcept;
 
   const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
   lua_State* state() const noexcept { return state_; }
