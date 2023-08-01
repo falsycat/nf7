@@ -53,13 +53,7 @@ class Taker : public Dealer<T>, public Observer<T>::Target {
  public:
   explicit Taker(const DealerMeta& meta) noexcept : Dealer<T>(meta) { }
 
-  void Take(const T& v) noexcept {
-    Notify(v);
-    onTake();
-  }
-
- protected:
-  virtual void onTake() noexcept = 0;
+  void Take(const T& v) noexcept { Notify(v); }
 };
 
 }  // namespace nf7
