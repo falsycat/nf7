@@ -35,6 +35,7 @@ target_sources(nf7_iface_test
     common/observer_test.cc
     common/task_test.cc
     common/value_test.cc
+    lambda_test.cc
 )
 target_link_libraries(nf7_iface_test
   PRIVATE
