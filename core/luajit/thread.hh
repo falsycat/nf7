@@ -19,7 +19,8 @@ class Thread : public std::enable_shared_from_this<Thread> {
   enum State : uint8_t {
     kPaused,
     kRunning,
-    kFinished,
+    kExited,
+    kAborted,
   };
 
  public:
@@ -45,7 +46,7 @@ class Thread : public std::enable_shared_from_this<Thread> {
   void Resume(TaskContext& lua, Args&&... args) noexcept {
     assert(lua.context() == context_);
 
-    if (kFinished == state_) {
+    if (kExited == state_ || kAborted == state_) {
       return;
     }
     assert(kPaused == state_);
@@ -57,14 +58,14 @@ class Thread : public std::enable_shared_from_this<Thread> {
     const auto ret = lua_resume(*thlua, narg);
     switch (ret) {
     case 0:
-      state_ = kFinished;
+      state_ = kExited;
       onExited(thlua);
       return;
     case LUA_YIELD:
       state_ = kPaused;
       return;
     default:
-      state_ = kFinished;
+      state_ = kAborted;
       onAborted(thlua);
       return;
     }
