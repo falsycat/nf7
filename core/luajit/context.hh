@@ -47,9 +47,10 @@ class TaskContext final {
  public:
   friend class Context;
 
+  class Nil {};
+
   TaskContext() = delete;
-  explicit TaskContext(
-      std::shared_ptr<Context>&& ctx, lua_State* state) noexcept
+  TaskContext(const std::shared_ptr<Context>& ctx, lua_State* state) noexcept
       : ctx_(std::move(ctx)), state_(state) {
     assert(nullptr != state_);
   }
@@ -63,6 +64,39 @@ class TaskContext final {
 
   std::shared_ptr<Value> Register() noexcept;
   void Query(const Value&) noexcept;
+
+  template <typename T, typename... Args>
+  uint32_t PushAll(T&& v, Args&&... args) noexcept {
+    Push(v);
+    return 1 + PushAll(std::forward<Args>(args)...);
+  }
+  uint32_t PushAll() noexcept { return 0; }
+
+  void Push(Nil) noexcept {
+    lua_pushnil(state_);
+  }
+  void Push(bool v) noexcept {
+    lua_pushboolean(state_, v);
+  }
+  void Push(lua_Integer v) noexcept {
+    lua_pushinteger(state_, v);
+  }
+  void Push(lua_Number v) noexcept {
+    lua_pushnumber(state_, v);
+  }
+  void Push(std::string_view str) noexcept {
+    lua_pushlstring(state_, str.data(), str.size());
+  }
+  void Push(std::span<const uint8_t> ptr) noexcept {
+    lua_pushlstring(
+        state_, reinterpret_cast<const char*>(ptr.data()), ptr.size());
+  }
+  void Push(const std::shared_ptr<luajit::Value>& v) noexcept {
+    Query(*v);
+  }
+  void Push(const luajit::Value& v) noexcept {
+    Query(v);
+  }
 
   const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
   lua_State* state() const noexcept { return state_; }
