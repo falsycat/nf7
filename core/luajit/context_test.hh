@@ -125,10 +125,11 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
   }
 
   void ConsumeTasks() noexcept {
-    SyncDriver sync_driver;
-    syncq_->Drive(sync_driver);
-
-    WaitAsyncTasks(std::chrono::seconds(1));
+    for (uint32_t i = 0; i < 16; ++i) {
+      SyncDriver sync_driver;
+      syncq_->Drive(sync_driver);
+      WaitAsyncTasks(std::chrono::seconds(1));
+    }
   }
   void WaitAsyncTasks(auto dur) noexcept {
     if (!asyncq_->WaitForEmpty(dur)) {
