@@ -36,8 +36,8 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
         task(param_);
       } catch (const Exception& e) {
         std::cerr
-            << "unexpected exception while async task execution: " << e.what()
-            << std::endl;
+            << "unexpected exception while async task execution:\n"
+            << e << std::endl;
         std::abort();
       }
     }
@@ -66,8 +66,8 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
         task(param_);
       } catch (const Exception& e) {
         std::cerr
-            << "unexpected exception while sync task execution: " << e.what()
-            << std::endl;
+            << "unexpected exception while sync task execution:\n"
+            << e << std::endl;
         std::abort();
       }
     }

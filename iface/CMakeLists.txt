@@ -6,10 +6,12 @@ target_link_libraries(nf7_iface
 )
 target_sources(nf7_iface
   PRIVATE
+    common/exception.cc
     version.cc
   PUBLIC
     common/dealer.hh
     common/container.hh
+    common/exception.hh
     common/future.hh
     common/observer.hh
     common/task.hh
