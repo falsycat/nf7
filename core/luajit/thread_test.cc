@@ -92,6 +92,19 @@ TEST_P(LuaJIT_Thread, StdThrow) {
   "nf7:throw(\"hello world\")");
 }
 
+TEST_P(LuaJIT_Thread, StdAssertWithTrue) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(true)");
+}
+TEST_P(LuaJIT_Thread, StdAssertWithFalse) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onAborted);
+  },
+  "nf7:assert(false)");
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     SyncOrAsync, LuaJIT_Thread,
