@@ -26,8 +26,11 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
    public:
     explicit AsyncDriver(ContextFixture& parent) noexcept : parent_(parent) { }
 
-    void BeginBusy() noexcept { }
-    void EndBusy() noexcept { }
+    void BeginBusy() noexcept { async_busy_ = true; }
+    void EndBusy() noexcept {
+      async_busy_ = false;
+      async_busy_.notify_all();
+    }
     void Drive(AsyncTask&& task) noexcept {
       try {
         task(param_);
@@ -45,9 +48,13 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
     bool nextIdleInterruption() const noexcept { return !parent_.alive_; }
     bool nextTaskInterruption() const noexcept { return false; }
 
+    void Wait() { async_busy_.wait(true); }
+
    private:
     ContextFixture& parent_;
     AsyncTaskContext param_;
+
+    std::atomic<bool> async_busy_ = false;
   };
 
   class SyncDriver final {
@@ -123,6 +130,7 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
       std::cerr << "timeout while waiting for task execution" << std::endl;
       std::abort();
     }
+    async_driver_.Wait();
   }
 
  protected:
