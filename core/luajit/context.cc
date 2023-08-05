@@ -29,7 +29,26 @@ template <typename T>
 class ContextImpl final : public Context {
  public:
   ContextImpl(const char* name, Kind kind, Env& env)
-      : Context(name, kind), tasq_(env.Get<T>()) { }
+      : Context(name, kind), tasq_(env.Get<T>()) {
+    auto L = state();
+
+    lua_pushthread(L);
+    if (luaL_newmetatable(L, "nf7::Context::ImmutableEnv")) {
+      lua_createtable(L, 0, 0);
+      {
+        luaL_newmetatable(L, kGlobalTableName);
+        lua_setfield(L, -2, "__index");
+
+        lua_pushcfunction(L, [](auto L) {
+          return luaL_error(L, "global is immutable");
+        });
+        lua_setfield(L, -2, "__newindex");
+      }
+      lua_setmetatable(L, -2);
+    }
+    lua_setfenv(L, -2);
+    lua_pop(L, 1);
+  }
 
   void Push(Task&& task) noexcept override {
     auto self = std::dynamic_pointer_cast<ContextImpl<T>>(shared_from_this());

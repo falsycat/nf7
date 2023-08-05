@@ -71,6 +71,27 @@ TEST_P(LuaJIT_Thread, RunAndError) {
   "return foo()");
 }
 
+TEST_P(LuaJIT_Thread, ForbidGlobalVariable) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onAborted)
+      .WillOnce([](auto& lua) {
+        EXPECT_THAT(lua_tostring(*lua, -1), ::testing::HasSubstr("immutable"));
+      });
+  },
+  "x = 1");
+}
+
+TEST_P(LuaJIT_Thread, StdThrow) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onAborted)
+      .WillOnce([](auto& lua) {
+        EXPECT_THAT(lua_tostring(*lua, -1),
+                    ::testing::HasSubstr("hello world"));
+      });
+  },
+  "nf7:throw(\"hello world\")");
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     SyncOrAsync, LuaJIT_Thread,

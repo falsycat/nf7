@@ -50,6 +50,7 @@ class Thread : public std::enable_shared_from_this<Thread> {
       return;
     }
     assert(kPaused == state_);
+    SetUpThread();
 
     auto thlua = taskContext(lua);
     const auto narg = thlua.PushAll(std::forward<Args>(args)...);
@@ -79,6 +80,8 @@ class Thread : public std::enable_shared_from_this<Thread> {
   virtual void onAborted(TaskContext&) noexcept { }
 
  private:
+  void SetUpThread() noexcept;
+
   TaskContext taskContext(const TaskContext& t) const noexcept {
     assert(t.context() == context_);
     return TaskContext {context_, th_};

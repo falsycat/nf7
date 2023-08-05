@@ -9,6 +9,7 @@ target_link_libraries(nf7_core
 target_sources(nf7_core
   PRIVATE
     luajit/context.cc
+    luajit/thread.cc
     version.cc
   PUBLIC
     luajit/context.hh

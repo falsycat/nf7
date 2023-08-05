@@ -2,12 +2,15 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <lua.hpp>
 
 #include "iface/common/task.hh"
+#include "iface/common/value.hh"
 #include "iface/subsys/interface.hh"
 #include "iface/env.hh"
 
@@ -98,6 +101,34 @@ class TaskContext final {
     Query(v);
   }
 
+  template <std::move_constructible T>
+  T& NewUserData(T&& v) {
+    return *(new (lua_newuserdata(state_, sizeof(T))) T {std::move(v)});
+  }
+  template <std::copy_constructible T>
+  T& NewUserData(T&& v) {
+    return *(new (lua_newuserdata(state_, sizeof(T))) T {v});
+  }
+
+  template <typename T>
+  T& CheckUserData(int index, const char* name) {
+    return CheckUserData<T>(state_, index, name);
+  }
+  template <typename T>
+  static T& CheckUserData(lua_State* L, int index, const char* name) {
+    return *reinterpret_cast<T*>(luaL_checkudata(L, index, name));
+  }
+
+  void Push(const nf7::Value&) noexcept {
+    lua_pushstring(state_, "hello");
+  }
+  const nf7::Value& CheckValue(int index) noexcept {
+    return CheckValue(state_, index);
+  }
+  static const nf7::Value& CheckValue(lua_State* L, int index) {
+    return CheckUserData<nf7::Value>(L, index, "nf7::Value");
+  }
+
   const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
   lua_State* state() const noexcept { return state_; }
 
@@ -110,6 +141,8 @@ class Context :
     public subsys::Interface,
     public TaskQueue {
  public:
+  static constexpr auto kGlobalTableName = "nf7::Context::GlobalTable";
+
   using Item = Task;
 
   enum Kind {
