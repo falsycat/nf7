@@ -23,9 +23,13 @@ namespace nf7 {
 
 class Value final {
  public:
-  struct Null { };
   using Integer = int64_t;
   using Real    = double;
+
+  class Null {
+   public:
+    bool operator==(const Null&) const noexcept { return true; }
+  };
 
   class Buffer final {
    public:
@@ -46,6 +50,10 @@ class Value final {
         src.size_ = 0;
       }
       return *this;
+    }
+
+    bool operator==(const Buffer& other) const noexcept {
+      return size_ == other.size_ && buf_ == other.buf_;
     }
 
     template <typename T = uint8_t>
@@ -109,6 +117,10 @@ class Value final {
         throw Exception {"unknown key"};
       }
       return itr->second;
+    }
+
+    bool operator==(const Object& other) const noexcept {
+      return size_ == other.size_ && pairs_ == other.pairs_;
     }
 
     const Value& at(
@@ -215,10 +227,15 @@ class Value final {
   Value(Object&& v) noexcept : var_(std::move(v)) { }
   Value(const Object& v) noexcept : var_(v) { }
 
+ public:
   Value(const Value&) = default;
   Value(Value&&) = default;
   Value& operator=(const Value&) = default;
   Value& operator=(Value&&) = default;
+
+  bool operator==(const Value& other) const noexcept {
+    return var_ == other.var_;
+  }
 
  public:
   template <typename T>
