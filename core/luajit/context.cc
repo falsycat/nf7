@@ -24,6 +24,31 @@ void TaskContext::Query(const Value& value) noexcept {
   lua_rawgeti(state_, LUA_REGISTRYINDEX, value.index());
 }
 
+void TaskContext::Push(const nf7::Value& v) noexcept {
+  NewUserData(v);
+  if (luaL_newmetatable(state_, "nf7::Value")) {
+    lua_createtable(state_, 0, 0);
+    {
+      lua_pushcfunction(state_, [](auto L) {
+        const nf7::Value& v = CheckUserData<nf7::Value>(L, 1, "nf7::Value");
+        lua_pushstring(L,
+            v.is<nf7::Value::Null>()   ? "null":
+            v.is<nf7::Value::Integer>()? "integer":
+            v.is<nf7::Value::Real>()   ? "real":
+            v.is<nf7::Value::Buffer>() ? "buffer":
+            v.is<nf7::Value::Object>() ? "object":
+            "unknown");
+        return 1;
+      });
+      lua_setfield(state_, -2, "type");
+
+      // TODO(falsycat)
+    }
+    lua_setfield(state_, -2, "__index");
+  }
+  lua_setmetatable(state_, -2);
+}
+
 
 template <typename T>
 class ContextImpl final : public Context {

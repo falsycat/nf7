@@ -106,7 +106,7 @@ class TaskContext final {
     return *(new (lua_newuserdata(state_, sizeof(T))) T {std::move(v)});
   }
   template <std::copy_constructible T>
-  T& NewUserData(T&& v) {
+  T& NewUserData(const T& v) {
     return *(new (lua_newuserdata(state_, sizeof(T))) T {v});
   }
 
@@ -119,9 +119,7 @@ class TaskContext final {
     return *reinterpret_cast<T*>(luaL_checkudata(L, index, name));
   }
 
-  void Push(const nf7::Value&) noexcept {
-    lua_pushstring(state_, "hello");
-  }
+  void Push(const nf7::Value&) noexcept;
   const nf7::Value& CheckValue(int index) noexcept {
     return CheckValue(state_, index);
   }
