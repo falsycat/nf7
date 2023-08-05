@@ -12,6 +12,7 @@ target_sources(nf7_core
     version.cc
   PUBLIC
     luajit/context.hh
+    luajit/thread.hh
     version.hh
 )
 
@@ -20,6 +21,8 @@ target_sources(nf7_core_test
   PRIVATE
     luajit/context_test.cc
     luajit/context_test.hh
+    luajit/thread_test.cc
+    luajit/thread_test.hh
 )
 target_link_libraries(nf7_core_test
   PRIVATE
