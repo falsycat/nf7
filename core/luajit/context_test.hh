@@ -103,6 +103,11 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
               WrappedTaskQueue<subsys::Parallelism>>(asyncq_);
         },
       },
+      {
+        typeid(Context), [this](auto& env) {
+          return Context::Create(env, GetParam());
+        },
+      }
     });
     thread_ = std::thread {[this]() { asyncq_->Drive(async_driver_); }};
   }
