@@ -16,6 +16,7 @@ target_sources(nf7_core
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
+    clock.hh
     version.hh
 )
 
@@ -27,6 +28,7 @@ target_sources(nf7_core_test
     luajit/lambda_test.cc
     luajit/thread_test.cc
     luajit/thread_test.hh
+    clock_test.cc
 )
 target_link_libraries(nf7_core_test
   PRIVATE
