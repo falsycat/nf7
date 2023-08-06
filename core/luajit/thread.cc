@@ -38,10 +38,10 @@ void Thread::SetUpThread() noexcept {
 
           TaskContext lua {th->context_, L};
 
-          const auto type = std::string {lua_tostring(L, 3)};
+          const auto type = std::string {luaL_optstring(L, 3, "")};
           if (type.empty()) {
-            const auto type = lua_type(L, 2);
-            switch (type) {
+            switch (lua_type(L, 2)) {
+            case LUA_TNONE:
             case LUA_TNIL:
               lua.Push(nf7::Value {});
               break;
@@ -58,7 +58,7 @@ void Thread::SetUpThread() noexcept {
               lua.Push(lua.CheckValue(2));
               break;
             default:
-              return luaL_error(L, "invalid type in #1 param");
+              return luaL_error(L, "invalid type to make a value");
             }
           } else {
             if ("null" == type) {
