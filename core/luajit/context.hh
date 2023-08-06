@@ -2,12 +2,15 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <lua.hpp>
 
 #include "iface/common/task.hh"
+#include "iface/common/value.hh"
 #include "iface/subsys/interface.hh"
 #include "iface/env.hh"
 
@@ -47,9 +50,10 @@ class TaskContext final {
  public:
   friend class Context;
 
+  class Nil {};
+
   TaskContext() = delete;
-  explicit TaskContext(
-      std::shared_ptr<Context>&& ctx, lua_State* state) noexcept
+  TaskContext(const std::shared_ptr<Context>& ctx, lua_State* state) noexcept
       : ctx_(std::move(ctx)), state_(state) {
     assert(nullptr != state_);
   }
@@ -62,7 +66,66 @@ class TaskContext final {
   lua_State* operator*() const noexcept { return state_; }
 
   std::shared_ptr<Value> Register() noexcept;
-  void Query(const std::shared_ptr<Value>&) noexcept;
+  void Query(const Value&) noexcept;
+
+  template <typename T, typename... Args>
+  uint32_t PushAll(T&& v, Args&&... args) noexcept {
+    Push(v);
+    return 1 + PushAll(std::forward<Args>(args)...);
+  }
+  uint32_t PushAll() noexcept { return 0; }
+
+  void Push(Nil) noexcept {
+    lua_pushnil(state_);
+  }
+  void Push(bool v) noexcept {
+    lua_pushboolean(state_, v);
+  }
+  void Push(lua_Integer v) noexcept {
+    lua_pushinteger(state_, v);
+  }
+  void Push(lua_Number v) noexcept {
+    lua_pushnumber(state_, v);
+  }
+  void Push(std::string_view str) noexcept {
+    lua_pushlstring(state_, str.data(), str.size());
+  }
+  void Push(std::span<const uint8_t> ptr) noexcept {
+    lua_pushlstring(
+        state_, reinterpret_cast<const char*>(ptr.data()), ptr.size());
+  }
+  void Push(const std::shared_ptr<luajit::Value>& v) noexcept {
+    Query(*v);
+  }
+  void Push(const luajit::Value& v) noexcept {
+    Query(v);
+  }
+
+  template <std::move_constructible T>
+  T& NewUserData(T&& v) {
+    return *(new (lua_newuserdata(state_, sizeof(T))) T {std::move(v)});
+  }
+  template <std::copy_constructible T>
+  T& NewUserData(const T& v) {
+    return *(new (lua_newuserdata(state_, sizeof(T))) T {v});
+  }
+
+  template <typename T>
+  T& CheckUserData(int index, const char* name) {
+    return CheckUserData<T>(state_, index, name);
+  }
+  template <typename T>
+  static T& CheckUserData(lua_State* L, int index, const char* name) {
+    return *reinterpret_cast<T*>(luaL_checkudata(L, index, name));
+  }
+
+  void Push(const nf7::Value&) noexcept;
+  const nf7::Value& CheckValue(int index) noexcept {
+    return CheckValue(state_, index);
+  }
+  static const nf7::Value& CheckValue(lua_State* L, int index) {
+    return CheckUserData<nf7::Value>(L, index, "nf7::Value");
+  }
 
   const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
   lua_State* state() const noexcept { return state_; }
@@ -76,6 +139,8 @@ class Context :
     public subsys::Interface,
     public TaskQueue {
  public:
+  static constexpr auto kGlobalTableName = "nf7::Context::GlobalTable";
+
   using Item = Task;
 
   enum Kind {

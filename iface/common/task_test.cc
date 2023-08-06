@@ -281,3 +281,36 @@ TEST(SimpleTaskQueue, ChaoticPushAndDrive) {
     EXPECT_EQ(execCount, kPushPerThread);
   }
 }
+
+TEST(SimpleTaskQueue, WaitForEmpty) {
+  nf7::test::SimpleTaskQueueMock<nf7::Task<int32_t&>> sut;
+  EXPECT_CALL(sut, onErrorWhilePush).Times(0);
+
+  // use NiceMock to suppress annoying warnings that slowed unittests
+  ::testing::NiceMock<
+      nf7::test::SimpleTaskQueueDriverMock<nf7::Task<int32_t&>>> driver;
+
+  for (uint32_t i = 0; i < 1000; ++i) {
+    sut.Exec([](auto&){});
+  }
+
+  auto ctx = int32_t {0};
+  ON_CALL(driver, Drive)
+      .WillByDefault([&](auto&& task) { task(ctx); });
+
+  std::atomic<bool> exit = false;
+  ON_CALL(driver, nextIdleInterruption)
+      .WillByDefault([&]() -> bool { return exit; });
+
+  std::thread th {[&]() { sut.Drive(driver); }};
+  EXPECT_TRUE(sut.WaitForEmpty(1s));
+
+  exit = true;
+  sut.Wake();
+  th.join();
+}
+
+TEST(SimpleTaskQueue, WaitForEmptyWhenEmpty) {
+  nf7::test::SimpleTaskQueueMock<nf7::Task<int32_t&>> sut;
+  EXPECT_TRUE(sut.WaitForEmpty(1s));
+}

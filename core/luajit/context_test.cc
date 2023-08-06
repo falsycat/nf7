@@ -7,11 +7,11 @@ using LuaJIT_Context = nf7::core::luajit::test::ContextFixture;
 using LuaJIT_Value   = nf7::core::luajit::test::ContextFixture;
 
 TEST_P(LuaJIT_Context, CreateAndDestroy) {
-  auto sut = nf7::core::luajit::Context::Create(*env_, GetParam());
+  auto sut = env_->Get<nf7::core::luajit::Context>();
   EXPECT_EQ(sut->kind(), GetParam());
 }
 TEST_P(LuaJIT_Context, Register) {
-  auto sut = nf7::core::luajit::Context::Create(*env_, GetParam());
+  auto sut = env_->Get<nf7::core::luajit::Context>();
   sut->Exec([](auto& ctx) {
     lua_createtable(*ctx, 0, 0);
     auto value = ctx.Register();
@@ -23,7 +23,7 @@ TEST_P(LuaJIT_Context, Register) {
   ConsumeTasks();
 }
 TEST_P(LuaJIT_Context, Query) {
-  auto sut = nf7::core::luajit::Context::Create(*env_, GetParam());
+  auto sut = env_->Get<nf7::core::luajit::Context>();
 
   std::shared_ptr<nf7::core::luajit::Value> value;
 
@@ -34,10 +34,10 @@ TEST_P(LuaJIT_Context, Query) {
   sut->Exec([&](auto& ctx) {
     EXPECT_TRUE(nullptr != value);
 
-    ctx.Query(value);
-    const char* value = lua_tostring(*ctx, -1);
+    ctx.Query(*value);
 
-    EXPECT_STREQ(value, "helloworld");
+    const char* str = lua_tostring(*ctx, -1);
+    EXPECT_STREQ(str, "helloworld");
   });
 
   ConsumeTasks();

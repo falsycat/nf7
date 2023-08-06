@@ -9,9 +9,13 @@ target_link_libraries(nf7_core
 target_sources(nf7_core
   PRIVATE
     luajit/context.cc
+    luajit/lambda.cc
+    luajit/thread.cc
     version.cc
   PUBLIC
     luajit/context.hh
+    luajit/lambda.hh
+    luajit/thread.hh
     version.hh
 )
 
@@ -20,6 +24,9 @@ target_sources(nf7_core_test
   PRIVATE
     luajit/context_test.cc
     luajit/context_test.hh
+    luajit/lambda_test.cc
+    luajit/thread_test.cc
+    luajit/thread_test.hh
 )
 target_link_libraries(nf7_core_test
   PRIVATE

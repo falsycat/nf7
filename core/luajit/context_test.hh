@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <utility>
 
 #include "iface/common/exception.hh"
@@ -21,42 +22,69 @@ namespace nf7::core::luajit::test {
 
 class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
  private:
-  template <TaskLike T>
-  class Driver final {
+  class AsyncDriver final {
    public:
-    using Param = typename T::Param;
-    using Time  = typename T::Time;
+    explicit AsyncDriver(ContextFixture& parent) noexcept : parent_(parent) { }
 
-    explicit Driver(Param p) : param_(std::forward<Param>(p)) { }
-
-    Driver(const Driver&) = delete;
-    Driver(Driver&&) = delete;
-    Driver& operator=(const Driver&) = delete;
-    Driver& operator=(Driver&&) = delete;
-
-    void BeginBusy() noexcept { }
-    void EndBusy() noexcept { interrupt_ = true; }
-    void Drive(T&& task) noexcept {
+    void BeginBusy() noexcept { async_busy_ = true; }
+    void EndBusy() noexcept {
+      async_busy_ = false;
+      async_busy_.notify_all();
+    }
+    void Drive(AsyncTask&& task) noexcept {
       try {
         task(param_);
       } catch (const Exception& e) {
-        std::cout
-            << "unexpected exception while task execution: " << e.what()
-            << std::endl;
+        std::cerr
+            << "unexpected exception while async task execution:\n"
+            << e << std::endl;
         std::abort();
       }
     }
-    Time tick() const noexcept {
+    AsyncTask::Time tick() const noexcept {
       const auto now = std::chrono::system_clock::now();
-      return std::chrono::time_point_cast<typename Time::duration>(now);
+      return std::chrono::time_point_cast<AsyncTask::Time::duration>(now);
+    }
+    bool nextIdleInterruption() const noexcept { return !parent_.alive_; }
+    bool nextTaskInterruption() const noexcept { return false; }
+
+    void Wait() { async_busy_.wait(true); }
+
+   private:
+    ContextFixture& parent_;
+    AsyncTaskContext param_;
+
+    std::atomic<bool> async_busy_ = false;
+  };
+
+  class SyncDriver final {
+   public:
+    void BeginBusy() noexcept { }
+    void EndBusy() noexcept { interrupt_ = true; }
+    void Drive(SyncTask&& task) noexcept {
+      try {
+        task(param_);
+      } catch (const Exception& e) {
+        std::cerr
+            << "unexpected exception while sync task execution:\n"
+            << e << std::endl;
+        std::abort();
+      }
+    }
+    SyncTask::Time tick() const noexcept {
+      const auto now = std::chrono::system_clock::now();
+      return std::chrono::time_point_cast<SyncTask::Time::duration>(now);
     }
     bool nextIdleInterruption() const noexcept { return interrupt_; }
     bool nextTaskInterruption() const noexcept { return false; }
 
    private:
     bool interrupt_ = false;
-    Param param_;
+    SyncTaskContext param_;
   };
+
+ public:
+  ContextFixture() noexcept : async_driver_(*this) { }
 
  protected:
   void SetUp() override {
@@ -75,29 +103,53 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
               WrappedTaskQueue<subsys::Parallelism>>(asyncq_);
         },
       },
+      {
+        typeid(Context), [this](auto& env) {
+          return Context::Create(env, GetParam());
+        },
+      }
     });
+    thread_ = std::thread {[this]() { asyncq_->Drive(async_driver_); }};
   }
   void TearDown() override {
     ConsumeTasks();
-    env_    = std::nullopt;
+    env_ = std::nullopt;
+
+    WaitAsyncTasks(std::chrono::seconds(3));
+    alive_ = false;
+    asyncq_->Wake();
+    thread_.join();
+
     asyncq_ = nullptr;
     syncq_  = nullptr;
   }
 
   void ConsumeTasks() noexcept {
-    AsyncTaskContext async_ctx;
-    Driver<AsyncTask> async_driver {async_ctx};
-    asyncq_->Drive(async_driver);
-
-    SyncTaskContext sync_ctx;
-    Driver<SyncTask> sync_driver {sync_ctx};
-    syncq_->Drive(sync_driver);
+    for (uint32_t i = 0; i < 16; ++i) {
+      SyncDriver sync_driver;
+      syncq_->Drive(sync_driver);
+      WaitAsyncTasks(std::chrono::seconds(1));
+    }
+  }
+  void WaitAsyncTasks(auto dur) noexcept {
+    if (!asyncq_->WaitForEmpty(dur)) {
+      std::cerr << "timeout while waiting for task execution" << std::endl;
+      std::abort();
+    }
+    async_driver_.Wait();
   }
 
  protected:
   std::shared_ptr<SimpleTaskQueue<SyncTask>> syncq_;
   std::shared_ptr<SimpleTaskQueue<AsyncTask>> asyncq_;
   std::optional<SimpleEnv> env_;
+
+ private:
+  std::atomic<bool> alive_ = true;
+  uint32_t async_cycle_ = 0;
+
+  std::thread thread_;
+  AsyncDriver async_driver_;
 };
 
 }  // namespace nf7::core::luajit::test

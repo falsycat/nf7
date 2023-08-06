@@ -233,6 +233,12 @@ class SimpleTaskQueue : public TaskQueue<T> {
     cv_.notify_all();
   }
 
+  // THREAD-SAFE
+  bool WaitForEmpty(auto dur) noexcept {
+    std::unique_lock<std::mutex> k {mtx_};
+    return cv_.wait_for(k, dur, [this]() { return tasks_.empty(); });
+  }
+
   template <TaskDriverLike<Item> Driver>
   void Drive(Driver& driver) {
     while (!driver.nextIdleInterruption()) {
@@ -257,6 +263,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
 
       try {
         std::unique_lock<std::mutex> k{mtx_};
+        cv_.notify_all();
 
         const auto until = nextAwake();
         const auto pred  = [&]() {
