@@ -59,8 +59,10 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
 
   class SyncDriver final {
    public:
+    explicit SyncDriver(ContextFixture& parent) noexcept : parent_(parent) { }
+
     void BeginBusy() noexcept { }
-    void EndBusy() noexcept { interrupt_ = true; }
+    void EndBusy() noexcept { }
     void Drive(SyncTask&& task) noexcept {
       try {
         task(param_);
@@ -75,11 +77,13 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
       const auto now = std::chrono::system_clock::now();
       return std::chrono::time_point_cast<SyncTask::Time::duration>(now);
     }
-    bool nextIdleInterruption() const noexcept { return interrupt_; }
+    bool nextIdleInterruption() const noexcept {
+      return 0 == parent_.syncq_->size();
+    }
     bool nextTaskInterruption() const noexcept { return false; }
 
    private:
-    bool interrupt_ = false;
+    ContextFixture& parent_;
     SyncTaskContext param_;
   };
 
