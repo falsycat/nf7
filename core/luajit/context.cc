@@ -82,6 +82,7 @@ class ContextImpl final :
   void Push(Task&& task) noexcept override {
     auto self = std::dynamic_pointer_cast<ContextImpl<T>>(shared_from_this());
     tasq_->Push(typename T::Item {
+      task.after(),
       [self, task = std::move(task)](auto&) mutable {
         TaskContext ctx {self, self->state()};
         lua_settop(*ctx, 0);

@@ -1,9 +1,13 @@
 // No copyright
 #include "core/luajit/lambda.hh"
 
+#include <chrono>
 #include <cstdint>
 
 #include "core/luajit/context.hh"
+
+using namespace std::literals;
+
 
 namespace nf7::core::luajit {
 
@@ -131,6 +135,21 @@ void Lambda::PushLuaContextObject(TaskContext& lua) noexcept {
         return 1;
       });
       lua_setfield(*lua, -2, "send");
+
+      lua_pushcfunction(*lua, [](auto L) {
+        const auto la    = self(L);
+        const auto wla   = std::weak_ptr<Lambda> {la};
+        const auto dur   = luaL_checkinteger(L, 2);
+        const auto after = la->clock_->now() + dur * 1ms;
+        la->lua_->Push(Task {after, [wla](auto& lua) {
+          if (auto la = wla.lock()) {
+            assert(la->thread_);
+            la->thread_->Resume(lua);
+          }
+        }});
+        return lua_yield(L, 0);
+      });
+      lua_setfield(*lua, -2, "sleep");
     }
     lua_setfield(*lua, -2, "__index");
   }

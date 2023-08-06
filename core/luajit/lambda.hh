@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
 #include "iface/env.hh"
 #include "iface/lambda.hh"
@@ -22,6 +23,7 @@ class Lambda :
  public:
   explicit Lambda(nf7::Env& env, const std::shared_ptr<luajit::Value>& func)
       : LambdaBase(),
+        clock_(env.Get<subsys::Clock>()),
         concurrency_(env.Get<subsys::Concurrency>()),
         lua_(env.Get<luajit::Context>()),
         func_(func) { }
@@ -39,6 +41,7 @@ class Lambda :
   void PushLuaContextObject(TaskContext&) noexcept;
 
  private:
+  const std::shared_ptr<subsys::Clock>       clock_;
   const std::shared_ptr<subsys::Concurrency> concurrency_;
 
   const std::shared_ptr<Context> lua_;

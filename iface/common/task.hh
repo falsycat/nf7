@@ -222,6 +222,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
       std::unique_lock<std::mutex> k {mtx_};
       tasks_.push(std::move(task));
       cv_.notify_all();
+      ++size_;
     } catch (...) {
       onErrorWhilePush(location);
     }
@@ -254,6 +255,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
           k.unlock();
 
           driver.Drive(std::move(task));
+          --size_;
         }
       } catch (const std::system_error&) {
         driver.EndBusy();
@@ -283,6 +285,8 @@ class SimpleTaskQueue : public TaskQueue<T> {
     }
   }
 
+  uint64_t size() const noexcept { return size_; }
+
  protected:
   // THREAD-SAFE
   virtual void onErrorWhilePush(std::source_location) noexcept { }
@@ -300,6 +304,8 @@ class SimpleTaskQueue : public TaskQueue<T> {
     }
     return tasks_.top().after();
   }
+
+  std::atomic<uint64_t> size_;
 
   std::mutex mtx_;
   std::condition_variable cv_;
