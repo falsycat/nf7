@@ -13,6 +13,7 @@ target_sources(nf7_iface
     common/container.hh
     common/exception.hh
     common/future.hh
+    common/leak_detector.hh
     common/observer.hh
     common/task.hh
     common/task_context.hh
@@ -33,6 +34,7 @@ target_sources(nf7_iface_test
     common/dealer_test.cc
     common/container_test.cc
     common/future_test.cc
+    common/leak_detector_test.cc
     common/observer_test.cc
     common/observer_test.hh
     common/task_test.cc

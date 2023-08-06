@@ -8,11 +8,15 @@
 
 #include <lua.hpp>
 
+#include "iface/common/leak_detector.hh"
+
 #include "core/luajit/context.hh"
 
 namespace nf7::core::luajit {
 
-class Thread : public std::enable_shared_from_this<Thread> {
+class Thread :
+    public std::enable_shared_from_this<Thread>,
+    private LeakDetector<Thread> {
  public:
   struct DoNotCallConstructorDirectly { };
 

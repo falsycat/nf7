@@ -8,6 +8,7 @@
 #include "core/luajit/context_test.hh"
 
 
+namespace {
 class LuaJIT_Thread : public nf7::core::luajit::test::ContextFixture {
  public:
   using ContextFixture::ContextFixture;
@@ -32,6 +33,7 @@ class LuaJIT_Thread : public nf7::core::luajit::test::ContextFixture {
     EXPECT_EQ(called, 1);
   }
 };
+}  // namespace
 
 
 TEST_P(LuaJIT_Thread, ResumeWithSingleReturn) {

@@ -1,6 +1,7 @@
 // No copyright
 #include "core/luajit/context.hh"
 
+#include "iface/common/leak_detector.hh"
 #include "iface/subsys/concurrency.hh"
 #include "iface/subsys/parallelism.hh"
 
@@ -50,8 +51,11 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
 }
 
 
+namespace {
 template <typename T>
-class ContextImpl final : public Context {
+class ContextImpl final :
+    public Context,
+    private LeakDetector<ContextImpl<T>> {
  public:
   ContextImpl(const char* name, Kind kind, Env& env)
       : Context(name, kind), tasq_(env.Get<T>()) {
@@ -93,6 +97,7 @@ class ContextImpl final : public Context {
  private:
   std::shared_ptr<T> tasq_;
 };
+}  // namespace
 
 std::shared_ptr<Context> Context::Create(Env& env, Kind kind) {
   switch (kind) {

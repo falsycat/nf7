@@ -13,6 +13,7 @@
 #include "core/luajit/context_test.hh"
 
 
+namespace {
 class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
  public:
   using ContextFixture::ContextFixture;
@@ -55,6 +56,7 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
     EXPECT_EQ(sut->abortCount(), expectAbort);
   }
 };
+}  // namespace
 
 
 TEST_P(LuaJIT_Lambda, Run) {
