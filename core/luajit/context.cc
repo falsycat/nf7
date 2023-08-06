@@ -50,6 +50,7 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
 }
 
 
+namespace {
 template <typename T>
 class ContextImpl final : public Context {
  public:
@@ -93,6 +94,7 @@ class ContextImpl final : public Context {
  private:
   std::shared_ptr<T> tasq_;
 };
+}  // namespace
 
 std::shared_ptr<Context> Context::Create(Env& env, Kind kind) {
   switch (kind) {

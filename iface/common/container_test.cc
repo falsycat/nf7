@@ -5,6 +5,7 @@
 
 #include <string>
 
+namespace {
 class Object {
  public:
   virtual ~Object() = default;
@@ -30,6 +31,7 @@ class BRecursive : public IB {
  private:
   std::shared_ptr<IB> b_;
 };
+}  // namespace
 
 TEST(SimpleContainer, FetchIsolated) {
   SUT sut {{
