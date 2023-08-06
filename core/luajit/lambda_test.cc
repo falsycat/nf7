@@ -13,6 +13,8 @@
 #include "core/luajit/context_test.hh"
 
 
+using namespace std::literals;
+
 namespace {
 class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
  public:
@@ -128,6 +130,21 @@ TEST_P(LuaJIT_Lambda, CtxMultiSend) {
       {nf7::Value {}},
       1, 0,
       {nf7::Value {}, nf7::Value {}});
+}
+
+TEST_P(LuaJIT_Lambda, CtxSleep) {
+  clock_->Tick();
+  const auto begin = clock_->now();
+
+  Expect(
+      "local ctx = ...\nctx:sleep(100)",
+      {nf7::Value {}},
+      1, 0);
+
+  clock_->Tick();
+  const auto end = clock_->now();
+
+  EXPECT_GE(end-begin, 100ms);
 }
 
 INSTANTIATE_TEST_SUITE_P(
