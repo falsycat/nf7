@@ -69,7 +69,7 @@ void Thread::SetUpThread() noexcept {
             } else if ("real" == type) {
               lua.Push(nf7::Value {
                        static_cast<nf7::Value::Real>(lua_tonumber(L, 2))});
-            } else if ("string" == type) {
+            } else if ("buffer" == type) {
               size_t len;
               const auto ptr = lua_tolstring(L, 2, &len);
               lua.Push(nf7::Value::MakeBuffer(ptr, ptr+len));

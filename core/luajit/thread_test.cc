@@ -105,6 +105,40 @@ TEST_P(LuaJIT_Thread, StdAssertWithFalse) {
   "nf7:assert(false)");
 }
 
+TEST_P(LuaJIT_Thread, StdValueWithNull) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(nf7:value()             :type() == \"null\")\n"
+  "nf7:assert(nf7:value(nil, \"null\"):type() == \"null\")\n");
+}
+TEST_P(LuaJIT_Thread, StdValueWithInteger) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(nf7:value(666, \"integer\"):type() == \"integer\")");
+}
+TEST_P(LuaJIT_Thread, StdValueWithReal) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(nf7:value(666)          :type() == \"real\")\n"
+  "nf7:assert(nf7:value(666, \"real\"):type() == \"real\")");
+}
+TEST_P(LuaJIT_Thread, StdValueWithBuffer) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(nf7:value(\"hello\")            :type() == \"buffer\")\n"
+  "nf7:assert(nf7:value(\"hello\", \"buffer\"):type() == \"buffer\")");
+}
+TEST_P(LuaJIT_Thread, StdValueWithValue) {
+  TestThread([](auto& sut) {
+    EXPECT_CALL(sut, onExited);
+  },
+  "nf7:assert(nf7:value(nf7:value()):type() == \"null\")");
+}
+
 
 INSTANTIATE_TEST_SUITE_P(
     SyncOrAsync, LuaJIT_Thread,
