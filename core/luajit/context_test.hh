@@ -14,9 +14,12 @@
 
 #include "iface/common/exception.hh"
 #include "iface/common/task.hh"
+#include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
 #include "iface/subsys/parallelism.hh"
 #include "iface/env.hh"
+
+#include "core/clock.hh"
 
 namespace nf7::core::luajit::test {
 
@@ -94,6 +97,8 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
   void SetUp() override {
     syncq_  = std::make_shared<SimpleTaskQueue<SyncTask>>();
     asyncq_ = std::make_shared<SimpleTaskQueue<AsyncTask>>();
+    clock_  = std::make_shared<Clock>();
+
     env_.emplace(SimpleEnv::FactoryMap {
       {
         typeid(subsys::Concurrency), [this](auto&) {
@@ -105,6 +110,11 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
         typeid(subsys::Parallelism), [this](auto&) {
           return std::make_shared<
               WrappedTaskQueue<subsys::Parallelism>>(asyncq_);
+        },
+      },
+      {
+        typeid(subsys::Clock), [this](auto&) {
+          return clock_;
         },
       },
       {
@@ -130,7 +140,7 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
 
   void ConsumeTasks() noexcept {
     for (uint32_t i = 0; i < 16; ++i) {
-      SyncDriver sync_driver;
+      SyncDriver sync_driver {*this};
       syncq_->Drive(sync_driver);
       WaitAsyncTasks(std::chrono::seconds(1));
     }
@@ -146,6 +156,7 @@ class ContextFixture : public ::testing::TestWithParam<Context::Kind> {
  protected:
   std::shared_ptr<SimpleTaskQueue<SyncTask>> syncq_;
   std::shared_ptr<SimpleTaskQueue<AsyncTask>> asyncq_;
+  std::shared_ptr<Clock> clock_;
   std::optional<SimpleEnv> env_;
 
  private:
