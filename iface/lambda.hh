@@ -6,13 +6,14 @@
 #include <vector>
 
 #include "iface/common/dealer.hh"
+#include "iface/common/leak_detector.hh"
 #include "iface/common/exception.hh"
 #include "iface/common/observer.hh"
 #include "iface/common/value.hh"
 
 namespace nf7 {
 
-class Lambda {
+class Lambda : private LeakDetector<Lambda> {
  public:
   Lambda() = delete;
   Lambda(const std::shared_ptr<Taker<Value>>& taker,
