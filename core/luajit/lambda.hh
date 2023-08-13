@@ -25,7 +25,7 @@ class Lambda :
  public:
   explicit Lambda(nf7::Env& env, const std::shared_ptr<luajit::Value>& func)
       : LambdaBase(),
-        clock_(env.Get<subsys::Clock>()),
+        clock_(env.GetOr<subsys::Clock>()),
         concurrency_(env.Get<subsys::Concurrency>()),
         logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
         lua_(env.Get<luajit::Context>()),

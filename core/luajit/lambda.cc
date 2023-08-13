@@ -137,10 +137,15 @@ void Lambda::PushLuaContextObject(TaskContext& lua) noexcept {
       lua_setfield(*lua, -2, "send");
 
       lua_pushcfunction(*lua, [](auto L) {
-        const auto la    = self(L);
+        const auto la = self(L);
+        if (nullptr == la->clock_) {
+          return luaL_error(L, "clock is not installed in the environment");
+        }
+
         const auto wla   = std::weak_ptr<Lambda> {la};
         const auto dur   = luaL_checkinteger(L, 2);
         const auto after = la->clock_->now() + dur * 1ms;
+
         la->lua_->Push(Task {after, [wla](auto& lua) {
           if (auto la = wla.lock()) {
             assert(la->thread_);
