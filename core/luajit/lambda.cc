@@ -30,6 +30,10 @@ class Lambda::Thread : public luajit::Thread {
   }
   void onAborted(TaskContext& lua) noexcept override {
     if (auto la = la_.lock()) {
+      if (auto logger = la->logger_) {
+        const auto msg = lua_tostring(*lua, -1);
+        logger->Error(msg);
+      }
       ++la->abort_count_;
       TryResume(lua, la);
     }
