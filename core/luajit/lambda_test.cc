@@ -12,6 +12,7 @@
 #include "core/clock.hh"
 
 #include "iface/common/observer_test.hh"
+#include "iface/subsys/logger_test.hh"
 
 #include "core/luajit/context_test.hh"
 
@@ -160,6 +161,43 @@ TEST_P(LuaJIT_Lambda, CtxSleep) {
   const auto end = clock->now();
 
   EXPECT_GE(end-begin, 100ms);
+}
+
+TEST_P(LuaJIT_Lambda, CtxLogging) {
+  const auto logger = std::make_shared<nf7::subsys::test::LoggerMock>();
+
+  EXPECT_CALL(*logger, Push)
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kTrace);
+        EXPECT_EQ(item.contents(), "this is trace");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kInfo);
+        EXPECT_EQ(item.contents(), "this is info");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kWarn);
+        EXPECT_EQ(item.contents(), "this is warn");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kError);
+        EXPECT_EQ(item.contents(), "this is error");
+      });
+
+  nf7::SimpleEnv env {{
+    {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
+  }, *env_};
+
+  Expect(
+      "local ctx = ...\n"
+      "ctx:trace(\"this is trace\")\n"
+      "ctx:info(\"this is info\")\n"
+      "ctx:warn(\"this is warn\")\n"
+      "ctx:error(\"this is error\")",
+      {nf7::Value {}},
+      1, 0,
+      {},
+      &env);
 }
 
 INSTANTIATE_TEST_SUITE_P(
