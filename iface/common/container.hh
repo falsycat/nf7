@@ -65,6 +65,25 @@ class Container {
 };
 
 template <typename I>
+class NullContainer : public Container<I> {
+ public:
+  static std::shared_ptr<NullContainer> instance()
+  try {
+    static const auto kInstance = std::make_shared<NullContainer>();
+    return kInstance;
+  } catch (const std::bad_alloc&) {
+    throw Exception {"memory shortage"};
+  }
+
+ public:
+  NullContainer() = default;
+
+ public:
+  std::shared_ptr<I> Get(std::type_index) override { return nullptr; }
+  bool installed(std::type_index) const noexcept override { return false; }
+};
+
+template <typename I>
 class SimpleContainer : public Container<I> {
  public:
   using Factory     = std::function<std::shared_ptr<I>(Container<I>&)>;
@@ -95,8 +114,9 @@ class SimpleContainer : public Container<I> {
   }
 
   SimpleContainer() = delete;
-  explicit SimpleContainer(FactoryMap&& factories) noexcept
-      : factories_(std::move(factories)) { }
+  SimpleContainer(FactoryMap&& factories,
+                  Container<I>& fb = *NullContainer<I>::instance()) noexcept
+      : fallback_(fb), factories_(std::move(factories)) { }
 
   std::shared_ptr<I> Get(std::type_index idx) override {
     const auto obj_itr = objs_.find(idx);
@@ -122,11 +142,11 @@ class SimpleContainer : public Container<I> {
         throw Exception {"memory shortage"};
       }
     }
-    return nullptr;
+    return fallback_.Get(idx);
   }
 
   bool installed(std::type_index idx) const noexcept override {
-    return factories_.contains(idx);
+    return factories_.contains(idx) || fallback_.installed(idx);
   }
 
   using Container<I>::Get;
@@ -134,6 +154,8 @@ class SimpleContainer : public Container<I> {
   using Container<I>::installed;
 
  private:
+  Container<I>& fallback_;
+
   FactoryMap factories_;
   ObjectMap  objs_;
 
