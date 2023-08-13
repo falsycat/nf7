@@ -6,9 +6,13 @@
 #include <optional>
 #include <vector>
 
+#include "iface/subsys/clock.hh"
+
 #include "core/luajit/context.hh"
+#include "core/clock.hh"
 
 #include "iface/common/observer_test.hh"
+#include "iface/subsys/logger_test.hh"
 
 #include "core/luajit/context_test.hh"
 
@@ -36,10 +40,15 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
   void Expect(const char* script,
               const std::vector<nf7::Value>& in,
               uint32_t expectExit = 1, uint32_t expectAbort = 0,
-              const std::vector<nf7::Value>& out = {}) {
+              const std::vector<nf7::Value>& out = {},
+              nf7::Env* env = nullptr) {
+    if (nullptr == env) {
+      env = &*env_;
+    }
+
     auto func = Compile(script);
 
-    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env_, func);
+    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env, func);
     for (const auto& v : in) {
       sut->taker()->Take(v);
     }
@@ -133,18 +142,69 @@ TEST_P(LuaJIT_Lambda, CtxMultiSend) {
 }
 
 TEST_P(LuaJIT_Lambda, CtxSleep) {
-  clock_->Tick();
-  const auto begin = clock_->now();
+  const auto clock = std::make_shared<nf7::core::Clock>();
+  nf7::SimpleEnv env {{
+    {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
+  }, *env_};
+
+  clock->Tick();
+  const auto begin = clock->now();
 
   Expect(
       "local ctx = ...\nctx:sleep(100)",
       {nf7::Value {}},
-      1, 0);
+      1, 0,
+      {},
+      &env);
 
-  clock_->Tick();
-  const auto end = clock_->now();
+  clock->Tick();
+  const auto end = clock->now();
 
   EXPECT_GE(end-begin, 100ms);
+}
+
+TEST_P(LuaJIT_Lambda, CtxSleepWithoutClock) {
+  Expect(
+      "local ctx = ...\nctx:sleep(100)",
+      {nf7::Value {}},
+      0, 1);
+}
+
+TEST_P(LuaJIT_Lambda, CtxLogging) {
+  const auto logger = std::make_shared<nf7::subsys::test::LoggerMock>();
+
+  EXPECT_CALL(*logger, Push)
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kTrace);
+        EXPECT_EQ(item.contents(), "this is trace");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kInfo);
+        EXPECT_EQ(item.contents(), "this is info");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kWarn);
+        EXPECT_EQ(item.contents(), "this is warn");
+      })
+      .WillOnce([](auto& item) {
+        EXPECT_EQ(item.level(), nf7::subsys::Logger::kError);
+        EXPECT_EQ(item.contents(), "this is error");
+      });
+
+  nf7::SimpleEnv env {{
+    {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
+  }, *env_};
+
+  Expect(
+      "local ctx = ...\n"
+      "ctx:trace(\"this is trace\")\n"
+      "ctx:info(\"this is info\")\n"
+      "ctx:warn(\"this is warn\")\n"
+      "ctx:error(\"this is error\")",
+      {nf7::Value {}},
+      1, 0,
+      {},
+      &env);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -66,6 +66,28 @@ TEST(SimpleContainer, CheckInstalled) {
   EXPECT_FALSE(sut.installed<IB>());
 }
 
+TEST(SimpleContainer, FetchWithFallback) {
+  SUT fb {{
+    SUT::MakePair<IA, A>(),
+  }};
+  SUT sut {{}, fb};
+  auto ptr = sut.Get<IA>();
+  EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
+}
+TEST(SimpleContainer, FetchUnknownWithFallback) {
+  SUT fb {{}};
+  SUT sut {{}, fb};
+  EXPECT_THROW(sut.Get<IA>(), nf7::Exception);
+}
+TEST(SimpleContainer, CheckInstalledWithFallback) {
+  SUT fb {{
+    SUT::MakePair<IA, A>(),
+  }};
+  SUT sut {{}, fb};
+  EXPECT_TRUE(sut.installed<IA>());
+  EXPECT_FALSE(sut.installed<IB>());
+}
+
 #if !defined(NDEBUG)
 TEST(SimpleContainer, DeathByFetchRecursive) {
   SUT sut {{

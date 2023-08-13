@@ -21,6 +21,7 @@ target_sources(nf7_iface
     data/interface.hh
     subsys/concurrency.hh
     subsys/interface.hh
+    subsys/logger.hh
     subsys/parallelism.hh
     env.hh
     file.hh
@@ -40,6 +41,7 @@ target_sources(nf7_iface_test
     common/task_test.cc
     common/task_test.hh
     common/value_test.cc
+    subsys/logger_test.hh
     lambda_test.cc
     lambda_test.hh
 )
