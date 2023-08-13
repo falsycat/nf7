@@ -9,8 +9,8 @@ target_sources(nf7_iface
     common/exception.cc
     version.cc
   PUBLIC
-    common/dealer.hh
     common/container.hh
+    common/dealer.hh
     common/exception.hh
     common/future.hh
     common/leak_detector.hh
@@ -32,8 +32,9 @@ target_sources(nf7_iface
 add_executable(nf7_iface_test)
 target_sources(nf7_iface_test
   PRIVATE
-    common/dealer_test.cc
     common/container_test.cc
+    common/dealer_test.cc
+    common/exception_test.cc
     common/future_test.cc
     common/leak_detector_test.cc
     common/observer_test.cc
