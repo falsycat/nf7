@@ -6,7 +6,10 @@
 #include <optional>
 #include <vector>
 
+#include "iface/subsys/clock.hh"
+
 #include "core/luajit/context.hh"
+#include "core/clock.hh"
 
 #include "iface/common/observer_test.hh"
 
@@ -36,10 +39,15 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
   void Expect(const char* script,
               const std::vector<nf7::Value>& in,
               uint32_t expectExit = 1, uint32_t expectAbort = 0,
-              const std::vector<nf7::Value>& out = {}) {
+              const std::vector<nf7::Value>& out = {},
+              nf7::Env* env = nullptr) {
+    if (nullptr == env) {
+      env = &*env_;
+    }
+
     auto func = Compile(script);
 
-    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env_, func);
+    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env, func);
     for (const auto& v : in) {
       sut->taker()->Take(v);
     }
@@ -133,16 +141,23 @@ TEST_P(LuaJIT_Lambda, CtxMultiSend) {
 }
 
 TEST_P(LuaJIT_Lambda, CtxSleep) {
-  clock_->Tick();
-  const auto begin = clock_->now();
+  const auto clock = std::make_shared<nf7::core::Clock>();
+  nf7::SimpleEnv env {{
+    {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
+  }, *env_};
+
+  clock->Tick();
+  const auto begin = clock->now();
 
   Expect(
       "local ctx = ...\nctx:sleep(100)",
       {nf7::Value {}},
-      1, 0);
+      1, 0,
+      {},
+      &env);
 
-  clock_->Tick();
-  const auto end = clock_->now();
+  clock->Tick();
+  const auto end = clock->now();
 
   EXPECT_GE(end-begin, 100ms);
 }
