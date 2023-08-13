@@ -9,11 +9,13 @@
 
 #include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
+#include "iface/subsys/logger.hh"
 #include "iface/env.hh"
 #include "iface/lambda.hh"
 
 #include "core/luajit/context.hh"
 #include "core/luajit/thread.hh"
+#include "core/logger.hh"
 
 namespace nf7::core::luajit {
 
@@ -25,6 +27,7 @@ class Lambda :
       : LambdaBase(),
         clock_(env.Get<subsys::Clock>()),
         concurrency_(env.Get<subsys::Concurrency>()),
+        logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
         lua_(env.Get<luajit::Context>()),
         func_(func) { }
 
@@ -43,6 +46,7 @@ class Lambda :
  private:
   const std::shared_ptr<subsys::Clock>       clock_;
   const std::shared_ptr<subsys::Concurrency> concurrency_;
+  const std::shared_ptr<subsys::Logger>      logger_;
 
   const std::shared_ptr<Context> lua_;
   const std::shared_ptr<Value>   func_;
