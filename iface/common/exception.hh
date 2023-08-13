@@ -4,6 +4,8 @@
 #include <exception>
 #include <ostream>
 #include <source_location>
+#include <string>
+#include <variant>
 
 namespace nf7 {
 
@@ -14,6 +16,10 @@ class Exception : public std::exception, std::nested_exception {
       const char*          what,
       std::source_location location = std::source_location::current()) :
       what_(what), location_(location) { }
+  explicit Exception(
+      const std::string&   what,
+      std::source_location location = std::source_location::current()) :
+      what_(what), location_(location) { }
 
   void RethrowNestedIf() const {
     if (auto ptr = nested_ptr()) {
@@ -21,11 +27,15 @@ class Exception : public std::exception, std::nested_exception {
     }
   }
 
-  const char* what() const noexcept override { return what_; }
+  const char* what() const noexcept override {
+    return std::holds_alternative<const char*>(what_)?
+        std::get<const char*>(what_):
+        std::get<std::string>(what_).c_str();
+  }
   const std::source_location& location() const noexcept { return location_; }
 
  private:
-  const char* what_;
+  std::variant<const char*, std::string> what_;
   std::source_location location_;
 };
 
