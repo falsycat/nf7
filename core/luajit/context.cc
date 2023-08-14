@@ -1,6 +1,9 @@
 // No copyright
 #include "core/luajit/context.hh"
 
+#include <mutex>
+#include <vector>
+
 #include "iface/common/leak_detector.hh"
 #include "iface/subsys/concurrency.hh"
 #include "iface/subsys/parallelism.hh"
@@ -52,36 +55,38 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
 
 
 namespace {
-template <typename T>
-class ContextImpl final :
-    public Context,
-    private LeakDetector<ContextImpl<T>> {
- public:
-  ContextImpl(const char* name, Kind kind, Env& env)
-      : Context(name, kind), tasq_(env.Get<T>()) {
-    auto L = state();
+void SetUpEnv(lua_State* L) noexcept {
+  lua_pushthread(L);
+  if (luaL_newmetatable(L, "nf7::Context::ImmutableEnv")) {
+    lua_createtable(L, 0, 0);
+    {
+      luaL_newmetatable(L, Context::kGlobalTableName);
+      lua_setfield(L, -2, "__index");
 
-    lua_pushthread(L);
-    if (luaL_newmetatable(L, "nf7::Context::ImmutableEnv")) {
-      lua_createtable(L, 0, 0);
-      {
-        luaL_newmetatable(L, kGlobalTableName);
-        lua_setfield(L, -2, "__index");
-
-        lua_pushcfunction(L, [](auto L) {
-          return luaL_error(L, "global is immutable");
-        });
-        lua_setfield(L, -2, "__newindex");
-      }
-      lua_setmetatable(L, -2);
+      lua_pushcfunction(L, [](auto L) {
+        return luaL_error(L, "global is immutable");
+      });
+      lua_setfield(L, -2, "__newindex");
     }
-    lua_setfenv(L, -2);
-    lua_pop(L, 1);
+    lua_setmetatable(L, -2);
+  }
+  lua_setfenv(L, -2);
+  lua_pop(L, 1);
+}
+
+class SyncContext final :
+    public Context,
+    private LeakDetector<SyncContext> {
+ public:
+  explicit SyncContext(Env& env)
+      : Context("nf7::core::luajit::SyncContext", Context::kSync),
+        concurrency_(env.Get<subsys::Concurrency>()) {
+    SetUpEnv(state());
   }
 
   void Push(Task&& task) noexcept override {
-    auto self = std::dynamic_pointer_cast<ContextImpl<T>>(shared_from_this());
-    tasq_->Push(typename T::Item {
+    auto self = std::dynamic_pointer_cast<SyncContext>(shared_from_this());
+    concurrency_->Push({
       task.after(),
       [self, task = std::move(task)](auto&) mutable {
         TaskContext ctx {self, self->state()};
@@ -96,18 +101,65 @@ class ContextImpl final :
   using Context::shared_from_this;
 
  private:
-  std::shared_ptr<T> tasq_;
+  std::shared_ptr<subsys::Concurrency> concurrency_;
+};
+
+class AsyncContext final :
+    public Context,
+    private LeakDetector<AsyncContext> {
+ public:
+  explicit AsyncContext(Env& env)
+      : Context("nf7::core::luajit::AsyncContext", Context::kAsync),
+        parallelism_(env.Get<subsys::Parallelism>()) {
+    SetUpEnv(state());
+  }
+
+  void Push(Task&& task) noexcept override {
+    std::unique_lock<std::mutex> k {mtx_};
+    const auto first = tasks_.empty();
+    tasks_.push_back(std::move(task));
+    k.unlock();
+
+    if (first) {
+      auto self = std::dynamic_pointer_cast<AsyncContext>(shared_from_this());
+      parallelism_->Push({
+        task.after(),
+        [self](auto&) { self->Consume(); },
+        task.location(),
+      });
+    }
+  }
+
+ protected:
+  using Context::shared_from_this;
+
+ private:
+  void Consume() noexcept {
+    std::unique_lock<std::mutex> k {mtx_};
+    auto tasks = std::move(tasks_);
+    k.unlock();
+
+    auto self = std::dynamic_pointer_cast<AsyncContext>(shared_from_this());
+    TaskContext ctx {self, state()};
+    for (auto& task : tasks) {
+      task(ctx);
+    }
+  }
+
+ private:
+  std::shared_ptr<subsys::Parallelism> parallelism_;
+
+  std::mutex mtx_;
+  std::vector<Task> tasks_;
 };
 }  // namespace
 
 std::shared_ptr<Context> Context::Create(Env& env, Kind kind) {
   switch (kind) {
   case kSync:
-    return std::make_shared<ContextImpl<subsys::Concurrency>>(
-        "nf7::core::luajit::SyncContext", kSync, env);
+    return std::make_shared<SyncContext>(env);
   case kAsync:
-    return std::make_shared<ContextImpl<subsys::Parallelism>>(
-        "nf7::core::luajit::AsyncContext", kAsync, env);
+    return std::make_shared<AsyncContext>(env);
   default:
     assert(false);
   }
