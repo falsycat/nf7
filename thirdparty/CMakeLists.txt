@@ -1,3 +1,5 @@
+set(BUILD_TESTING OFF)
+
 include(FetchContent)
 
 # ---- luajit (MIT)
