@@ -36,6 +36,17 @@ TEST_F(UV_Concurrency, PushFromTask) {
   EXPECT_EQ(called, 1);
 }
 
+TEST_F(UV_Concurrency, ExecOrderly) {
+  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+
+  auto called = uint64_t {0};
+  sut->Exec([&](auto&) { ++called; EXPECT_EQ(called, 1); });
+  sut->Exec([&](auto&) { ++called; EXPECT_EQ(called, 2); });
+
+  ctx_->Run();
+  EXPECT_EQ(called, 2);
+}
+
 TEST_F(UV_Concurrency, PushWithDelay) {
   auto clock = env_->Get<nf7::subsys::Clock>();
   auto sut   = std::make_shared<nf7::core::uv::Concurrency>(*env_);
