@@ -56,11 +56,9 @@ try {
       logger->Error("an async task threw an exception");
     }
   });
-  if (nullptr == work) {
-    logger_->Error("failed to create a work to be queued");
-    return;
-  }
   work->queue();
+} catch (const Exception&) {
+  logger_->Error("exception thrown");
 } catch (const std::bad_alloc&) {
   logger_->Error("memory shortage");
 }
@@ -69,16 +67,14 @@ void Parallelism::Impl::StartTimer(std::chrono::milliseconds wait, AsyncTask&& t
 try {
   auto self  = shared_from_this();
   auto timer = ctx_->Make<uvw::timer_handle>();
-  if (nullptr == timer) {
-    logger_->Error("failed to create a timer for delayed async task");
-    return;
-  }
   timer->on<uvw::timer_event>([this, self, task](auto&, auto& timer) mutable {
     timer.close();
     QueueWork(std::move(task));
   });
   timer->start(wait, 0ms);
-} catch (const std::bad_alloc&) {
+} catch (const Exception&) {
+  logger_->Error("exception thrown");
+} catch (...) {
   logger_->Error("memory shortage");
 }
 
