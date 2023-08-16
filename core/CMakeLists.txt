@@ -5,17 +5,22 @@ target_link_libraries(nf7_core
     luajit
     nf7_config
     nf7_iface
+    uvw
 )
 target_sources(nf7_core
   PRIVATE
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
+    uv/concurrency.cc
     version.cc
   PUBLIC
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
+    uv/concurrency.hh
+    uv/context.hh
+    uv/clock.hh
     clock.hh
     logger.hh
     version.hh
@@ -29,6 +34,8 @@ target_sources(nf7_core_test
     luajit/lambda_test.cc
     luajit/thread_test.cc
     luajit/thread_test.hh
+    uv/context_test.hh
+    uv/concurrency_test.cc
     clock_test.cc
 )
 target_link_libraries(nf7_core_test
