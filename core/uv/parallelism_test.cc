@@ -1,5 +1,5 @@
 // No copyright
-#include "core/uv/concurrency.hh"
+#include "core/uv/parallelism.hh"
 
 #include <gtest/gtest.h>
 
@@ -13,11 +13,11 @@
 
 using namespace std::literals;
 
-using UV_Concurrency = nf7::core::uv::test::ContextFixture;
+using UV_Parallelism = nf7::core::uv::test::ContextFixture;
 
 
-TEST_F(UV_Concurrency, Push) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+TEST_F(UV_Parallelism, Push) {
+  auto sut = std::make_shared<nf7::core::uv::Parallelism>(*env_);
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { ++called; });
@@ -26,8 +26,8 @@ TEST_F(UV_Concurrency, Push) {
   EXPECT_EQ(called, 1);
 }
 
-TEST_F(UV_Concurrency, PushFromTask) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+TEST_F(UV_Parallelism, PushFromTask) {
+  auto sut = std::make_shared<nf7::core::uv::Parallelism>(*env_);
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { sut->Exec([&](auto&) { ++called; }); });
@@ -36,20 +36,9 @@ TEST_F(UV_Concurrency, PushFromTask) {
   EXPECT_EQ(called, 1);
 }
 
-TEST_F(UV_Concurrency, ExecOrderly) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
-
-  auto called = uint64_t {0};
-  sut->Exec([&](auto&) { ++called; EXPECT_EQ(called, 1); });
-  sut->Exec([&](auto&) { ++called; EXPECT_EQ(called, 2); });
-
-  ctx_->Run();
-  EXPECT_EQ(called, 2);
-}
-
-TEST_F(UV_Concurrency, PushWithDelay) {
+TEST_F(UV_Parallelism, PushWithDelay) {
   auto clock = env_->Get<nf7::subsys::Clock>();
-  auto sut   = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+  auto sut   = std::make_shared<nf7::core::uv::Parallelism>(*env_);
 
   auto called = uint64_t {0};
   sut->Push({clock->now() + 100ms, [&](auto&) { ++called; }});

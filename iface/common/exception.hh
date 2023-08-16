@@ -1,6 +1,7 @@
 // No copyright
 #pragma once
 
+#include <cstdint>
 #include <exception>
 #include <ostream>
 #include <source_location>
