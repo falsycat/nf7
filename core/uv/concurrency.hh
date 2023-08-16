@@ -25,14 +25,14 @@ class Concurrency : public subsys::Concurrency {
  public:
   explicit Concurrency(Env& env) : Concurrency(env, env.Get<Context>()) { }
   Concurrency(Env&, const std::shared_ptr<Context>&);
-  ~Concurrency() noexcept override { delete_->send(); }
+  ~Concurrency() noexcept override;
 
  public:
   // THREAD-SAFE
   void Push(SyncTask&& task) noexcept override;
 
  private:
-  class Impl {
+  class Impl final {
    public:
     explicit Impl(Env&);
 

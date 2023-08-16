@@ -45,10 +45,15 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
         return 1;
       });
       lua_setfield(state_, -2, "type");
-
-      // TODO(falsycat)
     }
     lua_setfield(state_, -2, "__index");
+
+    lua_pushcfunction(state_, [](auto L) {
+      nf7::Value& v = CheckUserData<nf7::Value>(L, 1, "nf7::Value");
+      v.~Value();
+      return 0;
+    });
+    lua_setfield(state_, -2, "__gc");
   }
   lua_setmetatable(state_, -2);
 }
