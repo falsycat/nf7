@@ -29,14 +29,7 @@ class Context : public subsys::Interface {
   Context(const char* name, Env& env)
       : subsys::Interface(name),
         logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
-        loop_(MakeLoop()),
-        stop_(Make<uvw::async_handle>()) {
-    stop_->unreference();
-    stop_->on<uvw::async_event>([loop = loop_, logger = logger_](auto&, auto&) {
-      loop->stop();
-      logger->Trace("stopped loop iteration");
-    });
-  }
+        loop_(MakeLoop()) { }
 
  public:
   ~Context() noexcept override {
@@ -58,13 +51,8 @@ class Context : public subsys::Interface {
     throw Exception {"failed to allocate libuv resource"};
   }
 
-  // THREAD-SAFE
   void Exit() noexcept {
-    if (0 == stop_->send()) {
-      logger_->Info("requested to exit uv loop");
-    } else {
-      logger_->Error("a request to exit is dismissed");
-    }
+    loop_->stop();
   }
 
   const std::shared_ptr<uvw::loop>& loop() const noexcept { return loop_; }
@@ -84,9 +72,7 @@ class Context : public subsys::Interface {
 
  private:
   const std::shared_ptr<subsys::Logger> logger_;
-
   const std::shared_ptr<uvw::loop> loop_;
-  const std::shared_ptr<uvw::async_handle> stop_;
 };
 
 class MainContext : public Context {
