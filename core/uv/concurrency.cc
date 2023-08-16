@@ -1,8 +1,6 @@
 // No copyright
 #include "core/uv/concurrency.hh"
 
-#include <iostream>
-
 
 using namespace std::literals;
 
@@ -23,20 +21,30 @@ try : subsys::Concurrency("nf7::core::uv::Concurrency"),
     t->close();
     self.close();
   });
-
-  const auto consume = [impl = impl_, timer = timer_](auto&, auto& handle) {
-    handle.unreference();
+  push_->on<uvw::async_event>([impl = impl_, timer = timer_](auto&, auto& h) {
+    h.unreference();
     const auto wait = impl->Consume();
     const auto wake = timer->due_in();
     if (0ms < wait && (wake == 0ms || wait < wake)) {
       timer->reference();
       timer->start(wait, 0ms);
     }
-  };
-  push_->on<uvw::async_event>(consume);
-  timer_->on<uvw::timer_event>(consume);
+  });
+  timer_->on<uvw::timer_event>([impl = impl_](auto&, auto& h) {
+    const auto wait = impl->Consume();
+    if (0ms < wait) {
+      h.start(wait, 0ms);
+    } else {
+      h.unreference();
+    }
+  });
 } catch(const std::bad_alloc&) {
   throw Exception {"memory shortage"};
+}
+
+Concurrency::~Concurrency() noexcept {
+  delete_->reference();
+  delete_->send();
 }
 
 void Concurrency::Push(SyncTask&& task) noexcept {
