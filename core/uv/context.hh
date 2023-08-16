@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <thread>
+#include <utility>
 
 #include <uvw.hpp>
 
@@ -39,10 +40,10 @@ class Context : public subsys::Interface {
   }
 
  public:
-  template <typename T>
-  std::shared_ptr<T> Make() const
+  template <typename T, typename... Args>
+  std::shared_ptr<T> Make(Args&&... args) const
   try {
-    auto ptr = loop_->resource<T>();
+    auto ptr = loop_->resource<T>(std::forward<Args>(args)...);
     if (nullptr == ptr) {
       throw Exception {"failed to init libuv resource"};
     }
