@@ -18,6 +18,7 @@ target_sources(nf7_core
     luajit/lambda.hh
     luajit/thread.hh
     uv/context.hh
+    uv/clock.hh
     clock.hh
     logger.hh
     version.hh
