@@ -20,6 +20,7 @@ target_sources(nf7_iface
     common/task.hh
     common/task_context.hh
     common/value.hh
+    data/buffer.hh
     data/interface.hh
     data/wrap.hh
     subsys/concurrency.hh
