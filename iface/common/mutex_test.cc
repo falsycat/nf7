@@ -6,10 +6,24 @@
 #include <atomic>
 #include <chrono>
 #include <optional>
+#include <thread>
 #include <vector>
 
 
 using namespace std::literals;
+
+TEST(Mutex, TryLockEx) {
+  nf7::Mutex mtx;
+  auto k = mtx.TryLockEx();
+  EXPECT_TRUE(k);
+}
+
+TEST(Mutex, TryLockExFails) {
+  nf7::Mutex mtx;
+  auto k1 = mtx.TryLockEx();
+  auto k2 = mtx.TryLockEx();
+  EXPECT_FALSE(k2);
+}
 
 TEST(Mutex, TryLock) {
   nf7::Mutex mtx;
@@ -17,68 +31,125 @@ TEST(Mutex, TryLock) {
   EXPECT_TRUE(k);
 }
 
-TEST(Mutex, TryLockFails) {
+TEST(Mutex, TryLockWithShared) {
   nf7::Mutex mtx;
   auto k1 = mtx.TryLock();
+  auto k2 = mtx.TryLock();
+  EXPECT_TRUE(k2);
+}
+
+TEST(Mutex, TryLockFails) {
+  nf7::Mutex mtx;
+  auto k1 = mtx.TryLockEx();
   auto k2 = mtx.TryLock();
   EXPECT_FALSE(k2);
 }
 
-TEST(Mutex, Lock) {
+TEST(Mutex, LockEx) {
   nf7::Mutex mtx;
-  auto fu = mtx.Lock();
+  auto fu = mtx.LockEx();
   EXPECT_TRUE(fu.done());
+}
+
+TEST(Mutex, LockWithShare) {
+  nf7::Mutex mtx;
+  auto fu1 = mtx.Lock();
+  auto fu2 = mtx.Lock();
+  EXPECT_TRUE(fu1.done());
+  EXPECT_TRUE(fu2.done());
+}
+
+TEST(Mutex, LockExPending) {
+  nf7::Mutex mtx;
+  auto k  = mtx.TryLockEx();
+  auto fu = mtx.LockEx();
+  EXPECT_TRUE(fu.yet());
 }
 
 TEST(Mutex, LockPending) {
   nf7::Mutex mtx;
-  auto k  = mtx.TryLock();
-  auto fu = mtx.Lock();
-  EXPECT_TRUE(fu.yet());
+  auto k   = mtx.TryLockEx();
+  auto fu1 = mtx.Lock();
+  auto fu2 = mtx.Lock();
+  EXPECT_TRUE(fu1.yet());
+  EXPECT_TRUE(fu2.yet());
+}
+
+TEST(Mutex, LockExWithDelay) {
+  nf7::Mutex mtx;
+  auto k  = mtx.TryLockEx();
+  auto fu = mtx.LockEx();
+  k = nullptr;
+  EXPECT_TRUE(fu.done());
 }
 
 TEST(Mutex, LockWithDelay) {
   nf7::Mutex mtx;
-  auto k  = mtx.TryLock();
-  auto fu = mtx.Lock();
-
+  auto k  = mtx.TryLockEx();
+  auto fu1 = mtx.Lock();
+  auto fu2 = mtx.Lock();
   k = nullptr;
-  EXPECT_TRUE(fu.done());
+  EXPECT_TRUE(fu1.done());
+  EXPECT_TRUE(fu2.done());
+}
+
+TEST(Mutex, LockExAbort) {
+  std::optional<nf7::Mutex> mtx;
+  mtx.emplace();
+
+  auto k  = mtx->TryLockEx();
+  auto fu = mtx->LockEx();
+
+  mtx = std::nullopt;
+  EXPECT_TRUE(fu.error());
 }
 
 TEST(Mutex, LockAbort) {
   std::optional<nf7::Mutex> mtx;
   mtx.emplace();
 
-  auto k  = mtx->TryLock();
+  auto k  = mtx->TryLockEx();
   auto fu = mtx->Lock();
 
   mtx = std::nullopt;
   EXPECT_TRUE(fu.error());
 }
 
-TEST(Mutex, ChaoticLock) {
+TEST(Mutex, ChaoticLockAndLockEx) {
   nf7::Mutex mtx;
   std::atomic<bool> flag = false;
 
   std::vector<std::thread> threads;
-  threads.resize(16);
-  for (auto& th : threads) {
-    th = std::thread {[&]() {
-      mtx.Lock()
-          .Then([&](auto&) {
-            const auto flag_at_first = flag.exchange(true);
-            EXPECT_FALSE(flag_at_first);
+  threads.resize(32);
+  for (uint64_t i = 0; i < threads.size(); ++i) {
+    if (i%2 == 0) {
+      threads[i] = std::thread {[&]() {
+        mtx.LockEx()
+            .Then([&](auto&) {
+              const auto flag_at_first = flag.exchange(true);
+              EXPECT_FALSE(flag_at_first);
 
-            std::this_thread::sleep_for(10ms);
+              std::this_thread::sleep_for(10ms);
 
-            const auto flag_at_last = flag.exchange(false);
-            EXPECT_TRUE(flag_at_last);
-          })
-          .Catch([&](const auto& e) {
-            FAIL() << e;
-          });
-    }};
+              const auto flag_at_last = flag.exchange(false);
+              EXPECT_TRUE(flag_at_last);
+            })
+            .Catch([&](const auto& e) {
+              FAIL() << e;
+            });
+      }};
+    } else {
+      threads[i] = std::thread {[&]() {
+        mtx.Lock()
+            .Then([&](auto&) {
+              std::this_thread::sleep_for(5ms);
+              EXPECT_FALSE(flag);
+            })
+            .Catch([&](const auto& e) {
+              FAIL() << e;
+            });
+      }};
+    }
   }
   for (auto& th : threads) {
     th.join();

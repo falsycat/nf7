@@ -13,10 +13,16 @@ namespace nf7 {
 
 class Mutex::Impl final : public std::enable_shared_from_this<Impl> {
  public:
+  enum Mode {
+    kExclusive,
+    kInclusive,
+  };
+
+ public:
   Impl() = default;
 
-  Future<SharedToken> Lock() noexcept;
-  SharedToken TryLock();
+  Future<SharedToken> Lock(Mode) noexcept;
+  SharedToken TryLock(Mode);
   void Unlock() noexcept;
 
   void TearDown() noexcept;
@@ -29,6 +35,7 @@ class Mutex::Impl final : public std::enable_shared_from_this<Impl> {
 
   std::weak_ptr<Token> current_;
   std::deque<Future<SharedToken>::Completer> pends_;
+  bool last_inclusive_ = false;
 };
 
 class Mutex::Token final {
@@ -53,10 +60,27 @@ class Mutex::Token final {
 };
 
 
-Future<Mutex::SharedToken> Mutex::Impl::Lock() noexcept
+Future<Mutex::SharedToken> Mutex::Impl::Lock(Mode mode) noexcept
 try {
   std::unique_lock<std::mutex> k {mtx_};
-  if (current_.lock()) {
+  auto cur = current_.lock();
+
+  switch (mode) {
+  case kInclusive:
+    if (last_inclusive_) {
+      if (pends_.empty() && cur) {
+        return Future<SharedToken> {std::move(cur)};
+      } else if (!pends_.empty()) {
+        return pends_.back().future();
+      }
+    }
+    last_inclusive_ = true;
+    break;
+  case kExclusive:
+    last_inclusive_ = false;
+    break;
+  }
+  if (nullptr != cur) {
     pends_.emplace_back();
     return pends_.back().future();
   }
@@ -67,10 +91,29 @@ try {
   };
 }
 
-Mutex::SharedToken Mutex::Impl::TryLock()
+Mutex::SharedToken Mutex::Impl::TryLock(Mode mode)
 try {
   std::unique_lock<std::mutex> k {mtx_};
-  return current_.lock()? nullptr: MakeToken();
+  if (!pends_.empty()) {
+    return nullptr;
+  }
+
+  auto cur = current_.lock();
+  switch (mode) {
+  case kInclusive:
+    if (nullptr != cur) {
+      return last_inclusive_? cur: nullptr;
+    }
+    last_inclusive_ = true;
+    break;
+  case kExclusive:
+    if (nullptr != cur) {
+      return nullptr;
+    }
+    last_inclusive_ = false;
+    break;
+  }
+  return MakeToken();
 } catch (const std::exception&) {
   throw Exception {"failed to acquire lock"};
 }
@@ -127,11 +170,17 @@ Mutex::~Mutex() noexcept {
 }
 
 Future<Mutex::SharedToken> Mutex::Lock() noexcept {
-  return impl_->Lock();
+  return impl_->Lock(Impl::kInclusive);
+}
+Mutex::SharedToken Mutex::TryLock() {
+  return impl_->TryLock(Impl::kInclusive);
 }
 
-Mutex::SharedToken Mutex::TryLock() {
-  return impl_->TryLock();
+Future<Mutex::SharedToken> Mutex::LockEx() noexcept {
+  return impl_->Lock(Impl::kExclusive);
+}
+Mutex::SharedToken Mutex::TryLockEx() {
+  return impl_->TryLock(Impl::kExclusive);
 }
 
 }  // namespace nf7

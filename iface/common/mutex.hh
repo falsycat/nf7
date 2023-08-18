@@ -29,6 +29,9 @@ class Mutex final {
   Future<SharedToken> Lock() noexcept;
   SharedToken TryLock();
 
+  Future<SharedToken> LockEx() noexcept;
+  SharedToken TryLockEx();
+
  private:
   std::shared_ptr<Impl> impl_;
 };
