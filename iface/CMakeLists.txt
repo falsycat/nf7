@@ -7,6 +7,7 @@ target_link_libraries(nf7_iface
 target_sources(nf7_iface
   PRIVATE
     common/exception.cc
+    common/mutex.cc
     version.cc
   PUBLIC
     common/container.hh
@@ -14,6 +15,7 @@ target_sources(nf7_iface
     common/exception.hh
     common/future.hh
     common/leak_detector.hh
+    common/mutex.hh
     common/observer.hh
     common/task.hh
     common/task_context.hh
@@ -37,6 +39,7 @@ target_sources(nf7_iface_test
     common/exception_test.cc
     common/future_test.cc
     common/leak_detector_test.cc
+    common/mutex_test.cc
     common/observer_test.cc
     common/observer_test.hh
     common/task_test.cc
