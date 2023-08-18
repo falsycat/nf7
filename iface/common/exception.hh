@@ -6,11 +6,18 @@
 #include <ostream>
 #include <source_location>
 #include <string>
+#include <utility>
 #include <variant>
 
 namespace nf7 {
 
 class Exception : public std::exception, std::nested_exception {
+ public:
+  template <typename... Args>
+  static std::exception_ptr MakePtr(Args&&... args) {
+    return std::make_exception_ptr(Exception {std::forward<Args>(args)...});
+  }
+
  public:
   Exception() = delete;
   explicit Exception(
@@ -28,6 +35,7 @@ class Exception : public std::exception, std::nested_exception {
     }
   }
 
+ public:
   const char* what() const noexcept override {
     return std::holds_alternative<const char*>(what_)?
         std::get<const char*>(what_):
