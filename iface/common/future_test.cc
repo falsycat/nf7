@@ -5,9 +5,91 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
 
 #include "iface/common/exception.hh"
+
+
+using namespace std::literals;
+
+
+namespace {
+
+enum FutureState {
+  kYet,
+  kDone,
+  kError,
+};
+
+class FutureChain :
+    public ::testing::TestWithParam<std::tuple<FutureState, FutureState>> {
+ public:
+  static std::string GenerateParamName(
+      const ::testing::TestParamInfo<FutureChain::ParamType>& info) {
+    const auto [s1, s2] = info.param;
+    static const auto Stringify = [](auto s) {
+      return s == kYet? "Yet": s == kDone? "Done": "Error";
+    };
+    return Stringify(s1) + "_"s + Stringify(s2);
+  }
+
+ protected:
+  void SetUp() override {
+    static const auto Prepare = [](auto& comp, FutureState state) {
+      switch (state) {
+      case kYet:
+        return;
+      case kDone:
+        comp.Complete(int32_t {666});
+        return;
+      case kError:
+        comp.Throw(nf7::Exception::MakePtr("helloworld"));
+        return;
+      }
+    };
+    const auto [s1, s2] = GetParam();
+    Prepare(primary_, s1);
+    Prepare(secondary_, s2);
+  }
+
+ protected:
+  void TestSecondary(nf7::Future<int32_t> secondary) const {
+    const auto [s1, s2] = GetParam();
+    if (s1 == kDone && s2 == kDone) {
+      EXPECT_TRUE(secondary.done());
+    } else if (s1 == kError || (s1 != kYet && s2 == kError)) {
+      EXPECT_TRUE(secondary.error());
+    } else {
+      EXPECT_TRUE(secondary.yet());
+    }
+  }
+
+ protected:
+  nf7::Future<int32_t>::Completer primary_;
+  nf7::Future<int32_t>::Completer secondary_;
+};
+
+using FutureChainLazyAndLazy = FutureChain;
+INSTANTIATE_TEST_SUITE_P(
+    LazyAndLazy,
+    FutureChainLazyAndLazy,
+    testing::Combine(
+        testing::Values(kYet, kDone, kError),
+        testing::Values(kYet, kDone, kError)),
+    FutureChain::GenerateParamName);
+
+using FutureChainLazyAndImm = FutureChain;
+INSTANTIATE_TEST_SUITE_P(
+    LazyAndImm,
+    FutureChainLazyAndImm,
+    testing::Combine(
+        testing::Values(kYet, kDone, kError),
+        testing::Values(kDone, kError)),
+    FutureChain::GenerateParamName);
+
+}  // namespace
 
 
 TEST(Future, ImmediateValue) {
@@ -186,41 +268,21 @@ TEST(Future, CatchWhenError) {
   EXPECT_EQ(called, 1);
 }
 
-TEST(Future, ThenAndWhenDone) {
-  nf7::Future<int32_t> sut {int32_t {777}};
+TEST_P(FutureChainLazyAndImm, ThenAndWithValue) {
+  const auto secondary = std::get<1>(GetParam());
 
-  auto called1 = int32_t {0};
-  auto called2 = int32_t {0};
-  sut
-    .ThenAnd([&](auto& x) {
-      ++called1;
-      EXPECT_EQ(x, int32_t {777});
-      return int32_t {666};
-    })
-    .Then([&](auto& x) {
-      ++called2;
-      EXPECT_EQ(x, int32_t {666});
-    });
-
-  EXPECT_EQ(called1, 1);
-  EXPECT_EQ(called2, 1);
+  auto sut = primary_.future();
+  TestSecondary(sut.ThenAnd([&](auto&) {
+    switch (secondary) {
+    case kError: throw nf7::Exception {"hello"};
+    case kDone: return int32_t {666};
+    default: assert(false); std::abort();
+    }
+  }));
 }
-TEST(Future, ThenAndWhenError) {
-  nf7::Future<int32_t> sut {std::make_exception_ptr(nf7::Exception {"hello"})};
-
-  auto called1 = int32_t {0};
-  auto called2 = int32_t {0};
-  sut
-    .ThenAnd([&](auto&) {
-      ++called1;
-      return int32_t {666};
-    })
-    .Then([&](auto&) {
-      ++called2;
-    });
-
-  EXPECT_EQ(called1, 0);
-  EXPECT_EQ(called2, 0);
+TEST_P(FutureChainLazyAndLazy, ThenAndWithFuture) {
+  auto sut = primary_.future();
+  TestSecondary(sut.ThenAnd([&](auto&) { return secondary_.future(); }));
 }
 
 TEST(Future_Completer, CompleteAfterCopy) {
