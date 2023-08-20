@@ -3,7 +3,7 @@
 
 #include <cstdlib>
 #include <deque>
-#include <mutex>
+#include <thread>
 #include <utility>
 
 #include "iface/common/exception.hh"
@@ -31,11 +31,13 @@ class Mutex::Impl final : public std::enable_shared_from_this<Impl> {
   SharedToken MakeToken();
 
  private:
-  mutable std::mutex mtx_;
-
   std::weak_ptr<Token> current_;
   std::deque<Future<SharedToken>::Completer> pends_;
   bool last_inclusive_ = false;
+
+# if !defined(NDEBUG)
+    const std::thread::id thid_ = std::this_thread::get_id();
+# endif
 };
 
 class Mutex::Token final {
@@ -62,7 +64,8 @@ class Mutex::Token final {
 
 Future<Mutex::SharedToken> Mutex::Impl::Lock(Mode mode) noexcept
 try {
-  std::unique_lock<std::mutex> k {mtx_};
+  assert(std::this_thread::get_id() == thid_);
+
   auto cur = current_.lock();
 
   switch (mode) {
@@ -93,7 +96,8 @@ try {
 
 Mutex::SharedToken Mutex::Impl::TryLock(Mode mode)
 try {
-  std::unique_lock<std::mutex> k {mtx_};
+  assert(std::this_thread::get_id() == thid_);
+
   if (!pends_.empty()) {
     return nullptr;
   }
@@ -120,7 +124,8 @@ try {
 
 void Mutex::Impl::Unlock() noexcept
 try {
-  std::unique_lock<std::mutex> k {mtx_};
+  assert(std::this_thread::get_id() == thid_);
+
   current_ = {};
   if (pends_.empty()) {
     return;
@@ -131,10 +136,8 @@ try {
 
   try {
     auto token = MakeToken();
-    k.unlock();
     comp.Complete(std::move(token));
   } catch (const std::bad_alloc&) {
-    k.unlock();
     comp.Throw(Exception::MakePtr("failed to acquire lock"));
   }
 } catch (const std::system_error&) {
@@ -143,7 +146,8 @@ try {
 
 void Mutex::Impl::TearDown() noexcept
 try {
-  std::unique_lock<std::mutex> k {mtx_};
+  assert(std::this_thread::get_id() == thid_);
+
   pends_.clear();
 } catch (const std::system_error&) {
   std::abort();
