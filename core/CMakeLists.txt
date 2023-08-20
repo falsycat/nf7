@@ -25,6 +25,7 @@ target_sources(nf7_core
     uv/parallelism.hh
     clock.hh
     logger.hh
+    mutex.hh
     version.hh
 )
 
