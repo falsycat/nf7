@@ -21,6 +21,7 @@ target_sources(nf7_iface
     common/task_context.hh
     common/value.hh
     data/interface.hh
+    data/wrap.hh
     subsys/concurrency.hh
     subsys/interface.hh
     subsys/logger.hh
