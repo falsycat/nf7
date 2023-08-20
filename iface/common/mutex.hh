@@ -20,10 +20,10 @@ class Mutex final {
   Mutex();
   ~Mutex() noexcept;
 
-  Mutex(const Mutex&) = delete;
-  Mutex(Mutex&&) = delete;
-  Mutex& operator=(const Mutex&) = delete;
-  Mutex& operator=(Mutex&&) = delete;
+  Mutex(const Mutex&) = default;
+  Mutex(Mutex&&) = default;
+  Mutex& operator=(const Mutex&) = default;
+  Mutex& operator=(Mutex&&) = default;
 
  public:
   Future<SharedToken> Lock() noexcept;
