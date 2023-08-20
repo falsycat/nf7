@@ -6,20 +6,6 @@
 
 namespace nf7 {
 
-class File : public Container<data::Interface> {
- public:
-  File() = default;
-
- public:
-  Mutex& mtx() const noexcept { return mtx_; }
-
- public:
-  using Container<data::Interface>::Get;
-  using Container<data::Interface>::GetOr;
-  using Container<data::Interface>::installed;
-
- private:
-  mutable Mutex mtx_;
-};
+using File = Container<data::Interface>;
 
 }  // namespace nf7
