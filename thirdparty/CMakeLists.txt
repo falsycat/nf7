@@ -25,6 +25,7 @@ FetchContent_Declare(
   uvw
   GIT_REPOSITORY https://github.com/skypjack/uvw.git
   GIT_TAG        v3.2.0_libuv_v1.46
+  SYSTEM
 )
 set(BUILD_UVW_LIBS ON)
 FetchContent_MakeAvailable(uvw)
