@@ -14,6 +14,12 @@
 namespace nf7 {
 
 template <typename T>
+concept FutureLike = requires () {
+  typename T::Completer;
+  { (typename T::Completer {}).future() } -> std::same_as<T>;
+};
+
+template <typename T>
 class Future final {
  public:
   // !! Listener MUST NOT throw any exceptions !!
@@ -120,6 +126,10 @@ class Future final {
     internal().Listen(std::move(listener));
     return *this;
   }
+  template <typename V>
+  Future<T>& Attach(const std::shared_ptr<V>& ptr) {
+    return Listen([ptr = std::move(ptr)](auto&) {});
+  }
   Future<T>& Then(std::function<void(const T&)>&& f) {
     Listen([f = std::move(f)](auto& fu) noexcept {
       if (fu.done()) {
@@ -139,22 +149,46 @@ class Future final {
     return *this;
   }
 
-  template <typename F>
-  auto ThenAnd(F&& f) -> Future<decltype(f(*(T*)0))> {
-    using R = decltype(f(*(T*)0));
-    typename Future<R>::Completer comp;
-    auto fu = comp.future();
-    Listen([f = std::move(f), comp = std::move(comp)]
-           (auto& fu) mutable noexcept {
+  template <typename F, typename R = decltype((*(F*)0)(*(T*)0))>
+  auto ThenAnd(F&& f) -> std::enable_if_t<FutureLike<R>, R> {
+    typename R::Completer comp;
+    Listen([comp, f = std::move(f)](auto& fu) mutable {
       try {
-        comp.Complete(f(fu.value()));
+        f(fu.value()).Chain(comp);
       } catch (...) {
         comp.Throw();
       }
     });
-    return fu;
+    return comp.future();
   }
 
+  template <typename F, typename R = decltype((*(F*)0)(*(T*)0))>
+  auto ThenAnd(F&& f) -> std::enable_if_t<!FutureLike<R>, Future<R>> {
+    typename Future<R>::Completer comp;
+    Listen([comp, f = std::move(f)](auto& fu) mutable {
+      comp.Run([&]() { return f(fu.value()); });
+    });
+    return comp.future();
+  }
+
+  auto Chain(auto& comp)
+      -> decltype(comp.Run([&]() { return *(T*)0; }), comp.future()) {
+    Listen([comp](auto& fu) mutable {
+      comp.Run([&]() { return fu.value(); });
+    });
+    return comp.future();
+  }
+
+  template <typename F>
+  auto Chain(auto& comp, F&& f)
+      -> decltype(comp.Run([&]() { return (*(F*)0)(*(T*)0); }), comp.future()) {
+    Listen([comp, f = std::move(f)](auto& fu) mutable {
+      comp.Run([&]() { return f(fu.value()); });
+    });
+    return comp.future();
+  }
+
+ public:
   bool yet() const noexcept { return internal().yet(); }
   bool done() const noexcept { return internal().done(); }
   std::exception_ptr error() const noexcept { return internal().error(); }
@@ -231,7 +265,7 @@ class Future<T>::Completer final {
     assert(nullptr != internal_);
     internal_->Throw(e);
   }
-  void Run(std::function<T()>& f) noexcept {
+  void Run(std::function<T()>&& f) noexcept {
     assert(nullptr != internal_);
     try {
       Complete(f());
