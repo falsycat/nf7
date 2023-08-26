@@ -231,6 +231,29 @@ TEST(Future, ListenLazyForgotten) {
   EXPECT_EQ(called, 1);
 }
 
+TEST(Future, AttachWhenYet) {
+  nf7::Future<int32_t>::Completer comp;
+
+  auto ptr = std::make_shared<int32_t>(0);
+  comp.future().Attach(ptr);
+
+  auto wptr = std::weak_ptr<int32_t> {ptr};
+  ptr = nullptr;
+
+  EXPECT_TRUE(wptr.lock());
+}
+TEST(Future, AttachWhenDone) {
+  nf7::Future<int32_t> fu {0};
+
+  auto ptr  = std::make_shared<int32_t>(0);
+  auto wptr = std::weak_ptr<int32_t> {ptr};
+
+  fu.Attach(ptr);
+  ptr = nullptr;
+
+  EXPECT_FALSE(wptr.lock());
+}
+
 TEST(Future, ThenWhenDone) {
   nf7::Future<int32_t> sut {int32_t {777}};
 

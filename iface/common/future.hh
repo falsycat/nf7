@@ -126,6 +126,10 @@ class Future final {
     internal().Listen(std::move(listener));
     return *this;
   }
+  template <typename V>
+  Future<T>& Attach(const std::shared_ptr<V>& ptr) {
+    return Listen([ptr = std::move(ptr)](auto&) {});
+  }
   Future<T>& Then(std::function<void(const T&)>&& f) {
     Listen([f = std::move(f)](auto& fu) noexcept {
       if (fu.done()) {
