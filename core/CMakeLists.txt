@@ -22,6 +22,8 @@ target_sources(nf7_core
     uv/clock.hh
     uv/concurrency.hh
     uv/context.hh
+    uv/file.cc
+    uv/file.hh
     uv/parallelism.hh
     clock.hh
     logger.hh
@@ -39,6 +41,7 @@ target_sources(nf7_core_test
     luajit/thread_test.hh
     uv/context_test.hh
     uv/concurrency_test.cc
+    uv/file_test.cc
     uv/parallelism_test.cc
     clock_test.cc
 )
