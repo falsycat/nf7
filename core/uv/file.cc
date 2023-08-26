@@ -68,7 +68,7 @@ try : data::FiniteBuffer("nf7::core::uv::File::Finite"),
     self.close();
   });
 } catch (const std::bad_alloc&) {
-  throw Exception {"memory shortage"};
+  throw MemoryException {};
 }
 
 Future<Void> File::Open() noexcept

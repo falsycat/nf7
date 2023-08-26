@@ -56,7 +56,7 @@ class Future final {
         try {
           listeners_.push_back(std::move(listener));
         } catch (const std::exception&) {
-          throw Exception("memory shortage");
+          throw MemoryException {};
         }
       } else {
         calling_listener_ = true;
@@ -221,7 +221,7 @@ class Future<T>::Completer final {
   try : internal_(std::make_shared<Internal>()) {
     internal_->Ref();
   } catch (const std::exception&) {
-    throw Exception("memory shortage");
+    throw MemoryException {};
   }
   ~Completer() noexcept {
     if (nullptr != internal_) {

@@ -49,7 +49,7 @@ class Context : public subsys::Interface {
     }
     return ptr;
   } catch (const std::bad_alloc&) {
-    throw Exception {"failed to allocate libuv resource"};
+    throw MemoryException {"failed to allocate libuv resource"};
   }
 
   void Exit() noexcept {
