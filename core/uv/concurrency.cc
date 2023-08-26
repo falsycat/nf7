@@ -39,7 +39,7 @@ try : subsys::Concurrency("nf7::core::uv::Concurrency"),
     }
   });
 } catch(const std::bad_alloc&) {
-  throw Exception {"memory shortage"};
+  throw MemoryException {};
 }
 
 Concurrency::~Concurrency() noexcept {

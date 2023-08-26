@@ -40,7 +40,7 @@ class LambdaBase : public Lambda, private Observer<Value> {
   try : LambdaBase(std::make_shared<Taker<Value>>(std::move(takerMeta)),
                    std::make_shared<Emitter<Value>>(std::move(makerMeta))) {
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
 
  private:

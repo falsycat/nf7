@@ -170,7 +170,7 @@ class Value final {
 
     return MakeBuffer(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
   template <typename T>
   static Value MakeBuffer(std::initializer_list<T> v)
@@ -193,7 +193,7 @@ class Value final {
 
     return MakeObject(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
   static Value MakeObject(std::initializer_list<Object::Pair> v) {
     return MakeObject(v.begin(), v.end());
@@ -211,7 +211,7 @@ class Value final {
 
     return MakeObject(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
   static Value MakeArray(std::initializer_list<Value> v) {
     return MakeArray(v.begin(), v.end());

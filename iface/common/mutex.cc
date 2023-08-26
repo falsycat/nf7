@@ -88,9 +88,9 @@ try {
     return pends_.back().future();
   }
   return Future<SharedToken> {MakeToken()};
-} catch (const std::exception&) {
+} catch (const std::bad_alloc&) {
   return Future<SharedToken> {
-    Exception::MakePtr("failed to queue lock request"),
+    MemoryException::MakePtr("failed to queue lock request"),
   };
 }
 
@@ -118,12 +118,11 @@ try {
     break;
   }
   return MakeToken();
-} catch (const std::exception&) {
-  throw Exception {"failed to acquire lock"};
+} catch (const std::bad_alloc&) {
+  throw MemoryException {"failed to acquire lock"};
 }
 
-void Mutex::Impl::Unlock() noexcept
-try {
+void Mutex::Impl::Unlock() noexcept {
   assert(std::this_thread::get_id() == thid_);
 
   current_ = {};
@@ -138,19 +137,13 @@ try {
     auto token = MakeToken();
     comp.Complete(std::move(token));
   } catch (const std::bad_alloc&) {
-    comp.Throw(Exception::MakePtr("failed to acquire lock"));
+    comp.Throw(MemoryException::MakePtr("failed to allocate new token"));
   }
-} catch (const std::system_error&) {
-  std::abort();
 }
 
-void Mutex::Impl::TearDown() noexcept
-try {
+void Mutex::Impl::TearDown() noexcept {
   assert(std::this_thread::get_id() == thid_);
-
   pends_.clear();
-} catch (const std::system_error&) {
-  std::abort();
 }
 
 Mutex::SharedToken Mutex::Impl::MakeToken()
@@ -159,14 +152,14 @@ try {
   current_ = ret;
   return ret;
 } catch (const std::bad_alloc&) {
-  throw Exception {"failed to make new mutex token"};
+  throw MemoryException {"failed to make new mutex token"};
 }
 
 
 Mutex::Mutex()
 try : impl_(std::make_shared<Impl>()) {
-} catch (const Exception&) {
-  throw Exception {"memory shortage"};
+} catch (const std::bad_alloc&) {
+  throw MemoryException {"memory shortage"};
 }
 
 Mutex::~Mutex() noexcept {

@@ -308,7 +308,7 @@ TEST_P(FutureChainLazyAndLazy, ThenAndWithFuture) {
   TestSecondary(sut.ThenAnd([&](auto&) { return secondary_.future(); }));
 }
 
-TEST(Future_Completer, CompleteAfterCopy) {
+TEST(FutureCompleter, CompleteAfterCopy) {
   std::optional<nf7::Future<int32_t>> fut;
   {
     std::optional<nf7::Future<int32_t>::Completer> sut;
@@ -321,7 +321,7 @@ TEST(Future_Completer, CompleteAfterCopy) {
   }
   EXPECT_TRUE(fut->done());
 }
-TEST(Future_Completer, CompleteAfterMove) {
+TEST(FutureCompleter, CompleteAfterMove) {
   std::optional<nf7::Future<int32_t>> fut;
   {
     std::optional<nf7::Future<int32_t>::Completer> sut;

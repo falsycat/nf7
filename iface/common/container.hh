@@ -72,7 +72,7 @@ class NullContainer : public Container<I> {
     static const auto kInstance = std::make_shared<NullContainer>();
     return kInstance;
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
 
  public:
@@ -109,7 +109,7 @@ class SimpleContainer : public Container<I> {
     try {
       return std::make_shared<Container<I>>(std::move(factories));
     } catch (const std::bad_alloc&) {
-      throw Exception {"memory shortage"};
+      throw MemoryException {};
     }
   }
 
@@ -139,7 +139,7 @@ class SimpleContainer : public Container<I> {
         assert(added);
         return itr->second;
       } catch (...) {
-        throw Exception {"memory shortage"};
+        throw MemoryException {};
       }
     }
     return fallback_.Get(idx);

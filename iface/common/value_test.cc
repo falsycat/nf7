@@ -162,20 +162,20 @@ TEST(Value, ObjectNotEqual) {
   EXPECT_NE(nf7::Value::MakeObject({}), nf7::Value::MakeObject({}));
 }
 
-TEST(Value_Buffer, Make) {
+TEST(ValueBuffer, Make) {
   const auto  value = nf7::Value::MakeBuffer<uint8_t>({1, 2, 3, 4});
   const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 4);
   EXPECT_EQ((std::vector<uint8_t> {sut.begin<uint8_t>(), sut.end<uint8_t>()}),
             (std::vector<uint8_t> {1, 2, 3, 4}));
 }
-TEST(Value_Buffer, AsStr) {
+TEST(ValueBuffer, AsStr) {
   const auto  value = nf7::Value::MakeBuffer<char>({'h', 'e', 'l', 'l'});
   const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 4);
   EXPECT_EQ(sut.str(), "hell");
 }
-TEST(Value_Buffer, AsU64) {
+TEST(ValueBuffer, AsU64) {
   const auto  value = nf7::Value::MakeBuffer<uint64_t>({7777, 8888, 9999});
   const auto& sut   = value.as<nf7::Value::Buffer>();
   EXPECT_EQ(sut.size(), 24);
@@ -185,7 +185,7 @@ TEST(Value_Buffer, AsU64) {
             (std::vector<uint64_t> {7777, 8888, 9999}));
 }
 
-TEST(Value_Object, MakeArray) {
+TEST(ValueObject, MakeArray) {
   const auto value = nf7::Value::MakeArray({
     nf7::Value::Integer {1}, nf7::Value::Real {2.0}, nf7::Value::Integer {3},
   });
@@ -198,7 +198,7 @@ TEST(Value_Object, MakeArray) {
   EXPECT_EQ(sut.at(1).as<nf7::Value::Real>(), 2.0);
   EXPECT_EQ(sut.at(2).as<nf7::Value::Integer>(), 3);
 }
-TEST(Value_Object, ArrayOutOfBounds) {
+TEST(ValueObject, ArrayOutOfBounds) {
   const auto value = nf7::Value::MakeArray({
     nf7::Value::Integer {1}, nf7::Value::Real {2.0}, nf7::Value::Integer {3},
   });
@@ -206,7 +206,7 @@ TEST(Value_Object, ArrayOutOfBounds) {
   EXPECT_THROW(sut[4], nf7::Exception);
   EXPECT_TRUE(sut.at(4).is<nf7::Value::Null>());
 }
-TEST(Value_Object, MakeObject) {
+TEST(ValueObject, MakeObject) {
   const auto value = nf7::Value::MakeObject({
     {"one",   nf7::Value::Integer {1}},
     {"two",   nf7::Value::Real {2.0}},
@@ -237,7 +237,7 @@ TEST(Value_Object, MakeObject) {
   EXPECT_EQ(begin[1].second.as<nf7::Value::Real>(), 2.0);
   EXPECT_EQ(begin[2].second.as<nf7::Value::Integer>(), 3);
 }
-TEST(Value_Object, UnknownKey) {
+TEST(ValueObject, UnknownKey) {
   const auto value = nf7::Value::MakeObject({
     {"one",   nf7::Value::Integer {1}},
     {"two",   nf7::Value::Real {2.0}},

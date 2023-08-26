@@ -16,7 +16,7 @@ class NullLogger : public subsys::Logger {
     static const auto kInstance = std::make_shared<NullLogger>();
     return kInstance;
   } catch (const std::bad_alloc&) {
-    throw Exception {"memory shortage"};
+    throw MemoryException {};
   }
 
  public:
