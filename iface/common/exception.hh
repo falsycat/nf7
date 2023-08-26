@@ -13,22 +13,28 @@ namespace nf7 {
 
 class Exception : public std::exception, std::nested_exception {
  public:
-  template <typename... Args>
-  static std::exception_ptr MakePtr(Args&&... args) {
-    return std::make_exception_ptr(Exception {std::forward<Args>(args)...});
+  static std::exception_ptr MakePtr(
+      const char* what,
+      std::source_location loc = std::source_location::current()) noexcept {
+    return std::make_exception_ptr(Exception {what, loc});
+  }
+  static std::exception_ptr MakePtr(
+      const std::string& what,
+      std::source_location loc = std::source_location::current()) noexcept {
+    return std::make_exception_ptr(Exception {what, loc});
   }
 
  public:
   Exception() = delete;
   explicit Exception(
       const char*          what,
-      std::source_location location = std::source_location::current()) :
-      what_(what), location_(location) { }
+      std::source_location loc = std::source_location::current()) noexcept
+      : what_(what), location_(loc) { }
   explicit Exception(
-      const std::string&   what,
-      std::source_location location = std::source_location::current()) :
-      what_(what), location_(location) { }
+      const std::string&,
+      std::source_location = std::source_location::current());
 
+ public:
   void RethrowNestedIf() const {
     if (auto ptr = nested_ptr()) {
       std::rethrow_exception(ptr);
@@ -46,6 +52,21 @@ class Exception : public std::exception, std::nested_exception {
  private:
   std::variant<const char*, std::string> what_;
   std::source_location location_;
+};
+
+class MemoryException : public Exception {
+ public:
+  static std::exception_ptr MakePtr(
+      const char* str,
+      std::source_location loc = std::source_location::current()) noexcept {
+    return std::make_exception_ptr(MemoryException {str, loc});
+  }
+
+ public:
+  MemoryException(
+      const char* what = "memory shortage",
+      std::source_location loc = std::source_location::current()) noexcept
+      : Exception(what, loc) { }
 };
 
 std::ostream& operator<<(std::ostream&, const Exception& e);

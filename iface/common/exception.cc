@@ -3,6 +3,12 @@
 
 namespace nf7 {
 
+Exception::Exception(const std::string& what, std::source_location loc)
+try : what_(what), location_(loc) {
+} catch (const std::bad_alloc&) {
+  throw MemoryException {};
+}
+
 std::ostream& operator<<(std::ostream& st, const Exception& e) {
   auto idx = uint32_t {0};
   auto ptr = &e;
