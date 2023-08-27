@@ -20,6 +20,16 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# ---- SQLite (public domain)
+FetchContent_Declare(
+  sqlite
+  URL      https://www.sqlite.org/2023/sqlite-amalgamation-3430000.zip
+  URL_HASH SHA256=bb5849ae4d7129c09d20596379a0b3f7b1ac59cf9998eba5ef283ea9b6c000a5
+  DOWNLOAD_EXTRACT_TIMESTAMP ON
+)
+FetchContent_Populate(sqlite)
+include(sqlite.cmake)
+
 # ---- uvw (MIT)
 FetchContent_Declare(
   uvw
