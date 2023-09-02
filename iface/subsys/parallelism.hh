@@ -17,7 +17,6 @@ class Parallelism :
   using AsyncTaskQueue::Push;
   using AsyncTaskQueue::Wrap;
   using AsyncTaskQueue::Exec;
-  using AsyncTaskQueue::ExecAnd;
 
  protected:
   using AsyncTaskQueue::shared_from_this;

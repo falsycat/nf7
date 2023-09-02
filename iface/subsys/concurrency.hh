@@ -17,7 +17,6 @@ class Concurrency :
   using SyncTaskQueue::Push;
   using SyncTaskQueue::Wrap;
   using SyncTaskQueue::Exec;
-  using SyncTaskQueue::ExecAnd;
 
  protected:
   using SyncTaskQueue::shared_from_this;
