@@ -1,6 +1,7 @@
 // No copyright
 #include "iface/common/mutex.hh"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -8,6 +9,10 @@
 #include <optional>
 #include <thread>
 #include <vector>
+
+#include "iface/common/exception.hh"
+
+#include "iface/common/task_test.hh"
 
 
 using namespace std::literals;
@@ -111,6 +116,66 @@ TEST(Mutex, LockAbort) {
   auto k  = mtx->TryLockEx();
   auto fu = mtx->Lock();
 
+  mtx = std::nullopt;
+  EXPECT_TRUE(fu.error());
+}
+
+TEST(Mutex, RunAsyncWithComplete) {
+  nf7::Mutex mtx;
+
+  const auto aq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::AsyncTask>>();
+  const auto sq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::SyncTask>>();
+
+  ON_CALL(*aq_mock, Push)
+      .WillByDefault([&](auto&& task) {
+        nf7::AsyncTaskContext ctx;
+        task(ctx);
+      });
+  ON_CALL(*sq_mock, Push)
+      .WillByDefault([&](auto&& task) {
+        nf7::SyncTaskContext ctx;
+        task(ctx);
+      });
+
+  auto fu = mtx.RunAsync(aq_mock, sq_mock, [](auto&) { return int32_t {777}; });
+  EXPECT_TRUE(fu.done());
+}
+TEST(Mutex, RunAsyncWithError) {
+  nf7::Mutex mtx;
+
+  const auto aq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::AsyncTask>>();
+  const auto sq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::SyncTask>>();
+
+  ON_CALL(*aq_mock, Push)
+      .WillByDefault([&](auto&& task) {
+        nf7::AsyncTaskContext ctx;
+        task(ctx);
+      });
+  ON_CALL(*sq_mock, Push)
+      .WillByDefault([&](auto&& task) {
+        nf7::SyncTaskContext ctx;
+        task(ctx);
+      });
+
+  auto fu = mtx.RunAsync(aq_mock, sq_mock, [](auto&) -> int32_t {
+    throw nf7::Exception {"helloworld"};
+  });
+  EXPECT_TRUE(fu.error());
+}
+TEST(Mutex, RunAsyncWithAbort) {
+  std::optional<nf7::Mutex> mtx;
+  mtx.emplace();
+
+  const auto aq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::AsyncTask>>();
+  const auto sq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::SyncTask>>();
+
+  auto fu = mtx->RunAsync(aq_mock, sq_mock, [](auto&) { return 0; });
   mtx = std::nullopt;
   EXPECT_TRUE(fu.error());
 }
