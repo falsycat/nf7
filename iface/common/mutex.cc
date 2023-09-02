@@ -72,7 +72,7 @@ try {
   case kInclusive:
     if (last_inclusive_) {
       if (pends_.empty() && cur) {
-        return Future<SharedToken> {std::move(cur)};
+        return cur;
       } else if (!pends_.empty()) {
         return pends_.back().future();
       }
@@ -87,11 +87,9 @@ try {
     pends_.emplace_back();
     return pends_.back().future();
   }
-  return Future<SharedToken> {MakeToken()};
+  return MakeToken();
 } catch (const std::bad_alloc&) {
-  return Future<SharedToken> {
-    MemoryException::MakePtr("failed to queue lock request"),
-  };
+  return MemoryException::MakePtr("failed to queue lock request");
 }
 
 Mutex::SharedToken Mutex::Impl::TryLock(Mode mode)

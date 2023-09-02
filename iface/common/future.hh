@@ -113,9 +113,9 @@ class Future final {
   };
 
   Future() = delete;
-  explicit Future(T&& v) : internal_(Internal(std::move(v))) {
+  Future(T&& v) : internal_(Internal(std::move(v))) {
   }
-  explicit Future(std::exception_ptr e) : internal_(Internal(e)) {
+  Future(std::exception_ptr e) : internal_(Internal(e)) {
   }
 
   Future(const Future&) = default;

@@ -79,7 +79,7 @@ try {
   });
   return comp.future();
 } catch (const Exception&) {
-  return Future<Void> {std::current_exception()};
+  return {std::current_exception()};
 }
 
 Future<Void> File::Open(const nf7::Mutex::SharedToken& k) noexcept {
@@ -122,7 +122,7 @@ try {
   });
   return comp.future();
 } catch (const Exception&) {
-  return Future<uint64_t> {std::current_exception()};
+  return std::current_exception();
 }
 
 Future<Void> File::Truncate(uint64_t n) noexcept
@@ -142,7 +142,7 @@ try {
   });
   return comp.future();
 } catch (const Exception&) {
-  return Future<Void> {std::current_exception()};
+  return std::current_exception();
 }
 
 Future<File::ReadResult> File::Read(
@@ -174,7 +174,7 @@ try {
   });
   return comp.future();
 } catch (const Exception&) {
-  return Future<ReadResult> {std::current_exception()};
+  return std::current_exception();
 }
 
 Future<uint64_t> File::Write(
@@ -203,7 +203,7 @@ try {
   });
   return comp.future();
 } catch (const Exception&) {
-  return Future<uint64_t> {std::current_exception()};
+  return std::current_exception();
 }
 
 }  // namespace nf7::core::uv
