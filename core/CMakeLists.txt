@@ -5,6 +5,7 @@ target_link_libraries(nf7_core
     luajit
     nf7_config
     nf7_iface
+    sqlite
     uvw
 )
 target_sources(nf7_core
@@ -12,6 +13,7 @@ target_sources(nf7_core
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
+    sqlite/database.cc
     uv/concurrency.cc
     uv/parallelism.cc
     version.cc
@@ -19,6 +21,8 @@ target_sources(nf7_core
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
+    sqlite/database.hh
+    sqlite/util.hh
     uv/clock.hh
     uv/concurrency.hh
     uv/context.hh
