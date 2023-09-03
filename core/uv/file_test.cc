@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -11,31 +12,40 @@
 #include "core/uv/context_test.hh"
 
 
-using namespace std::literals;
-
 class UV_File :
     public nf7::core::uv::test::ContextFixture,
     public ::testing::WithParamInterface<bool> {
  protected:
-  static constexpr const char* kTempFile =
-    "./.this_is_temporary_file_for_uv_file_unittest";
+  void SetUp() override {
+    ContextFixture::SetUp();
 
- protected:
-  void TearDown() override {
-    ContextFixture::TearDown();
-    std::filesystem::remove(kTempFile);
+    const auto info = ::testing::UnitTest::GetInstance()->current_test_info();
+
+    auto name =
+        std::string {"unittest_"} + info->test_suite_name() + info->name();
+    std::replace(name.begin(), name.end(), '/', '_');
+    path_ = ::testing::TempDir() + "/" + name;
   }
-  bool isCompleteTest() const noexcept { return GetParam(); }
-
+  void TearDown() override {
+    std::filesystem::remove(path_);
+    ContextFixture::TearDown();
+  }
   void PrepareFile(const char* text) {
-    std::ofstream f {kTempFile};
+    std::ofstream f {path_};
     f << text;
   }
+
+ protected:
+  bool isCompleteTest() const noexcept { return GetParam(); }
+  const std::string& path() const noexcept { return path_; }
+
+ private:
+  std::string path_;
 };
 
 TEST_P(UV_File, Open) {
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDWR
       | uvw::file_req::file_open_flags::CREAT);
 
@@ -44,7 +54,7 @@ TEST_P(UV_File, Open) {
   if (isCompleteTest()) {
     ctx_->Run();
     EXPECT_TRUE(result.done());
-    EXPECT_TRUE(std::filesystem::exists(kTempFile));
+    EXPECT_TRUE(std::filesystem::exists(path()));
   } else {
     result.Then([](auto&) { FAIL(); });
   }
@@ -54,7 +64,7 @@ TEST_P(UV_File, FetchSize) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->FetchSize();
@@ -70,7 +80,7 @@ TEST_P(UV_File, FetchSize) {
 
 TEST_P(UV_File, FetchSizeFail) {
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->FetchSize();
@@ -82,7 +92,7 @@ TEST_P(UV_File, FetchSizeFail) {
 
 TEST_P(UV_File, Truncate) {
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDWR
       | uvw::file_req::file_open_flags::CREAT);
 
@@ -90,7 +100,7 @@ TEST_P(UV_File, Truncate) {
   if (isCompleteTest()) {
     ctx_->Run();
     EXPECT_TRUE(result.done());
-    EXPECT_EQ(std::filesystem::file_size(kTempFile), 256);
+    EXPECT_EQ(std::filesystem::file_size(path()), 256);
   } else {
     result.Then([](auto&) { FAIL(); });
   }
@@ -98,7 +108,7 @@ TEST_P(UV_File, Truncate) {
 
 TEST_P(UV_File, TruncateFail) {
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Truncate(256);
@@ -112,7 +122,7 @@ TEST_P(UV_File, Read) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Read(1, 3);
@@ -133,7 +143,7 @@ TEST_P(UV_File, ReadFail) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::WRONLY);
 
   auto result = sut->Read(1, 3);
@@ -147,7 +157,7 @@ TEST_P(UV_File, Write) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::WRONLY);
 
   auto result = sut->Write(5, reinterpret_cast<const uint8_t*>("universe"), 8);
@@ -156,7 +166,7 @@ TEST_P(UV_File, Write) {
     ASSERT_TRUE(result.done());
     EXPECT_EQ(result.value(), 8);
 
-    std::ifstream fs {kTempFile};
+    std::ifstream fs {path()};
     const std::string text {
       std::istreambuf_iterator<char> {fs},
       std::istreambuf_iterator<char> {},
@@ -171,7 +181,7 @@ TEST_P(UV_File, WriteFail) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      env(), kTempFile,
+      env(), path(),
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Write(5, reinterpret_cast<const uint8_t*>("universe"), 8);

@@ -14,11 +14,8 @@
 #include "iface/common/void.hh"
 #include "iface/subsys/concurrency.hh"
 #include "iface/subsys/database.hh"
-#include "iface/subsys/logger.hh"
 #include "iface/subsys/parallelism.hh"
 #include "iface/env.hh"
-
-#include "core/logger.hh"
 
 
 namespace nf7::core::sqlite {
@@ -37,7 +34,6 @@ class Database final :
       : Database(env, MakeConn(addr)) { }
   Database(Env& env, sqlite3* conn) noexcept
       : subsys::Database("nf7::core::sqlite::Database"),
-        logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
         concurrency_(env.Get<subsys::Concurrency>()),
         parallelism_(env.Get<subsys::Parallelism>()),
         conn_(conn) { }
@@ -57,7 +53,6 @@ class Database final :
   }
 
  private:
-  const std::shared_ptr<subsys::Logger> logger_;
   const std::shared_ptr<subsys::Concurrency> concurrency_;
   const std::shared_ptr<subsys::Parallelism> parallelism_;
 
