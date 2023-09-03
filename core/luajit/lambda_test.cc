@@ -26,7 +26,7 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
 
   std::shared_ptr<nf7::core::luajit::Value> Compile(
       const char* script) noexcept {
-    auto lua = env_->Get<nf7::core::luajit::Context>();
+    auto lua = env().Get<nf7::core::luajit::Context>();
 
     std::shared_ptr<nf7::core::luajit::Value> func;
     lua->Exec([&](auto& lua) {
@@ -43,7 +43,7 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
               const std::vector<nf7::Value>& out = {},
               nf7::Env* env = nullptr) {
     if (nullptr == env) {
-      env = &*env_;
+      env = &this->env();
     }
 
     auto func = Compile(script);
@@ -100,7 +100,7 @@ TEST_P(LuaJIT_Lambda, CtxMultiRecvWithDelay) {
                       "nf7:assert(\"null\"    == ctx:recv():type())\n"
                       "nf7:assert(\"integer\" == ctx:recv():type())");
 
-  auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env_, func);
+  auto sut = std::make_shared<nf7::core::luajit::Lambda>(env(), func);
   sut->taker()->Take(nf7::Value::Null {});
   ConsumeTasks();
   EXPECT_EQ(sut->exitCount(), 0);
@@ -145,7 +145,7 @@ TEST_P(LuaJIT_Lambda, CtxSleep) {
   const auto clock = std::make_shared<nf7::core::Clock>();
   nf7::SimpleEnv env {{
     {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
-  }, *env_};
+  }, this->env()};
 
   clock->Tick();
   const auto begin = clock->now();
@@ -193,7 +193,7 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
 
   nf7::SimpleEnv env {{
     {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
-  }, *env_};
+  }, this->env()};
 
   Expect(
       "local ctx = ...\n"

@@ -16,7 +16,7 @@ class LuaJIT_Thread : public nf7::core::luajit::test::ContextFixture {
   template <typename... Args>
   void TestThread(
       const auto& setup, const char* script, Args&&... args) {
-    auto lua    = env_->Get<nf7::core::luajit::Context>();
+    auto lua    = env().Get<nf7::core::luajit::Context>();
     auto called = uint32_t {0};
     lua->Exec([&](auto& lua) {
       const auto compile = luaL_loadstring(*lua, script);
