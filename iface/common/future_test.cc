@@ -1,6 +1,7 @@
 // No copyright
 #include "iface/common/future.hh"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -10,6 +11,8 @@
 #include <utility>
 
 #include "iface/common/exception.hh"
+
+#include "iface/common/task_test.hh"
 
 
 using namespace std::literals;
@@ -334,6 +337,89 @@ TEST(FutureCompleter, CompleteAfterMove) {
   }
   EXPECT_TRUE(fut->done());
 }
+
+TEST(FutureCompleter, RunWithComplete) {
+  nf7::Future<int32_t>::Completer sut;
+  sut.Run([]() { return int32_t {555}; });
+  EXPECT_TRUE(sut.future().done());
+}
+TEST(FutureCompleter, RunWithThrow) {
+  nf7::Future<int32_t>::Completer sut;
+  sut.Run([]() -> int32_t { throw nf7::Exception {"helloworld"}; });
+  EXPECT_TRUE(sut.future().error());
+}
+
+TEST(FutureCompleter, RunAsyncWithComplete) {
+  nf7::Future<int32_t>::Completer sut;
+  const auto fu = sut.future();
+
+  const auto aq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::AsyncTask>>();
+  const auto sq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::SyncTask>>();
+
+  auto step = uint32_t {0};
+  EXPECT_CALL(*aq_mock, Push)
+      .WillOnce([&](auto&& task) {
+        ++step;
+        EXPECT_EQ(step, 1);
+
+        nf7::AsyncTaskContext ctx;
+        task(ctx);
+
+        ++step;
+        EXPECT_EQ(step, 3);
+      });
+  EXPECT_CALL(*sq_mock, Push)
+      .WillOnce([&](auto&& task) {
+        ++step;
+        EXPECT_EQ(step, 2);
+
+        nf7::SyncTaskContext ctx;
+        EXPECT_TRUE(fu.yet());
+        task(ctx);
+        EXPECT_TRUE(fu.done());
+      });
+
+  sut.RunAsync(aq_mock, sq_mock, [](auto&) { return int32_t {777}; });
+}
+
+TEST(FutureCompleter, RunAsyncWithThrow) {
+  nf7::Future<int32_t>::Completer sut;
+  const auto fu = sut.future();
+
+  const auto aq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::AsyncTask>>();
+  const auto sq_mock =
+      std::make_shared<nf7::test::TaskQueueMock<nf7::SyncTask>>();
+
+  auto step = uint32_t {0};
+  EXPECT_CALL(*aq_mock, Push)
+      .WillOnce([&](auto&& task) {
+        ++step;
+        EXPECT_EQ(step, 1);
+
+        nf7::AsyncTaskContext ctx;
+        task(ctx);
+
+        ++step;
+        EXPECT_EQ(step, 3);
+      });
+  EXPECT_CALL(*sq_mock, Push)
+      .WillOnce([&](auto&& task) {
+        ++step;
+        EXPECT_EQ(step, 2);
+
+        nf7::SyncTaskContext ctx;
+        EXPECT_TRUE(fu.yet());
+        task(ctx);
+        EXPECT_TRUE(fu.error());
+      });
+
+  sut.RunAsync(aq_mock, sq_mock,
+               [](auto&) -> int32_t { throw nf7::Exception {"helloworld"}; });
+}
+
 
 #if !defined(NDEBUG)
 TEST(Future, DeathByListenInCallback) {

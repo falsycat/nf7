@@ -128,7 +128,6 @@ TEST(WrappedTaskQueue, Push) {
 
   // ensure all templates legal
   (std::void_t<decltype(sut.Wrap([](auto){}))>) 0;
-  (std::void_t<decltype(sut.ExecAnd<uint32_t>([](auto){ return 0; }))>) 0;
   (std::void_t<decltype(sut.Exec([](auto){}))>) 0;
 }
 

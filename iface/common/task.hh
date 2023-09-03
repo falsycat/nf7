@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "iface/common/exception.hh"
-#include "iface/common/future.hh"
 
 namespace nf7 {
 
@@ -151,27 +150,6 @@ class TaskQueue : public std::enable_shared_from_this<TaskQueue<T>> {
   }
 
   // THREAD SAFE
-  template <typename R>
-  Future<R> ExecAnd(
-      std::function<R(Param)>&& f,
-      std::source_location loc = std::source_location::current()) noexcept {
-    return ExecAnd({}, std::move(f));
-  }
-
-  // THREAD SAFE
-  template <typename R>
-  Future<R> ExecAnd(
-      Future<R>::Completer&& cmp,
-      std::function<R(Param)>&& f,
-      std::source_location loc = std::source_location::current()) noexcept {
-    Future<R> future {cmp};
-    Push(Item { [f = std::move(f), cmp = std::move(cmp)](Param) mutable {
-      cmp.Exec(f);
-    }, loc});
-    return future;
-  }
-
-  // THREAD SAFE
   void Exec(
       std::function<void(Param)>&& f,
       std::source_location loc = std::source_location::current()) noexcept {
@@ -202,7 +180,6 @@ class WrappedTaskQueue : public I {
 
   using Inside::Wrap;
   using Inside::Exec;
-  using Inside::ExecAnd;
 
  private:
   std::shared_ptr<Inside> q_;

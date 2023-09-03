@@ -17,7 +17,7 @@ using UV_Concurrency = nf7::core::uv::test::ContextFixture;
 
 
 TEST_F(UV_Concurrency, Push) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+  auto sut = std::make_shared<nf7::core::uv::Concurrency>(env());
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { ++called; });
@@ -27,7 +27,7 @@ TEST_F(UV_Concurrency, Push) {
 }
 
 TEST_F(UV_Concurrency, PushFromTask) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+  auto sut = std::make_shared<nf7::core::uv::Concurrency>(env());
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { sut->Exec([&](auto&) { ++called; }); });
@@ -37,7 +37,7 @@ TEST_F(UV_Concurrency, PushFromTask) {
 }
 
 TEST_F(UV_Concurrency, ExecOrderly) {
-  auto sut = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+  auto sut = std::make_shared<nf7::core::uv::Concurrency>(env());
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { ++called; EXPECT_EQ(called, 1); });
@@ -48,8 +48,8 @@ TEST_F(UV_Concurrency, ExecOrderly) {
 }
 
 TEST_F(UV_Concurrency, PushWithDelay) {
-  auto clock = env_->Get<nf7::subsys::Clock>();
-  auto sut   = std::make_shared<nf7::core::uv::Concurrency>(*env_);
+  auto clock = env().Get<nf7::subsys::Clock>();
+  auto sut   = std::make_shared<nf7::core::uv::Concurrency>(env());
 
   auto called = uint64_t {0};
   sut->Push({clock->now() + 100ms, [&](auto&) { ++called; }});

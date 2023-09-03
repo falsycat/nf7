@@ -35,7 +35,7 @@ class UV_File :
 
 TEST_P(UV_File, Open) {
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDWR
       | uvw::file_req::file_open_flags::CREAT);
 
@@ -54,7 +54,7 @@ TEST_P(UV_File, FetchSize) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->FetchSize();
@@ -70,7 +70,7 @@ TEST_P(UV_File, FetchSize) {
 
 TEST_P(UV_File, FetchSizeFail) {
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->FetchSize();
@@ -82,7 +82,7 @@ TEST_P(UV_File, FetchSizeFail) {
 
 TEST_P(UV_File, Truncate) {
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDWR
       | uvw::file_req::file_open_flags::CREAT);
 
@@ -98,7 +98,7 @@ TEST_P(UV_File, Truncate) {
 
 TEST_P(UV_File, TruncateFail) {
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Truncate(256);
@@ -112,7 +112,7 @@ TEST_P(UV_File, Read) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Read(1, 3);
@@ -133,7 +133,7 @@ TEST_P(UV_File, ReadFail) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::WRONLY);
 
   auto result = sut->Read(1, 3);
@@ -147,7 +147,7 @@ TEST_P(UV_File, Write) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::WRONLY);
 
   auto result = sut->Write(5, reinterpret_cast<const uint8_t*>("universe"), 8);
@@ -171,7 +171,7 @@ TEST_P(UV_File, WriteFail) {
   PrepareFile("helloworld");
 
   auto sut = nf7::core::uv::File::Make(
-      *env_, kTempFile,
+      env(), kTempFile,
       uvw::file_req::file_open_flags::RDONLY);
 
   auto result = sut->Write(5, reinterpret_cast<const uint8_t*>("universe"), 8);

@@ -17,6 +17,8 @@ target_sources(nf7_iface
     common/leak_detector.hh
     common/mutex.hh
     common/observer.hh
+    common/observer.hh
+    common/sql.hh
     common/task.hh
     common/task_context.hh
     common/value.hh
@@ -25,6 +27,7 @@ target_sources(nf7_iface
     data/interface.hh
     data/wrap.hh
     subsys/concurrency.hh
+    subsys/database.hh
     subsys/interface.hh
     subsys/logger.hh
     subsys/parallelism.hh
@@ -49,6 +52,7 @@ target_sources(nf7_iface_test
     common/task_test.hh
     common/value_test.cc
     subsys/logger_test.hh
+    env_test.hh
     lambda_test.cc
     lambda_test.hh
 )

@@ -163,7 +163,6 @@ class Context :
   using TaskQueue::Push;
   using TaskQueue::Wrap;
   using TaskQueue::Exec;
-  using TaskQueue::ExecAnd;
 
   Kind kind() const noexcept { return kind_; }
 

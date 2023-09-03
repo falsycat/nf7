@@ -17,7 +17,7 @@ using UV_Parallelism = nf7::core::uv::test::ContextFixture;
 
 
 TEST_F(UV_Parallelism, Push) {
-  auto sut = std::make_shared<nf7::core::uv::Parallelism>(*env_);
+  auto sut = std::make_shared<nf7::core::uv::Parallelism>(env());
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { ++called; });
@@ -27,7 +27,7 @@ TEST_F(UV_Parallelism, Push) {
 }
 
 TEST_F(UV_Parallelism, PushFromTask) {
-  auto sut = std::make_shared<nf7::core::uv::Parallelism>(*env_);
+  auto sut = std::make_shared<nf7::core::uv::Parallelism>(env());
 
   auto called = uint64_t {0};
   sut->Exec([&](auto&) { sut->Exec([&](auto&) { ++called; }); });
@@ -37,8 +37,8 @@ TEST_F(UV_Parallelism, PushFromTask) {
 }
 
 TEST_F(UV_Parallelism, PushWithDelay) {
-  auto clock = env_->Get<nf7::subsys::Clock>();
-  auto sut   = std::make_shared<nf7::core::uv::Parallelism>(*env_);
+  auto clock = env().Get<nf7::subsys::Clock>();
+  auto sut   = std::make_shared<nf7::core::uv::Parallelism>(env());
 
   auto called = uint64_t {0};
   sut->Push({clock->now() + 100ms, [&](auto&) { ++called; }});

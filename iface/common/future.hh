@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "iface/common/exception.hh"
+#include "iface/common/task_context.hh"
 
 namespace nf7 {
 
@@ -112,9 +113,9 @@ class Future final {
   };
 
   Future() = delete;
-  explicit Future(T&& v) : internal_(Internal(std::move(v))) {
+  Future(T&& v) : internal_(Internal(std::move(v))) {
   }
-  explicit Future(std::exception_ptr e) : internal_(Internal(e)) {
+  Future(std::exception_ptr e) : internal_(Internal(e)) {
   }
 
   Future(const Future&) = default;
@@ -128,7 +129,7 @@ class Future final {
   }
   template <typename V>
   Future<T>& Attach(const std::shared_ptr<V>& ptr) {
-    return Listen([ptr = std::move(ptr)](auto&) {});
+    return Listen([ptr](auto&) {});
   }
   Future<T>& Then(std::function<void(const T&)>&& f) {
     Listen([f = std::move(f)](auto& fu) noexcept {
@@ -257,6 +258,11 @@ class Future<T>::Completer final {
     return *this;
   }
 
+ public:
+  template <typename V>
+  void Attach(const std::shared_ptr<V>& ptr) {
+    internal_->Listen([ptr](auto&) {});
+  }
   void Complete(T&& v) noexcept {
     assert(nullptr != internal_);
     internal_->Complete(std::move(v));
@@ -273,7 +279,23 @@ class Future<T>::Completer final {
       Throw();
     }
   }
+  void RunAsync(const std::shared_ptr<AsyncTaskQueue>& aq,
+                const std::shared_ptr<SyncTaskQueue>&  sq,
+               std::function<T(AsyncTaskContext&)>&& f) noexcept {
+    assert(nullptr != internal_);
+    aq->Exec([*this, sq, f = std::move(f)](auto& ctx) mutable {
+      try {
+        sq->Exec([*this, ret = f(ctx)](auto&) mutable {
+          Complete(std::move(ret));
+        });
+      } catch (...) {
+        const auto eptr = std::current_exception();
+        sq->Exec([*this, eptr](auto&) mutable { Throw(eptr); });
+      }
+    });
+  }
 
+ public:
   Future<T> future() const noexcept {
     assert(nullptr != internal_);
     return {internal_};
