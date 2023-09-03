@@ -43,6 +43,8 @@ target_sources(nf7_core_test
     luajit/lambda_test.cc
     luajit/thread_test.cc
     luajit/thread_test.hh
+    sqlite/database_test.cc
+    sqlite/database_test.hh
     uv/context_test.hh
     uv/concurrency_test.cc
     uv/file_test.cc
