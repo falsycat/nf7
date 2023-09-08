@@ -46,7 +46,6 @@ target_sources(nf7_iface_test
     common/task_test.cc
     common/task_test.hh
     common/value_test.cc
-    subsys/dealer_test.hh
     subsys/logger_test.hh
     env_test.hh
 )
