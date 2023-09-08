@@ -55,7 +55,7 @@ void Concurrency::Push(SyncTask&& task) noexcept {
 
 Concurrency::Impl::Impl(Env& env)
     : clock_(env.Get<subsys::Clock>()),
-      logger_(env.GetOr<subsys::Logger>(NullLogger::instance())) {
+      logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)) {
 }
 
 std::chrono::milliseconds Concurrency::Impl::Consume() noexcept {
