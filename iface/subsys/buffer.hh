@@ -6,9 +6,9 @@
 
 #include "iface/common/future.hh"
 #include "iface/common/void.hh"
-#include "iface/data/interface.hh"
+#include "iface/subsys/interface.hh"
 
-namespace nf7::data {
+namespace nf7::subsys {
 
 class FiniteBuffer : public Interface {
  public:
@@ -54,4 +54,5 @@ class WritableBuffer : public Interface {
   }
 };
 
-}  // namespace nf7::data
+}  // namespace nf7::subsys
+

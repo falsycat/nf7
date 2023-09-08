@@ -1,14 +1,14 @@
 // No copyright
 #pragma once
 
-#include "iface/data/interface.hh"
+#include "iface/subsys/interface.hh"
 
-namespace nf7::data {
+namespace nf7::subsys {
 
 template <typename T>
-class Wrap : public Interface {
+class Wrapper : public Interface {
  protected:
-  Wrap(const char* name, T& data) noexcept
+  Wrapper(const char* name, T& data) noexcept
       : Interface(name), data_(data) { }
 
  public:
@@ -18,4 +18,4 @@ class Wrap : public Interface {
   T& data_;
 };
 
-}  // namespace nf7::data
+}  // namespace nf7::subsys
