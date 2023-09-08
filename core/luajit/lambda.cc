@@ -60,7 +60,19 @@ class Lambda::Thread : public luajit::Thread {
 };
 
 
-void Lambda::Main(const nf7::Value& v) noexcept {
+Lambda::Lambda(nf7::Env& env,
+               const std::shared_ptr<Value>& func,
+               const std::shared_ptr<subsys::Maker<IO>>& maker)
+    : nf7::Lambda(), Observer<IO>(*maker),
+      clock_(env.GetOr<subsys::Clock>()),
+      concurrency_(env.Get<subsys::Concurrency>()),
+      logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
+      maker_(maker),
+      taker_(env.GetOr<subsys::Taker<IO>>(NullTaker<IO>::kInstance)),
+      lua_(env.Get<luajit::Context>()),
+      func_(func) { }
+
+void Lambda::Notify(const IO& v) noexcept {
   lua_->Exec([this, self = shared_from_this(), v](auto& lua) {
     recvq_.push_back(v);
     ++recv_count_;
@@ -134,8 +146,9 @@ void Lambda::PushLuaContextObject(TaskContext& lua) noexcept {
       lua_pushcfunction(*lua, [](auto L) {
         const auto la = self(L);
         const auto v  = (TaskContext {la->lua_, L}).CheckValue(2);
-        la->concurrency_->Exec(
-            [la, v](auto&) { la->emitter()->Emit(nf7::Value {v}); });
+        la->concurrency_->Exec([la, v = v](auto&) mutable {
+          la->taker_->Take(std::move(v));
+        });
         return 1;
       });
       lua_setfield(*lua, -2, "send");

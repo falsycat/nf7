@@ -30,6 +30,7 @@ target_sources(nf7_core
     uv/file.hh
     uv/parallelism.hh
     clock.hh
+    dealer.hh
     logger.hh
     version.hh
 )
