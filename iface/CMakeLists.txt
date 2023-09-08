@@ -27,6 +27,7 @@ target_sources(nf7_iface
     subsys/dealer.hh
     subsys/interface.hh
     subsys/logger.hh
+    subsys/meta_env.hh
     subsys/parallelism.hh
     env.hh
     lambda.hh
