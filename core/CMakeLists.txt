@@ -32,6 +32,7 @@ target_sources(nf7_core
     clock.hh
     dealer.hh
     logger.hh
+    meta_env.hh
     version.hh
 )
 
@@ -50,6 +51,7 @@ target_sources(nf7_core_test
     uv/file_test.cc
     uv/parallelism_test.cc
     clock_test.cc
+    meta_env_test.cc
 )
 target_link_libraries(nf7_core_test
   PRIVATE
