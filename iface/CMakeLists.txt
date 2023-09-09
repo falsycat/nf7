@@ -11,7 +11,6 @@ target_sources(nf7_iface
     version.cc
   PUBLIC
     common/container.hh
-    common/dealer.hh
     common/exception.hh
     common/future.hh
     common/leak_detector.hh
@@ -23,16 +22,14 @@ target_sources(nf7_iface
     common/task_context.hh
     common/value.hh
     common/void.hh
-    data/buffer.hh
-    data/interface.hh
-    data/wrap.hh
     subsys/concurrency.hh
     subsys/database.hh
+    subsys/dealer.hh
     subsys/interface.hh
     subsys/logger.hh
+    subsys/meta_env.hh
     subsys/parallelism.hh
     env.hh
-    file.hh
     lambda.hh
     version.hh
 )
@@ -41,7 +38,6 @@ add_executable(nf7_iface_test)
 target_sources(nf7_iface_test
   PRIVATE
     common/container_test.cc
-    common/dealer_test.cc
     common/exception_test.cc
     common/future_test.cc
     common/leak_detector_test.cc
@@ -53,8 +49,6 @@ target_sources(nf7_iface_test
     common/value_test.cc
     subsys/logger_test.hh
     env_test.hh
-    lambda_test.cc
-    lambda_test.hh
 )
 target_link_libraries(nf7_iface_test
   PRIVATE

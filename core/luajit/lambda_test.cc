@@ -7,9 +7,11 @@
 #include <vector>
 
 #include "iface/subsys/clock.hh"
+#include "iface/subsys/dealer.hh"
 
 #include "core/luajit/context.hh"
 #include "core/clock.hh"
+#include "core/dealer.hh"
 
 #include "iface/common/observer_test.hh"
 #include "iface/subsys/logger_test.hh"
@@ -22,10 +24,15 @@ using namespace std::literals;
 namespace {
 class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
  public:
-  using ContextFixture::ContextFixture;
+  LuaJIT_Lambda()
+      : maker_(std::make_shared<nf7::core::Maker<nf7::Value>>("mock maker")),
+        taker_(std::make_shared<nf7::core::Taker<nf7::Value>>("mock taker")) {
+    Install<nf7::subsys::Maker<nf7::Value>>(maker_);
+    Install<nf7::subsys::Taker<nf7::Value>>(taker_);
+  }
 
   std::shared_ptr<nf7::core::luajit::Value> Compile(
-      const char* script) noexcept {
+      const char* script) {
     auto lua = env().Get<nf7::core::luajit::Context>();
 
     std::shared_ptr<nf7::core::luajit::Value> func;
@@ -48,24 +55,27 @@ class LuaJIT_Lambda : public nf7::core::luajit::test::ContextFixture {
 
     auto func = Compile(script);
 
-    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env, func);
-    for (const auto& v : in) {
-      sut->taker()->Take(v);
-    }
-
     ::testing::StrictMock<
-        nf7::test::ObserverMock<nf7::Value>> obs {*sut->maker()};
-
+        nf7::test::ObserverMock<nf7::Value>> obs {*taker_};
     ::testing::Sequence seq;
     for (const auto& v : out) {
       EXPECT_CALL(obs, NotifyWithMove(nf7::Value {v}))
           .InSequence(seq);
     }
 
+    auto sut = std::make_shared<nf7::core::luajit::Lambda>(*env, func);
+    for (const auto& v : in) {
+      maker_->Notify({v});
+    }
+
     ConsumeTasks();
     EXPECT_EQ(sut->exitCount(), expectExit);
     EXPECT_EQ(sut->abortCount(), expectAbort);
   }
+
+ protected:
+  const std::shared_ptr<nf7::core::Maker<nf7::Value>> maker_;
+  const std::shared_ptr<nf7::core::Taker<nf7::Value>> taker_;
 };
 }  // namespace
 
@@ -101,12 +111,12 @@ TEST_P(LuaJIT_Lambda, CtxMultiRecvWithDelay) {
                       "nf7:assert(\"integer\" == ctx:recv():type())");
 
   auto sut = std::make_shared<nf7::core::luajit::Lambda>(env(), func);
-  sut->taker()->Take(nf7::Value::Null {});
+  maker_->Notify(nf7::Value::Null {});
   ConsumeTasks();
   EXPECT_EQ(sut->exitCount(), 0);
   EXPECT_EQ(sut->abortCount(), 0);
 
-  sut->taker()->Take(nf7::Value::Integer {});
+  maker_->Notify(nf7::Value::Integer {});
   ConsumeTasks();
   EXPECT_EQ(sut->exitCount(), 1);
   EXPECT_EQ(sut->abortCount(), 0);

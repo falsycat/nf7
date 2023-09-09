@@ -27,7 +27,7 @@ Parallelism::Parallelism(Env& env)
 
 Parallelism::Impl::Impl(Env& env)
     : clock_(env.Get<subsys::Clock>()),
-      logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
+      logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)),
       ctx_(env.Get<Context>()) { }
 
 void Parallelism::Impl::Consume() noexcept {

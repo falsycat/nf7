@@ -13,7 +13,7 @@
 #include "iface/common/future.hh"
 #include "iface/common/mutex.hh"
 #include "iface/common/void.hh"
-#include "iface/data/buffer.hh"
+#include "iface/subsys/buffer.hh"
 #include "iface/subsys/logger.hh"
 #include "iface/env.hh"
 
@@ -23,10 +23,10 @@ namespace nf7::core::uv {
 
 class File :
     public std::enable_shared_from_this<File>,
-    public data::FiniteBuffer,
-    public data::ResizableBuffer,
-    public data::ReadableBuffer,
-    public data::WritableBuffer {
+    public subsys::FiniteBuffer,
+    public subsys::ResizableBuffer,
+    public subsys::ReadableBuffer,
+    public subsys::WritableBuffer {
  private:
   class Finite;
   class Resizable;
@@ -34,7 +34,7 @@ class File :
   class Writable;
 
  public:
-  using ReadResult = data::ReadableBuffer::Result;
+  using ReadResult = subsys::ReadableBuffer::Result;
 
  public:
   static std::shared_ptr<File> Make(
@@ -69,10 +69,10 @@ class File :
   Future<Void> Resize(uint64_t n) noexcept override { return Truncate(n); }
 
  public:
-  std::shared_ptr<data::FiniteBuffer> MakeFinite();
-  std::shared_ptr<data::ResizableBuffer> MakeResizable();
-  std::shared_ptr<data::ReadableBuffer> MakeReadable();
-  std::shared_ptr<data::WritableBuffer> MakeWritable();
+  std::shared_ptr<subsys::FiniteBuffer> MakeFinite();
+  std::shared_ptr<subsys::ResizableBuffer> MakeResizable();
+  std::shared_ptr<subsys::ReadableBuffer> MakeReadable();
+  std::shared_ptr<subsys::WritableBuffer> MakeWritable();
 
  private:
   const std::shared_ptr<subsys::Logger> logger_;

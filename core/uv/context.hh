@@ -29,7 +29,7 @@ class Context : public subsys::Interface {
  protected:
   Context(const char* name, Env& env)
       : subsys::Interface(name),
-        logger_(env.GetOr<subsys::Logger>(NullLogger::instance())),
+        logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)),
         loop_(MakeLoop()) { }
 
  public:
