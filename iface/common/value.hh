@@ -266,10 +266,10 @@ class Value final {
   N num(std::optional<N>     def      = std::nullopt,
         std::source_location location = std::source_location::current()) const {
     if (is<Integer>()) {
-      return castSafely<N>(as<Integer>());
+      return CastSafely<N>(as<Integer>());
     }
     if (is<Real>()) {
-      return castSafely<N>(as<Real>());
+      return CastSafely<N>(as<Real>());
     }
     if (std::nullopt != def) {
       return *def;

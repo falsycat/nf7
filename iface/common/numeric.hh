@@ -7,7 +7,7 @@
 namespace nf7 {
 
 template <typename R, typename T>
-auto castSafely(
+auto CastSafely(
     T v, std::source_location location = std::source_location::current())
     -> std::enable_if_t<std::is_arithmetic_v<R> && std::is_arithmetic_v<T>, R> {
   const auto r = static_cast<R>(v);
