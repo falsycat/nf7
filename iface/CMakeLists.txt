@@ -15,6 +15,7 @@ target_sources(nf7_iface
     common/future.hh
     common/leak_detector.hh
     common/mutex.hh
+    common/numeric.hh
     common/observer.hh
     common/observer.hh
     common/sql.hh
@@ -42,6 +43,7 @@ target_sources(nf7_iface_test
     common/future_test.cc
     common/leak_detector_test.cc
     common/mutex_test.cc
+    common/numeric_test.cc
     common/observer_test.cc
     common/observer_test.hh
     common/task_test.cc
