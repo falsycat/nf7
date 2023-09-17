@@ -120,7 +120,7 @@ class EnvFixtureWithTasking : public EnvFixture {
   };
 
  public:
-  explicit EnvFixtureWithTasking(SimpleEnv::FactoryMap&& fmap)
+  explicit EnvFixtureWithTasking(SimpleEnv::FactoryMap&& fmap = {})
       : EnvFixture(std::move(fmap)),
         sq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
         aq_(std::make_shared<SimpleTaskQueue<AsyncTask>>()),
