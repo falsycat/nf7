@@ -6,85 +6,93 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
-#include <iostream>
+#include <utility>
 
 #include "iface/common/exception.hh"
-#include "iface/subsys/concurrency.hh"
-#include "iface/subsys/logger.hh"
 #include "iface/subsys/parallelism.hh"
 
 #include "core/logger.hh"
 
 
+using namespace std::literals;
+
 namespace nf7::core::gl3 {
 
-class Context::Impl final : public std::enable_shared_from_this<Impl> {
- public:
-  explicit Impl(Env& env)
-  try : concurrency_(env.GetOr<subsys::Concurrency>()),
-        logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)) {
-    sdl_video_ = !SDL_Init(SDL_INIT_VIDEO);
-    if (!sdl_video_) {
-      throw Exception {"SDL init failure"};
-    }
-    SetUpGL();
-    SetUpWindow();
-  } catch (const Exception&) {
-    TearDown();
-    throw;
-  }
-
- public:
-  void Main() noexcept {
-    SDL_GL_MakeCurrent(win_, gl_);
-    SDL_GL_SetSwapInterval(1);
-
-    while (alive_) try {
-      SDL_GL_SwapWindow(win_);
-    } catch (Exception& e) {
-      logger_->Warn("error while GL3 window main loop");
-    }
-    concurrency_->Exec(
-        [this, self = shared_from_this()](auto&) { TearDown(); });
-  }
-  void Exit() noexcept {
-    alive_ = false;
-  }
-
- private:
-  void SetUpGL() noexcept;
-  void SetUpWindow();
-
-  void TearDown() noexcept {
-    if (nullptr != gl_) {
-      SDL_GL_DeleteContext(gl_);
-    }
-    if (nullptr != win_) {
-      SDL_DestroyWindow(win_);
-    }
-    if (sdl_video_) {
-      SDL_Quit();
-    }
-  }
-
- private:
-  const std::shared_ptr<subsys::Concurrency> concurrency_;
-  const std::shared_ptr<subsys::Logger> logger_;
-
-  std::atomic<bool> alive_ {true};
-
-  bool sdl_video_ {false};
-  SDL_Window* win_ {nullptr};
-  void* gl_ {nullptr};
-};
-
 Context::Context(Env& env)
-    : subsys::Interface("nf7::core::gl3::Context"),
+try : subsys::Interface("nf7::core::gl3::Context"),
       impl_(std::make_shared<Impl>(env)) {
-  env.Get<subsys::Parallelism>()->Exec([impl = impl_](auto&) { impl->Main(); });
+  impl_->Main();
+} catch (const std::bad_alloc&) {
+  throw MemoryException {};
 }
 Context::~Context() noexcept {
   impl_->Exit();
+}
+void Context::Push(Task&& task) noexcept {
+  impl_->Push(std::move(task));
+}
+
+
+class Context::Impl::TaskDriver final {
+ public:
+  TaskDriver() = delete;
+  explicit TaskDriver(const std::shared_ptr<subsys::Logger>& logger,
+                      Task::Time time) noexcept
+      : logger_(logger), time_(time) { }
+
+ public:
+  void BeginBusy() noexcept { }
+  void EndBusy() noexcept { }
+
+  void Drive(Task&& task) noexcept
+  try {
+    task(ctx_);
+  } catch (Exception& e) {
+    logger_->Warn("GL3 task caused an exception");
+  }
+
+ public:
+  Task::Time tick() const noexcept { return time_; }
+  bool nextIdleInterruption() const noexcept { return true; }
+  bool nextTaskInterruption() const noexcept { return false; }
+
+ private:
+  const std::shared_ptr<subsys::Logger> logger_;
+  const Task::Time time_;
+
+  TaskContext ctx_ {};
+};
+
+Context::Impl::Impl(Env& env)
+try : clock_(env.Get<subsys::Clock>()),
+      concurrency_(env.Get<subsys::Concurrency>()),
+      logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)) {
+  sdl_ = 0 == SDL_Init(SDL_INIT_VIDEO);
+  if (!sdl_) {
+    throw Exception {"SDL init failure"};
+  }
+  SetUpGL();
+  SetUpWindow();
+} catch (const Exception&) {
+  TearDown();
+  throw;
+}
+
+void Context::Impl::Main() noexcept {
+  const bool alive = Update();
+  const auto now   = clock_->now();
+
+  TaskDriver driver {logger_, now};
+  tasq_.Drive(driver);
+
+  if (alive_ && alive) {
+    concurrency_->Push(nf7::SyncTask {
+      now + 33ms,
+      [this, self = shared_from_this()](auto&) { Main(); },
+    });
+  } else {
+    TearDown();
+  }
 }
 
 void Context::Impl::SetUpGL() noexcept {
@@ -126,6 +134,19 @@ void Context::Impl::SetUpWindow() {
   gl_ = SDL_GL_CreateContext(win_);
   if (nullptr == gl_) {
     throw Exception {"failed to create new GL context"};
+  }
+  SDL_GL_SetSwapInterval(0);
+}
+
+void Context::Impl::TearDown() noexcept {
+  if (nullptr != gl_) {
+    SDL_GL_DeleteContext(gl_);
+  }
+  if (nullptr != win_) {
+    SDL_DestroyWindow(win_);
+  }
+  if (sdl_) {
+    SDL_Quit();
   }
 }
 

@@ -5,6 +5,7 @@
 
 #include <chrono>
 
+#include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
 
 #include "core/env_test.hh"
@@ -39,8 +40,7 @@ TEST_F(Gl3Context, Initialization) {
   auto ctx = std::make_shared<nf7::core::gl3::Context>(env());
 
   env().Get<nf7::subsys::Concurrency>()->Push(nf7::SyncTask {
-    std::chrono::time_point_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now())+1000ms,
+    env().Get<nf7::subsys::Clock>()->now()+1000ms,
     [&](auto&) { ctx = nullptr; },
   });
   ConsumeTasks();
