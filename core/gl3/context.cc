@@ -1,13 +1,6 @@
 // No copyright
 #include "core/gl3/context.hh"
 
-#include <SDL.h>
-
-#include <atomic>
-#include <chrono>
-#include <thread>
-#include <utility>
-
 #include "iface/common/exception.hh"
 #include "iface/subsys/parallelism.hh"
 

@@ -4,8 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <chrono>
-
 #include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
 
