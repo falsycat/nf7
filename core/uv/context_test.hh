@@ -13,15 +13,15 @@
 
 #include "core/uv/clock.hh"
 
-#include "iface/env_test.hh"
+#include "core/env_test.hh"
 
 
 namespace nf7::core::uv::test {
 
-class ContextFixture : public nf7::test::EnvFixture {
+class ContextFixture : public nf7::core::test::EnvFixture {
  public:
   ContextFixture() noexcept
-      : nf7::test::EnvFixture({
+      : nf7::core::test::EnvFixture({
             SimpleEnv::MakePair<Context, MainContext>(),
             SimpleEnv::MakePair<subsys::Clock, Clock>(),
           }) {
@@ -29,12 +29,12 @@ class ContextFixture : public nf7::test::EnvFixture {
 
  protected:
   void SetUp() override {
-    nf7::test::EnvFixture::SetUp();
+    nf7::core::test::EnvFixture::SetUp();
     ctx_ = std::dynamic_pointer_cast<MainContext>(env().Get<Context>());
   }
   void TearDown() override {
     ctx_->RunAndClose();
-    nf7::test::EnvFixture::TearDown();
+    nf7::core::test::EnvFixture::TearDown();
     ctx_ = nullptr;
   }
 

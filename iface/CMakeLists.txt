@@ -48,7 +48,6 @@ target_sources(nf7_iface_test
     common/task_test.hh
     common/value_test.cc
     subsys/logger_test.hh
-    env_test.hh
 )
 target_link_libraries(nf7_iface_test
   PRIVATE

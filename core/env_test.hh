@@ -7,7 +7,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <memory>
 #include <thread>
 #include <typeindex>
@@ -18,8 +17,10 @@
 #include "iface/subsys/concurrency.hh"
 #include "iface/subsys/parallelism.hh"
 
+#include "core/clock.hh"
 
-namespace nf7::test {
+
+namespace nf7::core::test {
 
 class EnvFixture : public ::testing::Test {
  public:
@@ -93,7 +94,7 @@ class EnvFixtureWithTasking : public EnvFixture {
     explicit SyncDriver(EnvFixtureWithTasking& parent) noexcept
         : parent_(parent) { }
 
-    void BeginBusy() noexcept { }
+    void BeginBusy() noexcept { parent_.clock_->Tick(); }
     void EndBusy() noexcept { }
     void Drive(SyncTask&& task) noexcept {
       try {
@@ -106,8 +107,7 @@ class EnvFixtureWithTasking : public EnvFixture {
       }
     }
     SyncTask::Time tick() const noexcept {
-      const auto now = std::chrono::system_clock::now();
-      return std::chrono::time_point_cast<SyncTask::Time::duration>(now);
+      return parent_.clock_->now();
     }
     bool nextIdleInterruption() const noexcept {
       return 0 == parent_.sq_->size();
@@ -120,11 +120,13 @@ class EnvFixtureWithTasking : public EnvFixture {
   };
 
  public:
-  explicit EnvFixtureWithTasking(SimpleEnv::FactoryMap&& fmap)
+  explicit EnvFixtureWithTasking(SimpleEnv::FactoryMap&& fmap = {})
       : EnvFixture(std::move(fmap)),
+        clock_(std::make_shared<Clock>()),
         sq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
         aq_(std::make_shared<SimpleTaskQueue<AsyncTask>>()),
         ad_(*this) {
+    Install<subsys::Clock>(clock_);
     Install<subsys::Concurrency>(
         std::make_shared<WrappedTaskQueue<subsys::Concurrency>>(sq_));
     Install<subsys::Parallelism>(
@@ -137,8 +139,8 @@ class EnvFixtureWithTasking : public EnvFixture {
     thread_ = std::thread {[this]() { aq_->Drive(ad_); }};
   }
   void TearDown() override {
-    ConsumeTasks();
     EnvFixture::TearDown();
+    ConsumeTasks();
 
     WaitAsyncTasks(std::chrono::seconds(3));
     alive_ = false;
@@ -150,6 +152,10 @@ class EnvFixtureWithTasking : public EnvFixture {
   }
 
  protected:
+  void DropEnv() noexcept {
+    EnvFixture::TearDown();
+  }
+
   void ConsumeTasks() noexcept {
     for (uint32_t i = 0; i < 16; ++i) {
       SyncDriver sync_driver {*this};
@@ -166,6 +172,7 @@ class EnvFixtureWithTasking : public EnvFixture {
   }
 
  private:
+  std::shared_ptr<Clock> clock_;
   std::shared_ptr<SimpleTaskQueue<SyncTask>>  sq_;
   std::shared_ptr<SimpleTaskQueue<AsyncTask>> aq_;
 
@@ -174,4 +181,4 @@ class EnvFixtureWithTasking : public EnvFixture {
   AsyncDriver ad_;
 };
 
-}  // namespace nf7::test
+}  // namespace nf7::core::test

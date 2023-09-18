@@ -2,6 +2,24 @@ set(BUILD_TESTING OFF)
 
 include(FetchContent)
 
+# ---- gtest (BSD-3-Clause)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v1.13.0
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# ---- ImGui (MIT)
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG        v1.89.9
+)
+FetchContent_Populate(imgui)
+include(imgui.cmake)
+
 # ---- luajit (MIT)
 FetchContent_Declare(
   luajit
@@ -11,14 +29,9 @@ FetchContent_Declare(
 FetchContent_Populate(luajit)
 include(luajit.cmake)
 
-# ---- gtest (BSD-3-Clause)
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG        v1.13.0
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# ---- SDL2 (zlib)
+find_package(SDL2 REQUIRED GLOBAL)
+add_library(SDL2 ALIAS SDL2::SDL2)
 
 # ---- SQLite (public domain)
 FetchContent_Declare(

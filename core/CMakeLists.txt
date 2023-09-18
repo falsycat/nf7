@@ -2,14 +2,17 @@ add_library(nf7_core)
 target_link_libraries(nf7_core
   PUBLIC
     git_hash
+    imgui
     luajit
     nf7_config
     nf7_iface
+    SDL2
     sqlite
     uvw
 )
 target_sources(nf7_core
   PRIVATE
+    gl3/context.cc
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
@@ -18,6 +21,7 @@ target_sources(nf7_core
     uv/parallelism.cc
     version.cc
   PUBLIC
+    gl3/context.hh
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
@@ -39,6 +43,7 @@ target_sources(nf7_core
 add_executable(nf7_core_test)
 target_sources(nf7_core_test
   PRIVATE
+    gl3/context_test.cc
     luajit/context_test.cc
     luajit/context_test.hh
     luajit/lambda_test.cc
@@ -51,6 +56,7 @@ target_sources(nf7_core_test
     uv/file_test.cc
     uv/parallelism_test.cc
     clock_test.cc
+    env_test.hh
     meta_env_test.cc
 )
 target_link_libraries(nf7_core_test

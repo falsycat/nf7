@@ -18,12 +18,12 @@
 #include "iface/subsys/parallelism.hh"
 #include "iface/env.hh"
 
-#include "iface/env_test.hh"
+#include "core/env_test.hh"
 
 namespace nf7::core::luajit::test {
 
 class ContextFixture :
-    public nf7::test::EnvFixtureWithTasking,
+    public nf7::core::test::EnvFixtureWithTasking,
     public ::testing::WithParamInterface<Context::Kind> {
  public:
   ContextFixture() noexcept
