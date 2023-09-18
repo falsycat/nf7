@@ -140,8 +140,8 @@ class EnvFixtureWithTasking : public EnvFixture {
     thread_ = std::thread {[this]() { aq_->Drive(ad_); }};
   }
   void TearDown() override {
-    ConsumeTasks();
     EnvFixture::TearDown();
+    ConsumeTasks();
 
     WaitAsyncTasks(std::chrono::seconds(3));
     alive_ = false;
@@ -153,6 +153,10 @@ class EnvFixtureWithTasking : public EnvFixture {
   }
 
  protected:
+  void DropEnv() noexcept {
+    EnvFixture::TearDown();
+  }
+
   void ConsumeTasks() noexcept {
     for (uint32_t i = 0; i < 16; ++i) {
       SyncDriver sync_driver {*this};

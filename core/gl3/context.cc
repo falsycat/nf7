@@ -18,9 +18,9 @@ using namespace std::literals;
 
 namespace nf7::core::gl3 {
 
-Context::Context(Env& env)
+Context::Context(Env& env, const std::shared_ptr<Impl>& impl)
 try : subsys::Interface("nf7::core::gl3::Context"),
-      impl_(std::make_shared<Impl>(env)) {
+      impl_(impl? impl: std::make_shared<Impl>(env)) {
   impl_->Main();
 } catch (const std::bad_alloc&) {
   throw MemoryException {};
@@ -88,7 +88,9 @@ void Context::Impl::Main() noexcept {
   if (alive_ && alive) {
     concurrency_->Push(nf7::SyncTask {
       now + 33ms,
-      [this, self = shared_from_this()](auto&) { Main(); },
+      [wself = weak_from_this()](auto&) {
+        if (auto self = wself.lock()) { self->Main(); }
+      },
     });
   } else {
     TearDown();

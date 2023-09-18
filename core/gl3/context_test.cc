@@ -1,5 +1,6 @@
 // No copyright
 #include "core/gl3/context.hh"
+#include "core/gl3/context_test.hh"
 
 #include <gtest/gtest.h>
 
@@ -8,40 +9,17 @@
 #include "iface/subsys/clock.hh"
 #include "iface/subsys/concurrency.hh"
 
-#include "core/env_test.hh"
-
 
 using namespace std::literals;
 
 
-class Gl3Context : public nf7::core::test::EnvFixtureWithTasking {
- public:
-  Gl3Context() noexcept : skip_(nullptr == std::getenv("NF7_TEST_GL3")) { }
-
- public:
-  void SetUp() override {
-    if (skip_) {
-      GTEST_SKIP();
-    } else {
-      nf7::core::test::EnvFixtureWithTasking::SetUp();
-    }
-  }
-  void TearDown() override {
-    if (!skip_) {
-      nf7::core::test::EnvFixtureWithTasking::TearDown();
-    }
-  }
-
- private:
-  const bool skip_;
-};
+using Gl3Context = nf7::core::gl3::test::ContextFixture;
 
 TEST_F(Gl3Context, Initialization) {
-  auto ctx = std::make_shared<nf7::core::gl3::Context>(env());
-
+  env().Get<nf7::core::gl3::Context>();
   env().Get<nf7::subsys::Concurrency>()->Push(nf7::SyncTask {
     env().Get<nf7::subsys::Clock>()->now()+1000ms,
-    [&](auto&) { ctx = nullptr; },
+    [&](auto&) { DropEnv(); },
   });
   ConsumeTasks();
 }

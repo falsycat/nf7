@@ -41,7 +41,9 @@ class Context : public subsys::Interface, public TaskQueue {
   class Impl;
 
  public:
-  explicit Context(Env&);
+  explicit Context(
+      Env&,
+      const std::shared_ptr<Impl>& = nullptr);
   ~Context() noexcept override;
 
  public:
