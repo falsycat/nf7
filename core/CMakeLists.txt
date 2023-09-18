@@ -55,6 +55,7 @@ target_sources(nf7_core_test
     uv/file_test.cc
     uv/parallelism_test.cc
     clock_test.cc
+    env_test.hh
     meta_env_test.cc
 )
 target_link_libraries(nf7_core_test

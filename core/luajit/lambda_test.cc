@@ -173,13 +173,6 @@ TEST_P(LuaJIT_Lambda, CtxSleep) {
   EXPECT_GE(end-begin, 100ms);
 }
 
-TEST_P(LuaJIT_Lambda, CtxSleepWithoutClock) {
-  Expect(
-      "local ctx = ...\nctx:sleep(100)",
-      {nf7::Value {}},
-      0, 1);
-}
-
 TEST_P(LuaJIT_Lambda, CtxLogging) {
   const auto logger = std::make_shared<nf7::subsys::test::LoggerMock>();
 

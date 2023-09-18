@@ -7,13 +7,13 @@
 
 #include "iface/subsys/concurrency.hh"
 
-#include "iface/env_test.hh"
+#include "core/env_test.hh"
 
 
 using namespace std::literals;
 
 
-class Gl3Context : public nf7::test::EnvFixtureWithTasking {
+class Gl3Context : public nf7::core::test::EnvFixtureWithTasking {
  public:
   Gl3Context() noexcept : skip_(nullptr == std::getenv("NF7_TEST_GL3")) { }
 
@@ -22,12 +22,12 @@ class Gl3Context : public nf7::test::EnvFixtureWithTasking {
     if (skip_) {
       GTEST_SKIP();
     } else {
-      nf7::test::EnvFixtureWithTasking::SetUp();
+      nf7::core::test::EnvFixtureWithTasking::SetUp();
     }
   }
   void TearDown() override {
     if (!skip_) {
-      nf7::test::EnvFixtureWithTasking::TearDown();
+      nf7::core::test::EnvFixtureWithTasking::TearDown();
     }
   }
 
