@@ -2,6 +2,7 @@ add_library(nf7_core)
 target_link_libraries(nf7_core
   PUBLIC
     git_hash
+    imgui
     luajit
     nf7_config
     nf7_iface

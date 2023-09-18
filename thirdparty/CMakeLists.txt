@@ -11,6 +11,15 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# ---- ImGui (MIT)
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG        v1.89.9
+)
+FetchContent_Populate(imgui)
+include(imgui.cmake)
+
 # ---- luajit (MIT)
 FetchContent_Declare(
   luajit
