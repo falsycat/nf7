@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "iface/env.hh"
 
 #include "core/env_test.hh"
@@ -20,7 +22,7 @@ class ContextFixture : public nf7::core::test::EnvFixtureWithTasking {
         }),
         skip_(nullptr == std::getenv("NF7_TEST_GL3")) { }
 
- public:
+ protected:
   void SetUp() override {
     if (skip_) {
       GTEST_SKIP();
