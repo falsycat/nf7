@@ -6,6 +6,7 @@ target_link_libraries(nf7_core
     luajit
     nf7_config
     nf7_iface
+    OpenGL
     SDL2
     sqlite
     uvw

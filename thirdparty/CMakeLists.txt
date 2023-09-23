@@ -29,6 +29,10 @@ FetchContent_Declare(
 FetchContent_Populate(luajit)
 include(luajit.cmake)
 
+# ---- OpenGL
+find_package(OpenGL REQUIRED GLOBAL)
+add_library(OpenGL ALIAS OpenGL::GL)
+
 # ---- SDL2 (zlib)
 find_package(SDL2 REQUIRED GLOBAL)
 add_library(SDL2 ALIAS SDL2::SDL2)
