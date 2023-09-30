@@ -20,11 +20,9 @@ namespace nf7::core::uv::test {
 
 class ContextFixture : public nf7::core::test::EnvFixture {
  public:
-  ContextFixture() noexcept
-      : nf7::core::test::EnvFixture({
-            SimpleEnv::MakePair<Context, MainContext>(),
-            SimpleEnv::MakePair<subsys::Clock, Clock>(),
-          }) {
+  ContextFixture() {
+    Install<Context, MainContext>();
+    Install<subsys::Clock, Clock>();
   }
 
  protected:

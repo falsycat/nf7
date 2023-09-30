@@ -15,12 +15,9 @@ namespace nf7::core::sqlite::test {
 
 class DatabaseFixture : public nf7::core::test::EnvFixtureWithTasking {
  public:
-  DatabaseFixture()
-      : nf7::core::test::EnvFixtureWithTasking({
-              {typeid(nf7::subsys::Database), [](auto& env) {
-                return std::make_shared<Database>(env, ":memory:");
-              }},
-            }) {
+  DatabaseFixture() {
+    Install<subsys::Database>(
+        [](auto& env) { return std::make_shared<Database>(env, ":memory:"); });
   }
 };
 
