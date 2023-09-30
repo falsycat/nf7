@@ -49,6 +49,7 @@ target_sources(nf7_core_test
   PRIVATE
     gl3/context_test.cc
     imgui/context_test.cc
+    imgui/context_test.hh
     imgui/driver_test.hh
     luajit/context_test.cc
     luajit/context_test.hh
