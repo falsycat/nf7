@@ -147,7 +147,13 @@ class Context :
     kSync,
     kAsync,
   };
-  static std::shared_ptr<Context> Create(Env&, Kind);
+  static std::shared_ptr<Context> Make(Env&, Kind);
+  static std::shared_ptr<Context> MakeAsync(Env& env) {
+    return Make(env, kAsync);
+  }
+  static std::shared_ptr<Context> MakeSync(Env& env) {
+    return Make(env, kSync);
+  }
 
   explicit Context(const char* name, Kind kind)
       : subsys::Interface(name), kind_(kind), state_(nullptr) {

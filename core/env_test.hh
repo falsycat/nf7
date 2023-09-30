@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <typeindex>
@@ -24,14 +25,21 @@ namespace nf7::core::test {
 
 class EnvFixture : public ::testing::Test {
  public:
-  EnvFixture() = delete;
-  explicit EnvFixture(SimpleEnv::FactoryMap&& fmap) noexcept
-      : fmap_(std::move(fmap)) { }
+  EnvFixture() = default;
 
  protected:
   template <typename I>
   void Install(const std::shared_ptr<I>& o) {
     fmap_.emplace(typeid(I), [o](auto&) { return o; });
+  }
+  template <typename I>
+  void Install(std::function<std::shared_ptr<I>(Env&)>&& factory) {
+    fmap_.emplace(typeid(I), std::move(factory));
+  }
+  template <typename I, typename T>
+  void Install() {
+    fmap_.emplace(
+        typeid(I), [](auto& env) { return std::make_shared<T>(env); });
   }
 
  protected:
@@ -120,9 +128,8 @@ class EnvFixtureWithTasking : public EnvFixture {
   };
 
  public:
-  explicit EnvFixtureWithTasking(SimpleEnv::FactoryMap&& fmap = {})
-      : EnvFixture(std::move(fmap)),
-        clock_(std::make_shared<Clock>()),
+  EnvFixtureWithTasking()
+      : clock_(std::make_shared<Clock>()),
         sq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
         aq_(std::make_shared<SimpleTaskQueue<AsyncTask>>()),
         ad_(*this) {

@@ -6,6 +6,7 @@ target_link_libraries(nf7_core
     luajit
     nf7_config
     nf7_iface
+    OpenGL
     SDL2
     sqlite
     uvw
@@ -13,6 +14,7 @@ target_link_libraries(nf7_core
 target_sources(nf7_core
   PRIVATE
     gl3/context.cc
+    imgui/context.cc
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
@@ -22,6 +24,8 @@ target_sources(nf7_core
     version.cc
   PUBLIC
     gl3/context.hh
+    imgui/context.hh
+    imgui/driver.hh
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
@@ -44,6 +48,9 @@ add_executable(nf7_core_test)
 target_sources(nf7_core_test
   PRIVATE
     gl3/context_test.cc
+    imgui/context_test.cc
+    imgui/context_test.hh
+    imgui/driver_test.hh
     luajit/context_test.cc
     luajit/context_test.hh
     luajit/lambda_test.cc

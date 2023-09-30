@@ -26,14 +26,9 @@ class ContextFixture :
     public nf7::core::test::EnvFixtureWithTasking,
     public ::testing::WithParamInterface<Context::Kind> {
  public:
-  ContextFixture() noexcept
-      : EnvFixtureWithTasking({
-              {
-                typeid(Context), [](auto& env) {
-                  return Context::Create(env, GetParam());
-                },
-              },
-            }) { }
+  ContextFixture() {
+    Install<Context>([](auto& env) { return Context::Make(env, GetParam()); });
+  }
 };
 
 }  // namespace nf7::core::luajit::test

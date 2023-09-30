@@ -159,7 +159,7 @@ class AsyncContext final :
 };
 }  // namespace
 
-std::shared_ptr<Context> Context::Create(Env& env, Kind kind) {
+std::shared_ptr<Context> Context::Make(Env& env, Kind kind) {
   switch (kind) {
   case kSync:
     return std::make_shared<SyncContext>(env);
