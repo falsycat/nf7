@@ -17,18 +17,21 @@
 namespace nf7 {
 
 template <typename I>
-class Container {
+class Container : public std::enable_shared_from_this<Container<I>> {
  public:
   Container() = default;
   virtual ~Container() = default;
 
+ public:
   Container(const Container&) = delete;
   Container(Container&&) = delete;
   Container& operator=(const Container&) = delete;
   Container& operator=(Container&&) = delete;
 
+ public:
   virtual std::shared_ptr<I> Get(std::type_index) = 0;
 
+ public:
   template <typename I2>
   void Get(std::shared_ptr<I2>& out) {
     out = Get<I2>();
@@ -56,6 +59,14 @@ class Container {
   std::shared_ptr<I> GetOr(std::type_index idx, const std::shared_ptr<I>& def) {
     const auto& ret = Get(idx);
     return nullptr != ret? ret: def;
+  }
+
+ public:
+  std::shared_ptr<Container<I>> self() noexcept {
+    return std::enable_shared_from_this<Container<I>>::shared_from_this();
+  }
+  std::shared_ptr<const Container<I>> self() const noexcept {
+    return std::enable_shared_from_this<Container<I>>::shared_from_this();
   }
 };
 
@@ -101,9 +112,18 @@ class SimpleContainer : public Container<I> {
   }
 
  public:
-  SimpleContainer(Map&& m = {},
-                  Container<I>& fb = *NullContainer<I>::kInstance) noexcept
-      : fallback_(fb), map_(std::move(m)) { }
+  static std::shared_ptr<SimpleContainer<I>> Make(
+      Map&& m = {},
+      const std::shared_ptr<Container<I>>& fb = NullContainer<I>::kInstance)
+  try {
+    return std::make_shared<SimpleContainer<I>>(std::move(m), fb);
+  } catch (const std::bad_alloc&) {
+    throw MemoryException {};
+  }
+
+ public:
+  SimpleContainer(Map&& m, const std::shared_ptr<Container<I>>& fb) noexcept
+      : map_(std::move(m)), fallback_(fb) { }
 
  public:
   Object Get(std::type_index idx) override {
@@ -111,7 +131,11 @@ class SimpleContainer : public Container<I> {
 
     auto itr = map_.find(idx);
     if (map_.end() == itr) {
-      return fallback_.Get(idx);
+      if (const auto fb = fallback_.lock()) {
+        return fb->Get(idx);
+      } else {
+        throw Exception {"missing dependency"};
+      }
     }
 
     auto& v   = itr->second;
@@ -132,9 +156,8 @@ class SimpleContainer : public Container<I> {
   using Container<I>::GetOr;
 
  private:
-  Container<I>& fallback_;
-
   Map map_;
+  const std::weak_ptr<Container<I>> fallback_;
 
   uint32_t nest_ = 0;
 };

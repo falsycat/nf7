@@ -155,7 +155,7 @@ TEST_P(LuaJIT_Lambda, CtxSleep) {
   const auto clock = std::make_shared<nf7::core::Clock>();
   nf7::SimpleEnv env {{
     {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
-  }, this->env()};
+  }, this->env().self()};
 
   clock->Tick();
   const auto begin = clock->now();
@@ -196,7 +196,7 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
 
   nf7::SimpleEnv env {{
     {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
-  }, this->env()};
+  }, this->env().self()};
 
   Expect(
       "local ctx = ...\n"

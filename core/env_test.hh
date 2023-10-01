@@ -39,10 +39,10 @@ class EnvFixture : public ::testing::Test {
 
  protected:
   void SetUp() override {
-    env_.emplace(std::move(map_));
+    env_ = SimpleEnv::Make(std::move(map_));
   }
   void TearDown() override {
-    env_ = std::nullopt;
+    env_ = nullptr;
   }
 
  protected:
@@ -50,7 +50,7 @@ class EnvFixture : public ::testing::Test {
 
  private:
   SimpleEnv::Map map_;
-  std::optional<SimpleEnv> env_;
+  std::shared_ptr<SimpleEnv> env_;
 };
 
 class EnvFixtureWithTasking : public EnvFixture {
