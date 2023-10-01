@@ -6,18 +6,16 @@
 #include "iface/env.hh"
 
 
-static inline std::shared_ptr<nf7::Env> MakeEmptyEnv() {
-  return std::make_shared<nf7::SimpleEnv>(nf7::SimpleEnv::FactoryMap {});
-}
-static inline bool MatchPair(const std::optional<nf7::subsys::MetaEnv::Pair>& a,
-                             const nf7::subsys::MetaEnv::Pair& b) {
+static inline bool MatchPair(
+    const std::optional<nf7::subsys::MetaEnv::Pair>& a,
+    const nf7::subsys::MetaEnv::Pair& b) {
   return a && a->first == b.first && &a->second == &b.second;
 }
 
 TEST(MetaEnv, FindOrByName) {
-  const auto a = MakeEmptyEnv();
-  const auto b = MakeEmptyEnv();
-  const auto c = MakeEmptyEnv();
+  const auto a = std::make_shared<nf7::SimpleEnv>();
+  const auto b = std::make_shared<nf7::SimpleEnv>();
+  const auto c = std::make_shared<nf7::SimpleEnv>();
 
   nf7::core::MetaEnv sut {
     {
@@ -35,9 +33,9 @@ TEST(MetaEnv, FindOrByName) {
 }
 
 TEST(MetaEnv, FindOrByIndex) {
-  const auto a = MakeEmptyEnv();
-  const auto b = MakeEmptyEnv();
-  const auto c = MakeEmptyEnv();
+  const auto a = std::make_shared<nf7::SimpleEnv>();
+  const auto b = std::make_shared<nf7::SimpleEnv>();
+  const auto c = std::make_shared<nf7::SimpleEnv>();
 
   nf7::core::MetaEnv sut {
     {
@@ -54,9 +52,9 @@ TEST(MetaEnv, FindOrByIndex) {
 }
 
 TEST(MetaEnv, FetchAll) {
-  const auto a = MakeEmptyEnv();
-  const auto b = MakeEmptyEnv();
-  const auto c = MakeEmptyEnv();
+  const auto a = std::make_shared<nf7::SimpleEnv>();
+  const auto b = std::make_shared<nf7::SimpleEnv>();
+  const auto c = std::make_shared<nf7::SimpleEnv>();
 
   nf7::core::MetaEnv sut {
     {

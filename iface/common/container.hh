@@ -8,6 +8,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "iface/common/exception.hh"
@@ -27,7 +28,6 @@ class Container {
   Container& operator=(Container&&) = delete;
 
   virtual std::shared_ptr<I> Get(std::type_index) = 0;
-  virtual bool installed(std::type_index) const noexcept = 0;
 
   template <typename I2>
   void Get(std::shared_ptr<I2>& out) {
@@ -57,42 +57,34 @@ class Container {
     const auto& ret = Get(idx);
     return nullptr != ret? ret: def;
   }
-
-  template <typename T>
-  bool installed() const noexcept {
-    return installed(typeid(T));
-  }
 };
 
 template <typename I>
 class NullContainer : public Container<I> {
  public:
-  static std::shared_ptr<NullContainer> instance()
-  try {
-    static const auto kInstance = std::make_shared<NullContainer>();
-    return kInstance;
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {};
-  }
+  static inline const auto kInstance = std::make_shared<NullContainer>();
 
  public:
   NullContainer() = default;
 
  public:
   std::shared_ptr<I> Get(std::type_index) override { return nullptr; }
-  bool installed(std::type_index) const noexcept override { return false; }
 };
 
 template <typename I>
 class SimpleContainer : public Container<I> {
  public:
-  using Factory     = std::function<std::shared_ptr<I>(Container<I>&)>;
-  using FactoryPair = std::pair<std::type_index, Factory>;
-  using FactoryMap  = std::unordered_map<std::type_index, Factory>;
-  using ObjectMap   = std::unordered_map<std::type_index, std::shared_ptr<I>>;
+  using Object  = std::shared_ptr<I>;
+  using Factory = std::function<Object(Container<I>&)>;
 
+  using ObjectOrFactory = std::variant<Object, Factory>;
+
+  using MapItem = std::pair<std::type_index, ObjectOrFactory>;
+  using Map     = std::unordered_map<std::type_index, ObjectOrFactory>;
+
+ public:
   template <typename I2, typename T>
-  static FactoryPair MakePair() noexcept {
+  static MapItem MakeItem() noexcept {
     static_assert(std::is_base_of_v<I, I2>,
                   "registerable interface must be based on "
                   "container common interface");
@@ -102,62 +94,47 @@ class SimpleContainer : public Container<I> {
     static_assert(std::is_constructible_v<T, Container<I>&>,
                   "registerable concrete type must be "
                   "constructible with container");
-    return FactoryPair {
-        typeid(I2), [](auto& x) { return std::make_shared<T>(x); }};
-  }
-  static std::shared_ptr<Container<I>> Make(FactoryMap&& factories) {
-    try {
-      return std::make_shared<Container<I>>(std::move(factories));
-    } catch (const std::bad_alloc&) {
-      throw MemoryException {};
-    }
+    return MapItem {
+      typeid(I2),
+      [](auto& x) { return std::make_shared<T>(x); },
+    };
   }
 
-  SimpleContainer() = delete;
-  SimpleContainer(FactoryMap&& factories,
-                  Container<I>& fb = *NullContainer<I>::instance()) noexcept
-      : fallback_(fb), factories_(std::move(factories)) { }
+ public:
+  SimpleContainer(Map&& m = {},
+                  Container<I>& fb = *NullContainer<I>::kInstance) noexcept
+      : fallback_(fb), map_(std::move(m)) { }
 
-  std::shared_ptr<I> Get(std::type_index idx) override {
-    const auto obj_itr = objs_.find(idx);
-    if (objs_.end() != obj_itr) {
-      return obj_itr->second;
+ public:
+  Object Get(std::type_index idx) override {
+    assert(nest_ < 1000 && "circular dependency detected");
+
+    auto itr = map_.find(idx);
+    if (map_.end() == itr) {
+      return fallback_.Get(idx);
     }
 
-    const auto factory_itr = factories_.find(idx);
-    if (factories_.end() != factory_itr) {
-      assert(nest_ < 1000 &&
-             "circular dependency detected in container factory");
+    auto& v   = itr->second;
+    auto  ret = Object {nullptr};
+    if (std::holds_alternative<Object>(v)) {
+      ret = std::get<Object>(v);
+    } else {
       ++nest_;
-      auto obj = factory_itr->second(*this);
+      ret = std::get<Factory>(v)(*this);
       --nest_;
-
-      try {
-        const auto [itr, added] = objs_.insert({idx, std::move(obj)});
-        (void) itr;
-        (void) added;
-        assert(added);
-        return itr->second;
-      } catch (...) {
-        throw MemoryException {};
-      }
+      v = ret;
     }
-    return fallback_.Get(idx);
-  }
-
-  bool installed(std::type_index idx) const noexcept override {
-    return factories_.contains(idx) || fallback_.installed(idx);
+    return nullptr != ret? ret:
+        throw Exception {"the specified interface is hidden"};
   }
 
   using Container<I>::Get;
   using Container<I>::GetOr;
-  using Container<I>::installed;
 
  private:
   Container<I>& fallback_;
 
-  FactoryMap factories_;
-  ObjectMap  objs_;
+  Map map_;
 
   uint32_t nest_ = 0;
 };

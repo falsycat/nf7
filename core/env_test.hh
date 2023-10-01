@@ -29,22 +29,17 @@ class EnvFixture : public ::testing::Test {
 
  protected:
   template <typename I>
-  void Install(const std::shared_ptr<I>& o) {
-    fmap_.emplace(typeid(I), [o](auto&) { return o; });
-  }
-  template <typename I>
-  void Install(std::function<std::shared_ptr<I>(Env&)>&& factory) {
-    fmap_.emplace(typeid(I), std::move(factory));
+  void Install(SimpleEnv::ObjectOrFactory&& v) {
+    map_.emplace(typeid(I), std::move(v));
   }
   template <typename I, typename T>
   void Install() {
-    fmap_.emplace(
-        typeid(I), [](auto& env) { return std::make_shared<T>(env); });
+    map_.insert(SimpleEnv::MakeItem<I, T>());
   }
 
  protected:
   void SetUp() override {
-    env_.emplace(std::move(fmap_));
+    env_.emplace(std::move(map_));
   }
   void TearDown() override {
     env_ = std::nullopt;
@@ -54,7 +49,7 @@ class EnvFixture : public ::testing::Test {
   Env& env() noexcept { return *env_; }
 
  private:
-  SimpleEnv::FactoryMap fmap_;
+  SimpleEnv::Map map_;
   std::optional<SimpleEnv> env_;
 };
 
