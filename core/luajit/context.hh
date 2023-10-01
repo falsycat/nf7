@@ -24,14 +24,14 @@ class Context;
 using Task      = nf7::Task<TaskContext&>;
 using TaskQueue = nf7::TaskQueue<Task>;
 
-class Value final {
+class Value final : public nf7::Value::Data {
  public:
   Value() = delete;
   Value(const std::shared_ptr<Context>& ctx, int index) noexcept
       : ctx_(ctx), index_(index) {
     assert(nullptr != ctx_);
   }
-  ~Value() noexcept;
+  ~Value() noexcept override;
 
   Value(const Value&) = delete;
   Value(Value&&) = delete;
