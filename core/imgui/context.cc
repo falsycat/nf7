@@ -13,8 +13,11 @@
 #include "iface/common/exception.hh"
 #include "iface/common/observer.hh"
 #include "iface/subsys/clock.hh"
+#include "iface/subsys/logger.hh"
 
 #include "core/gl3/context.hh"
+#include "core/luajit/context.hh"
+#include "core/logger.hh"
 
 
 namespace nf7::core::imgui {
@@ -48,13 +51,31 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   explicit Impl(Env& env)
       : clock_(env.Get<subsys::Clock>()),
         gl3_(env.Get<gl3::Context>()),
+        logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)),
         events_(std::make_unique<EventQueue>(*gl3_)),
+        tasq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
         imgui_(ImGui::CreateContext()) {
   }
   Impl(const Impl&) = delete;
   Impl(Impl&&) = delete;
   Impl& operator=(const Impl&) = delete;
   Impl& operator=(Impl&&) = delete;
+
+ public:
+  std::shared_ptr<SimpleEnv> MakeDriversEnv(Env& fallback) {
+    return SimpleEnv::Make(
+      {
+        {
+          typeid(subsys::Concurrency),
+          std::make_shared<WrappedTaskQueue<subsys::Concurrency>>(tasq_),
+        },
+        {
+          typeid(luajit::Context),
+          [](auto& env) { return luajit::Context::MakeSync(env); },
+        },
+      },
+      fallback.self());
+  }
 
  public:
   void ScheduleStart() noexcept {
@@ -104,20 +125,35 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    // draw something
-    for (const auto& driver : drivers) { driver->Update(t); }
+    // pre processing
+    for (const auto& driver : drivers) {
+      driver->PreUpdate(t);
+      ConsumeTasks();
+    }
+
+    // draw UI
+    for (const auto& driver : drivers) {
+      driver->Update(t);
+      ConsumeTasks();
+    }
     ImGui::Render();
 
-    // render them
+    // clear the display and render them
     const auto& io = ImGui::GetIO();
     glViewport(0, 0,
                static_cast<int>(io.DisplaySize.x),
                static_cast<int>(io.DisplaySize.y));
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
-    for (const auto& driver : drivers) { driver->PreUpdate(t); }
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    for (const auto& driver : drivers) { driver->PostUpdate(t); }
+
+    // post processing
+    for (const auto& driver : drivers) {
+      driver->PostUpdate(t);
+      ConsumeTasks();
+    }
+
+    // update window
     SDL_GL_SwapWindow(t.win());
 
     // schedule next frame
@@ -128,6 +164,36 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
       },
     });
   }
+  void ConsumeTasks() noexcept {
+    class A final {
+     public:
+      A(const std::shared_ptr<subsys::Logger>& logger,
+        SyncTask::Time tick) noexcept
+          : logger_(logger), tick_(tick) {
+
+      }
+
+     public:
+      void BeginBusy() noexcept { }
+      void EndBusy() noexcept { }
+      void Drive(SyncTask&& task) noexcept
+      try {
+        SyncTaskContext ctx;
+        task(ctx);
+      } catch (const Exception& e) {
+        logger_->Warn("error caused by a task came from ImGui driver");
+      }
+      SyncTask::Time tick() const noexcept { return tick_; }
+      bool nextIdleInterruption() const noexcept { return true; }
+      bool nextTaskInterruption() const noexcept { return false; }
+
+     private:
+      const std::shared_ptr<subsys::Logger> logger_;
+      const SyncTask::Time tick_;
+    };
+    A driver {logger_, clock_->now()};
+    tasq_->Drive(driver);
+  }
   void TearDown(gl3::TaskContext&) noexcept {
     ImGui::SetCurrentContext(imgui_);
     ImGui_ImplOpenGL3_Shutdown();
@@ -136,10 +202,12 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   }
 
  private:
-  const std::shared_ptr<subsys::Clock> clock_;
-  const std::shared_ptr<gl3::Context> gl3_;
-  const std::unique_ptr<EventQueue> events_;
+  const std::shared_ptr<subsys::Clock>  clock_;
+  const std::shared_ptr<gl3::Context>   gl3_;
+  const std::shared_ptr<subsys::Logger> logger_;
+  const std::unique_ptr<EventQueue>     events_;
 
+  const std::shared_ptr<SimpleTaskQueue<SyncTask>> tasq_;
   ImGuiContext* const imgui_;
 
   std::vector<std::weak_ptr<Driver>> drivers_;
@@ -147,7 +215,8 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
 
 Context::Context(Env& env)
 try : subsys::Interface("nf7::core::imgui::Context"),
-      impl_(std::make_shared<Impl>(env)) {
+      impl_(std::make_shared<Impl>(env)),
+      drivers_env_(impl_->MakeDriversEnv(env)) {
   impl_->ScheduleStart();
 } catch (const std::bad_alloc&) {
   throw MemoryException {};

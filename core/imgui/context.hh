@@ -24,8 +24,11 @@ class Context : public subsys::Interface {
   const std::shared_ptr<Driver>& Register(
       const std::shared_ptr<Driver>& driver);
 
+  const std::shared_ptr<Env>& driversEnv() noexcept { return drivers_env_; }
+
  private:
   const std::shared_ptr<Impl> impl_;
+  const std::shared_ptr<Env> drivers_env_;
 };
 
 }  // namespace nf7::core::imgui
