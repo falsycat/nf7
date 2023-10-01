@@ -41,6 +41,7 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
             v.is<nf7::Value::Real>()   ? "real":
             v.is<nf7::Value::Buffer>() ? "buffer":
             v.is<nf7::Value::Object>() ? "object":
+            v.is<nf7::Value::SharedData>() ? "data":
             "unknown");
         return 1;
       });
