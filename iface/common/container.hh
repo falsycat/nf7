@@ -102,12 +102,20 @@ class SimpleContainer : public Container<I> {
     static_assert(std::is_base_of_v<I2, T>,
                   "registerable concrete type must be based on "
                   "an interface to be being registered");
-    static_assert(std::is_constructible_v<T, Container<I>&>,
-                  "registerable concrete type must be "
-                  "constructible with container");
     return MapItem {
       typeid(I2),
-      [](auto& x) { return std::make_shared<T>(x); },
+      [](auto& x) {
+        if constexpr (std::is_constructible_v<T, Container<I>&>) {
+          return std::make_shared<T>(x);
+        } else if constexpr (std::is_constructible_v<T, const std::shared_ptr<Container<I>>&>) {
+          return std::make_shared<T>(x.self());
+        } else if constexpr (std::is_default_constructible_v<T>) {
+          return std::make_shared<T>();
+        } else {
+          static_assert(!std::is_same_v<T, T>,
+                        "registerable concrete type has no known constructors");
+        }
+      },
     };
   }
 

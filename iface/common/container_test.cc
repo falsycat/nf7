@@ -67,6 +67,23 @@ TEST(SimpleContainer, FetchUnknownWithFallback) {
   EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
 }
 
+TEST(SimpleContainer, ConstructWithSharedInstance) {
+  class Ashared : public IA {
+   public:
+    Ashared(const std::shared_ptr<nf7::Container<Object>>&) { }
+  };
+  auto sut = SUT::Make({ SUT::MakeItem<IA, Ashared>(), });
+  EXPECT_TRUE(sut->Get<IA>());
+}
+TEST(SimpleContainer, ConstructWithNothing) {
+  class Anothing : public IA {
+   public:
+    Anothing() { }
+  };
+  auto sut = SUT::Make({ SUT::MakeItem<IA, Anothing>(), });
+  EXPECT_TRUE(sut->Get<IA>());
+}
+
 #if !defined(NDEBUG)
 TEST(SimpleContainer, DeathByFetchRecursive) {
   auto sut = SUT::Make({ SUT::MakeItem<IB, BRecursive>(), });
