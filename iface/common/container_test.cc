@@ -34,65 +34,59 @@ class BRecursive : public IB {
 }  // namespace
 
 TEST(SimpleContainer, FetchIsolated) {
-  SUT sut {{
-    SUT::MakePair<IA, A>(),
-  }};
-  auto ptr = sut.Get<IA>();
+  auto sut = SUT::Make({ SUT::MakeItem<IA, A>(), });
+  auto ptr = sut->Get<IA>();
   EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
 }
 TEST(SimpleContainer, FetchDepending) {
-  SUT sut {{
-    SUT::MakePair<IA, A>(),
-    SUT::MakePair<IB, B>(),
-  }};
-  auto ptr = sut.Get<IB>();
+  auto sut = SUT::Make({
+    SUT::MakeItem<IA, A>(),
+    SUT::MakeItem<IB, B>(),
+  });
+  auto ptr = sut->Get<IB>();
   EXPECT_TRUE(std::dynamic_pointer_cast<B>(ptr));
 }
 TEST(SimpleContainer, FetchUnknown) {
-  SUT sut {{}};
-  EXPECT_THROW(sut.Get<IA>(), nf7::Exception);
+  auto sut = SUT::Make();
+  EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
 }
 TEST(SimpleContainer, FetchUnknownDepending) {
-  SUT sut {{
-    SUT::MakePair<IB, B>(),
-  }};
-  EXPECT_THROW(sut.Get<IB>(), nf7::Exception);
-}
-TEST(SimpleContainer, CheckInstalled) {
-  SUT sut {{
-    SUT::MakePair<IA, A>(),
-  }};
-  EXPECT_TRUE(sut.installed<IA>());
-  EXPECT_FALSE(sut.installed<IB>());
+  auto sut = SUT::Make({ SUT::MakeItem<IB, B>(), });
+  EXPECT_THROW(sut->Get<IB>(), nf7::Exception);
 }
 
 TEST(SimpleContainer, FetchWithFallback) {
-  SUT fb {{
-    SUT::MakePair<IA, A>(),
-  }};
-  SUT sut {{}, fb};
-  auto ptr = sut.Get<IA>();
+  auto fb  = SUT::Make({ SUT::MakeItem<IA, A>(), });
+  auto sut = SUT::Make({}, fb);
+  auto ptr = sut->Get<IA>();
   EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
 }
 TEST(SimpleContainer, FetchUnknownWithFallback) {
-  SUT fb {{}};
-  SUT sut {{}, fb};
-  EXPECT_THROW(sut.Get<IA>(), nf7::Exception);
+  auto fb  = SUT::Make();
+  auto sut = SUT::Make({}, fb);
+  EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
 }
-TEST(SimpleContainer, CheckInstalledWithFallback) {
-  SUT fb {{
-    SUT::MakePair<IA, A>(),
-  }};
-  SUT sut {{}, fb};
-  EXPECT_TRUE(sut.installed<IA>());
-  EXPECT_FALSE(sut.installed<IB>());
+
+TEST(SimpleContainer, ConstructWithSharedInstance) {
+  class Ashared : public IA {
+   public:
+    Ashared(const std::shared_ptr<nf7::Container<Object>>&) { }
+  };
+  auto sut = SUT::Make({ SUT::MakeItem<IA, Ashared>(), });
+  EXPECT_TRUE(sut->Get<IA>());
+}
+TEST(SimpleContainer, ConstructWithNothing) {
+  class Anothing : public IA {
+   public:
+    Anothing() { }
+  };
+  auto sut = SUT::Make({ SUT::MakeItem<IA, Anothing>(), });
+  EXPECT_TRUE(sut->Get<IA>());
 }
 
 #if !defined(NDEBUG)
 TEST(SimpleContainer, DeathByFetchRecursive) {
-  SUT sut {{
-    SUT::MakePair<IB, BRecursive>(),
-  }};
-  ASSERT_DEATH_IF_SUPPORTED(sut.Get<IB>(), "");
+  auto sut = SUT::Make({ SUT::MakeItem<IB, BRecursive>(), });
+  ASSERT_DEATH_IF_SUPPORTED(sut->Get<IB>(), "");
 }
 #endif
