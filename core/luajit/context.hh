@@ -14,37 +14,10 @@
 #include "iface/subsys/interface.hh"
 #include "iface/env.hh"
 
+#include "core/luajit/value.hh"
+
 
 namespace nf7::core::luajit {
-
-class Value;
-class TaskContext;
-class Context;
-
-using Task      = nf7::Task<TaskContext&>;
-using TaskQueue = nf7::TaskQueue<Task>;
-
-class Value final : public nf7::Value::Data {
- public:
-  Value() = delete;
-  Value(const std::shared_ptr<Context>& ctx, int index) noexcept
-      : ctx_(ctx), index_(index) {
-    assert(nullptr != ctx_);
-  }
-  ~Value() noexcept override;
-
-  Value(const Value&) = delete;
-  Value(Value&&) = delete;
-  Value& operator=(const Value&) = delete;
-  Value& operator=(Value&&) = delete;
-
-  const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
-  int index() const noexcept { return index_; }
-
- private:
-  std::shared_ptr<Context> ctx_;
-  int index_;
-};
 
 class TaskContext final {
  public:
@@ -134,6 +107,10 @@ class TaskContext final {
   std::shared_ptr<Context> ctx_;
   lua_State* state_;
 };
+
+using Task      = nf7::Task<TaskContext&>;
+using TaskQueue = nf7::TaskQueue<Task>;
+
 
 class Context :
     public subsys::Interface,

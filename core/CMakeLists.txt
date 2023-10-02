@@ -18,6 +18,7 @@ target_sources(nf7_core
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
+    luajit/value.cc
     sqlite/database.cc
     uv/concurrency.cc
     uv/parallelism.cc
@@ -29,6 +30,7 @@ target_sources(nf7_core
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
+    luajit/value.hh
     sqlite/database.hh
     sqlite/util.hh
     uv/clock.hh
