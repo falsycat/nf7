@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "iface/common/exception.hh"
-#include "iface/common/task_context.hh"
 
 namespace nf7 {
 
@@ -259,31 +258,36 @@ class Future<T>::Completer final {
   }
 
  public:
-  template <typename V>
-  void Attach(const std::shared_ptr<V>& ptr) {
+  Completer& Attach(const std::shared_ptr<void>& ptr) {
     internal_->Listen([ptr](auto&) {});
+    return *this;
   }
-  void Complete(T&& v) noexcept {
+  Completer& Complete(T&& v) noexcept {
     assert(nullptr != internal_);
     internal_->Complete(std::move(v));
+    return *this;
   }
-  void Throw(std::exception_ptr e = std::current_exception()) noexcept {
+  Completer& Throw(std::exception_ptr e = std::current_exception()) noexcept {
     assert(nullptr != internal_);
     internal_->Throw(e);
+    return *this;
   }
-  void Run(std::function<T()>&& f) noexcept {
+  Completer& Run(std::function<T()>&& f) noexcept {
     assert(nullptr != internal_);
     try {
       Complete(f());
     } catch (...) {
       Throw();
     }
+    return *this;
   }
-  void RunAsync(const std::shared_ptr<AsyncTaskQueue>& aq,
-                const std::shared_ptr<SyncTaskQueue>&  sq,
-               std::function<T(AsyncTaskContext&)>&& f) noexcept {
+  template <typename AQ, typename SQ, typename F>
+  Completer& RunAsync(const std::shared_ptr<AQ>& aq,
+                const std::shared_ptr<SQ>& sq,
+                F&& f) noexcept {
     assert(nullptr != internal_);
     aq->Exec([*this, sq, f = std::move(f)](auto& ctx) mutable {
+      static_assert(std::is_invocable_v<F, decltype(ctx)>);
       try {
         sq->Exec([*this, ret = f(ctx)](auto&) mutable {
           Complete(std::move(ret));
@@ -293,6 +297,7 @@ class Future<T>::Completer final {
         sq->Exec([*this, eptr](auto&) mutable { Throw(eptr); });
       }
     });
+    return *this;
   }
 
  public:

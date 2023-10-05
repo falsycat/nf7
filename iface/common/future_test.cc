@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "iface/common/exception.hh"
+#include "iface/common/task_context.hh"
 
 #include "iface/common/task_test.hh"
 
