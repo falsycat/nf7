@@ -38,6 +38,27 @@ TEST(Observer, NotifyDestruction) {
   target = std::nullopt;
 }
 
+TEST(ObserverForwarder, NotifySecondaryTargetThroughPrimaryOne) {
+  nf7::test::ObserverTargetMock<int32_t> primary_target;
+  nf7::test::ObserverTargetMock<int32_t> secondary_target;
+  nf7::Observer<int32_t>::Forwarder fwd {primary_target, secondary_target};
+
+  nf7::test::ObserverMock<int32_t> sut {secondary_target};
+  EXPECT_CALL(sut, NotifyWithMove(123)).Times(1);
+
+  primary_target.Notify(int32_t {123});
+}
+TEST(Observer, NotifySecondaryTargetThroughSecondaryOne) {
+  nf7::test::ObserverTargetMock<int32_t> primary_target;
+  nf7::test::ObserverTargetMock<int32_t> secondary_target;
+  nf7::Observer<int32_t>::Forwarder fwd {primary_target, secondary_target};
+
+  nf7::test::ObserverMock<int32_t> sut {secondary_target};
+  EXPECT_CALL(sut, NotifyWithMove(123)).Times(1);
+
+  secondary_target.Notify(int32_t {123});
+}
+
 #if !defined(NDEBUG)
 TEST(Observer, DeathByRegisterInCallback) {
   nf7::test::ObserverTargetMock<int32_t> target;
