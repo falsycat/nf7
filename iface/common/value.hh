@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -240,8 +241,13 @@ class Value final {
   Value(const Buffer& v) noexcept : var_(v) { }
   Value(Object&& v) noexcept : var_(std::move(v)) { }
   Value(const Object& v) noexcept : var_(v) { }
-  Value(SharedData&& v) noexcept : var_(std::move(v)) { }
-  Value(const SharedData& v) noexcept : var_(v) { }
+
+  template <std::derived_from<Data> T>
+  Value(std::shared_ptr<T>&& v) noexcept
+      : var_(SharedData {std::move(v)}) { }
+  template <std::derived_from<Data> T>
+  Value(const std::shared_ptr<T>& v) noexcept
+      : var_(SharedData {v}) { }
 
  public:
   Value(const Value&) = default;
