@@ -6,16 +6,18 @@
 #include <imgui_impl_sdl2.h>
 
 #include <chrono>
+#include <optional>
 #include <utility>
 #include <vector>
-#include <iostream>
 
 #include "iface/common/exception.hh"
 #include "iface/common/observer.hh"
 #include "iface/subsys/clock.hh"
+#include "iface/subsys/concurrency.hh"
 #include "iface/subsys/logger.hh"
 
 #include "core/gl3/context.hh"
+#include "core/imgui/luajit_driver.hh"
 #include "core/luajit/context.hh"
 #include "core/logger.hh"
 
@@ -49,33 +51,23 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
 
  public:
   explicit Impl(Env& env)
-      : clock_(env.Get<subsys::Clock>()),
+      : concurrency_(env.Get<subsys::Concurrency>()),
+        clock_(env.Get<subsys::Clock>()),
         gl3_(env.Get<gl3::Context>()),
         logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)),
         events_(std::make_unique<EventQueue>(*gl3_)),
         tasq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
-        imgui_(ImGui::CreateContext()) {
-  }
+        tasq_wrap_(std::make_shared<
+            WrappedTaskQueue<subsys::Concurrency>>(tasq_)),
+        ljctx_(luajit::Context::MakeSync(
+            *SimpleEnv::Make(
+                {{typeid(subsys::Concurrency), tasq_wrap_}},
+                env.self()))),
+        imgui_(ImGui::CreateContext()) { }
   Impl(const Impl&) = delete;
   Impl(Impl&&) = delete;
   Impl& operator=(const Impl&) = delete;
   Impl& operator=(Impl&&) = delete;
-
- public:
-  std::shared_ptr<SimpleEnv> MakeDriversEnv(Env& fallback) {
-    return SimpleEnv::Make(
-      {
-        {
-          typeid(subsys::Concurrency),
-          std::make_shared<WrappedTaskQueue<subsys::Concurrency>>(tasq_),
-        },
-        {
-          typeid(luajit::Context),
-          [](auto& env) { return luajit::Context::MakeSync(env); },
-        },
-      },
-      fallback.self());
-  }
 
  public:
   void ScheduleStart() noexcept {
@@ -93,6 +85,29 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
     throw MemoryException {};
   }
 
+  std::shared_ptr<Env> MakeDriversEnv(Env& env)
+  try {
+    return SimpleEnv::Make(
+        {
+          {typeid(subsys::Concurrency), tasq_wrap_},
+          {typeid(luajit::Context), ljctx_},
+        },
+        env.self());
+  } catch (const std::bad_alloc&) {
+    throw MemoryException {};
+  }
+
+  Future<std::shared_ptr<luajit::Value>> MakeLuaExtension() noexcept
+  try {
+    if (std::nullopt == ljext_) {
+      ljext_.emplace();
+      ljext_->RunAsync(ljctx_, concurrency_, LuaJITDriver::MakeExtensionObject);
+    }
+    return ljext_->future();
+  } catch (...) {
+    return {std::current_exception()};
+  }
+
  private:
   void Start(gl3::TaskContext& t) noexcept {
     ImGui::SetCurrentContext(imgui_);
@@ -101,6 +116,7 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
     Update(t);
   }
   void Update(gl3::TaskContext& t) noexcept {
+    ConsumeTasks();
     ImGui::SetCurrentContext(imgui_);
 
     // get active drivers and drop dead ones
@@ -169,13 +185,11 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
      public:
       A(const std::shared_ptr<subsys::Logger>& logger,
         SyncTask::Time tick) noexcept
-          : logger_(logger), tick_(tick) {
-
-      }
+          : logger_(logger), tick_(tick) { }
 
      public:
       void BeginBusy() noexcept { }
-      void EndBusy() noexcept { }
+      void EndBusy() noexcept { idle_ = true; }
       void Drive(SyncTask&& task) noexcept
       try {
         SyncTaskContext ctx;
@@ -184,12 +198,14 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
         logger_->Warn("error caused by a task came from ImGui driver");
       }
       SyncTask::Time tick() const noexcept { return tick_; }
-      bool nextIdleInterruption() const noexcept { return true; }
+      bool nextIdleInterruption() const noexcept { return idle_; }
       bool nextTaskInterruption() const noexcept { return false; }
 
      private:
       const std::shared_ptr<subsys::Logger> logger_;
       const SyncTask::Time tick_;
+
+      bool idle_ = false;
     };
     A driver {logger_, clock_->now()};
     tasq_->Drive(driver);
@@ -202,21 +218,25 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   }
 
  private:
-  const std::shared_ptr<subsys::Clock>  clock_;
-  const std::shared_ptr<gl3::Context>   gl3_;
-  const std::shared_ptr<subsys::Logger> logger_;
-  const std::unique_ptr<EventQueue>     events_;
+  const std::shared_ptr<subsys::Concurrency> concurrency_;
+  const std::shared_ptr<subsys::Clock>       clock_;
+  const std::shared_ptr<gl3::Context>        gl3_;
+  const std::shared_ptr<subsys::Logger>      logger_;
+  const std::unique_ptr<EventQueue>          events_;
 
   const std::shared_ptr<SimpleTaskQueue<SyncTask>> tasq_;
-  ImGuiContext* const imgui_;
+  const std::shared_ptr<WrappedTaskQueue<subsys::Concurrency>> tasq_wrap_;
 
+  const std::shared_ptr<luajit::Context> ljctx_;
+  std::optional<Future<std::shared_ptr<luajit::Value>>::Completer> ljext_;
+
+  ImGuiContext* const imgui_;
   std::vector<std::weak_ptr<Driver>> drivers_;
 };
 
 Context::Context(Env& env)
 try : subsys::Interface("nf7::core::imgui::Context"),
-      impl_(std::make_shared<Impl>(env)),
-      drivers_env_(impl_->MakeDriversEnv(env)) {
+      impl_(std::make_shared<Impl>(env)) {
   impl_->ScheduleStart();
 } catch (const std::bad_alloc&) {
   throw MemoryException {};
@@ -227,6 +247,12 @@ Context::~Context() noexcept {
 const std::shared_ptr<Driver>& Context::Register(
     const std::shared_ptr<Driver>& driver) {
   return impl_->Register(driver);
+}
+std::shared_ptr<Env> Context::MakeDriversEnv(Env& env) {
+  return impl_->MakeDriversEnv(env);
+}
+Future<std::shared_ptr<luajit::Value>> Context::MakeLuaExtension() noexcept {
+  return impl_->MakeLuaExtension();
 }
 
 }  // namespace nf7::core::imgui
