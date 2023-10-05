@@ -421,6 +421,45 @@ TEST(FutureCompleter, RunAsyncWithThrow) {
                [](auto&) -> int32_t { throw nf7::Exception {"helloworld"}; });
 }
 
+TEST(FutureCompleter, RunAfterWithArgsImmediately) {
+  nf7::Future<int32_t> fu1 {1};
+  nf7::Future<int32_t> fu2 {2};
+  nf7::Future<int32_t> fu3 {3};
+
+  auto fu = nf7::Future<int32_t>::Completer {}
+      .RunAfter(
+          [](auto& a, auto& b, auto& c) {
+            return a.value()+b.value()+c.value();
+          }, fu1, fu2, fu3)
+      .future();
+  ASSERT_TRUE(fu.done());
+  EXPECT_EQ(fu.value(), int32_t {6});
+}
+TEST(FutureCompleter, RunAfterWithArgsLazy) {
+  nf7::Future<int32_t> fu1 {1};
+  nf7::Future<int32_t>::Completer comp2;
+  nf7::Future<int32_t> fu3 {3};
+
+  auto fu = nf7::Future<int32_t>::Completer {}
+      .RunAfter(
+          [](auto& a, auto& b, auto& c) {
+            return a.value()+b.value()+c.value();
+          }, fu1, comp2.future(), fu3)
+      .future();
+  EXPECT_TRUE(fu.yet());
+
+  comp2.Complete(100);
+  ASSERT_TRUE(fu.done());
+  EXPECT_EQ(fu.value(), 104);
+}
+TEST(FutureCompleter, RunAfterWithoutTargets) {
+  auto fu = nf7::Future<int32_t>::Completer {}
+      .RunAfter([]() { return 666; })
+      .future();
+  ASSERT_TRUE(fu.done());
+  EXPECT_EQ(fu.value(), int32_t {666});
+}
+
 
 #if !defined(NDEBUG)
 TEST(Future, DeathByListenInCallback) {

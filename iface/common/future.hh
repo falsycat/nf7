@@ -5,6 +5,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -258,7 +259,8 @@ class Future<T>::Completer final {
   }
 
  public:
-  Completer& Attach(const std::shared_ptr<void>& ptr) {
+  template <typename V>
+  Completer& Attach(const std::shared_ptr<V>& ptr) {
     internal_->Listen([ptr](auto&) {});
     return *this;
   }
@@ -297,6 +299,40 @@ class Future<T>::Completer final {
         sq->Exec([*this, eptr](auto&) mutable { Throw(eptr); });
       }
     });
+    return *this;
+  }
+
+ private:
+  template <typename V, FutureLike Fu, typename... Args>
+  static void RunAfter_Each(
+      const std::shared_ptr<V>& ptr, Fu fu, Args&&... args) {
+    fu.Attach(ptr);
+    RunAfter_Each(ptr, std::forward<Args>(args)...);
+  }
+  static void RunAfter_Each(const std::shared_ptr<void>&) noexcept { }
+
+ public:
+  template <typename F, typename... Args>
+  Completer& RunAfter(F&& f, Args&&... args) {
+    struct A final {
+     public:
+      using Tuple = std::tuple<std::remove_reference_t<Args>...>;
+
+     public:
+      A(const Completer& self, F&& f, Tuple&& args) noexcept
+          : self_(self), f_(std::move(f)), args_(std::move(args)) { }
+      ~A() noexcept {
+        self_.Run([this]() { return std::apply(f_, args_); });
+      }
+
+     private:
+      Completer self_;
+      F f_;
+      Tuple args_;
+    };
+    RunAfter_Each(
+        std::make_shared<A>(*this, std::move(f), std::make_tuple(args...)),
+        std::forward<Args>(args)...);
     return *this;
   }
 
