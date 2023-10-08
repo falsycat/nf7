@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -38,27 +39,23 @@ class Container : public std::enable_shared_from_this<Container<I>> {
   }
   template <typename I2>
   std::shared_ptr<I2> Get() {
-    auto ptr  = GetOr<I2>();
-    if (nullptr == ptr) {
-      throw Exception {"missing dependency"};
-    }
+    auto ptr = std::dynamic_pointer_cast<I2>(Get(typeid(I2)));
+    assert(nullptr != ptr);
     return ptr;
   }
   template <typename I2>
   void GetOr(std::shared_ptr<I2>&       out,
-             const std::shared_ptr<I2>& def = nullptr) {
+             const std::shared_ptr<I2>& def = nullptr) noexcept {
     out = GetOr<I2>(def);
   }
   template <typename I2>
-  std::shared_ptr<I2> GetOr(const std::shared_ptr<I2>& def = nullptr) {
-    auto ptr = GetOr(typeid(I2), def);
-    auto casted_ptr = std::dynamic_pointer_cast<I2>(ptr);
-    assert(nullptr == ptr || nullptr != casted_ptr);
-    return casted_ptr;
-  }
-  std::shared_ptr<I> GetOr(std::type_index idx, const std::shared_ptr<I>& def) {
-    const auto& ret = Get(idx);
-    return nullptr != ret? ret: def;
+  std::shared_ptr<I2> GetOr(const std::shared_ptr<I2>& def = nullptr) noexcept
+  try {
+    auto ptr = std::dynamic_pointer_cast<I2>(Get(typeid(I2)));
+    assert(nullptr != ptr);
+    return ptr;
+  } catch (...) {
+    return def;
   }
 
  public:
@@ -79,7 +76,9 @@ class NullContainer : public Container<I> {
   NullContainer() = default;
 
  public:
-  std::shared_ptr<I> Get(std::type_index) override { return nullptr; }
+  std::shared_ptr<I> Get(std::type_index idx) override {
+    throw Exception {"missing dependency: " + std::string {idx.name()}};
+  }
 };
 
 template <typename I>
@@ -142,7 +141,9 @@ class SimpleContainer : public Container<I> {
       if (const auto fb = fallback_.lock()) {
         return fb->Get(idx);
       } else {
-        throw Exception {"missing dependency"};
+        throw Exception {
+          "missing dependency: " + std::string {idx.name()},
+        };
       }
     }
 
@@ -152,12 +153,25 @@ class SimpleContainer : public Container<I> {
       ret = std::get<Object>(v);
     } else {
       ++nest_;
-      ret = std::get<Factory>(v)(*this);
+      try {
+        ret = std::get<Factory>(v)(*this);
+      } catch (...) {
+        --nest_;
+        throw;
+      }
       --nest_;
+
+      if (nullptr == ret) {
+        throw Exception {
+          "factory returned nullptr: " + std::string {idx.name()},
+        };
+      }
       v = ret;
     }
     return nullptr != ret? ret:
-        throw Exception {"the specified interface is hidden"};
+        throw Exception {
+          "interface is hidden: "+std::string {idx.name()},
+        };
   }
 
   using Container<I>::Get;

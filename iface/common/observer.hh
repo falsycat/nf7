@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cassert>
+#include <optional>
 #include <unordered_set>
 #include <utility>
 
@@ -15,6 +16,7 @@ template <typename T>
 class Observer {
  public:
   class Target;
+  class Forwarder;
 
   inline explicit Observer(Target&);
   inline virtual ~Observer() noexcept;
@@ -35,6 +37,7 @@ class Observer<T>::Target {
  public:
   friend class Observer<T>;
 
+ public:
   Target() = default;
   virtual ~Target() noexcept {
     for (auto obs : obs_) {
@@ -42,6 +45,7 @@ class Observer<T>::Target {
     }
   }
 
+ public:
   Target(const Target&) = delete;
   Target(Target&&) = delete;
   Target& operator=(const Target&) = delete;
@@ -88,6 +92,24 @@ class Observer<T>::Target {
   std::unordered_set<Observer<T>*> obs_;
 
   bool calling_observer_ = false;
+};
+
+template <typename T>
+class Observer<T>::Forwarder : public Observer<T> {
+ public:
+  Forwarder(Target& src, Target& dst) noexcept
+      : Observer<T>(src), dst_(dst) { }
+
+ public:
+  void Notify(const T& v) noexcept override {
+    dst_.Notify(v);
+  }
+  void NotifyWithMove(T&& v) noexcept override {
+    dst_.Notify(std::move(v));
+  }
+
+ private:
+  Target& dst_;
 };
 
 

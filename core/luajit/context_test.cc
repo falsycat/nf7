@@ -4,7 +4,6 @@
 
 
 using LuaJIT_Context = nf7::core::luajit::test::ContextFixture;
-using LuaJIT_Value   = nf7::core::luajit::test::ContextFixture;
 
 TEST_P(LuaJIT_Context, CreateAndDestroy) {
   auto sut = env().Get<nf7::core::luajit::Context>();

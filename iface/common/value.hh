@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -147,7 +148,13 @@ class Value final {
     std::shared_ptr<const Pair[]> pairs_;
   };
 
-  using Variant = std::variant<Null, Integer, Real, Buffer, Object>;
+  class Data {
+   public:
+    virtual ~Data() = default;
+  };
+  using SharedData = std::shared_ptr<Data>;
+
+  using Variant = std::variant<Null, Integer, Real, Buffer, Object, SharedData>;
 
  public:
   static Value MakeNull(Null v = {}) noexcept { return v; }
@@ -217,6 +224,14 @@ class Value final {
     return MakeArray(v.begin(), v.end());
   }
 
+  template <typename T, typename... Args>
+  static Value MakeSharedData(Args&&... args)
+  try {
+    return Value {std::make_shared<T>(std::forward<Args>(args)...)};
+  } catch (const std::bad_alloc&) {
+    throw MemoryException {};
+  }
+
  public:
   Value() noexcept : var_(Null {}) { }
   Value(Null v) noexcept : var_(v) { }
@@ -226,6 +241,13 @@ class Value final {
   Value(const Buffer& v) noexcept : var_(v) { }
   Value(Object&& v) noexcept : var_(std::move(v)) { }
   Value(const Object& v) noexcept : var_(v) { }
+
+  template <std::derived_from<Data> T>
+  Value(std::shared_ptr<T>&& v) noexcept
+      : var_(SharedData {std::move(v)}) { }
+  template <std::derived_from<Data> T>
+  Value(const std::shared_ptr<T>& v) noexcept
+      : var_(SharedData {v}) { }
 
  public:
   Value(const Value&) = default;
@@ -275,6 +297,16 @@ class Value final {
       return *def;
     }
     throw Exception {"value is not a number", location};
+  }
+
+  template <typename T>
+  std::shared_ptr<T> data(
+      std::source_location loc = std::source_location::current()) const {
+    static_assert(std::is_base_of_v<Data, T>);
+
+    const auto ret = std::dynamic_pointer_cast<T>(as<SharedData>(loc));
+    return nullptr != ret? ret:
+        throw Exception {"incompatible data type", loc};
   }
 
  private:

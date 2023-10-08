@@ -15,9 +15,11 @@ target_sources(nf7_core
   PRIVATE
     gl3/context.cc
     imgui/context.cc
+    imgui/luajit_driver.cc
     luajit/context.cc
     luajit/lambda.cc
     luajit/thread.cc
+    luajit/value.cc
     sqlite/database.cc
     uv/concurrency.cc
     uv/parallelism.cc
@@ -26,9 +28,11 @@ target_sources(nf7_core
     gl3/context.hh
     imgui/context.hh
     imgui/driver.hh
+    imgui/luajit_driver.hh
     luajit/context.hh
     luajit/lambda.hh
     luajit/thread.hh
+    luajit/value.hh
     sqlite/database.hh
     sqlite/util.hh
     uv/clock.hh
@@ -51,11 +55,13 @@ target_sources(nf7_core_test
     imgui/context_test.cc
     imgui/context_test.hh
     imgui/driver_test.hh
+    imgui/luajit_driver_test.cc
     luajit/context_test.cc
     luajit/context_test.hh
     luajit/lambda_test.cc
     luajit/thread_test.cc
     luajit/thread_test.hh
+    luajit/value_test.cc
     sqlite/database_test.cc
     sqlite/database_test.hh
     uv/context_test.hh

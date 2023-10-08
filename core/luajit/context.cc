@@ -11,13 +11,6 @@
 
 namespace nf7::core::luajit {
 
-Value::~Value() noexcept {
-  ctx_->Push(Task {[index = index_](auto& ctx) {
-    luaL_unref(*ctx, LUA_REGISTRYINDEX, index);
-  }});
-}
-
-
 std::shared_ptr<Value> TaskContext::Register() noexcept {
   const auto index = luaL_ref(state_, LUA_REGISTRYINDEX);
   return std::make_shared<Value>(ctx_, index);
@@ -41,6 +34,7 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
             v.is<nf7::Value::Real>()   ? "real":
             v.is<nf7::Value::Buffer>() ? "buffer":
             v.is<nf7::Value::Object>() ? "object":
+            v.is<nf7::Value::SharedData>() ? "data":
             "unknown");
         return 1;
       });

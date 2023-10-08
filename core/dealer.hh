@@ -2,6 +2,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "iface/subsys/dealer.hh"
@@ -12,8 +13,18 @@ namespace nf7::core {
 template <typename T>
 class Maker : public subsys::Maker<T> {
  public:
-  using subsys::Maker<T>::Maker;
+  explicit Maker(const char* name, subsys::Maker<T>* super = nullptr) noexcept
+      : subsys::Maker<T>(name) {
+    if (nullptr != super) { fwd_.emplace(*super, *this); }
+  }
+  Maker(const char* name, subsys::Maker<T>& super) noexcept
+      : subsys::Maker<T>(name), fwd_(std::in_place, super, *this) { }
+
+ public:
   using subsys::Maker<T>::Notify;
+
+ private:
+  std::optional<typename Observer<T>::Forwarder> fwd_;
 };
 
 template <typename T>
