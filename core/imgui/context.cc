@@ -29,24 +29,41 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   static constexpr auto kUpdateInterval = std::chrono::milliseconds {33};
 
  private:
+  using Tasq = SimpleTaskQueue<SyncTask>;
+
+ private:
   class EventQueue final : public Observer<SDL_Event> {
    public:
     using Observer<SDL_Event>::Observer;
 
    public:
-    EventQueue(const EventQueue&) = delete;
-    EventQueue(EventQueue&&) = delete;
-    EventQueue& operator=(const EventQueue&) = delete;
-    EventQueue& operator=(EventQueue&&) = delete;
-
-   public:
     std::vector<SDL_Event> Take() noexcept { return std::move(items_); }
-
-   private:
     void Notify(const SDL_Event& e) noexcept override { items_.push_back(e); }
 
    private:
     std::vector<SDL_Event> items_;
+  };
+
+ private:
+  class SwitchingTasq : public subsys::Concurrency {
+   public:
+    SwitchingTasq(
+        const std::weak_ptr<Tasq>& primary,
+        const std::shared_ptr<subsys::Concurrency>& secondary) noexcept
+        : primary_(primary), secondary_(secondary) { }
+
+   public:
+    void Push(SyncTask&& item) noexcept override {
+      if (auto primary = primary_.lock()) {
+        primary->Push(std::move(item));
+      } else {
+        secondary_->Push(std::move(item));
+      }
+    }
+
+   private:
+    const std::weak_ptr<Tasq> primary_;
+    const std::shared_ptr<subsys::Concurrency> secondary_;
   };
 
  public:
@@ -56,14 +73,14 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
         gl3_(env.Get<gl3::Context>()),
         logger_(env.GetOr<subsys::Logger>(NullLogger::kInstance)),
         events_(std::make_unique<EventQueue>(*gl3_)),
-        tasq_(std::make_shared<SimpleTaskQueue<SyncTask>>()),
-        tasq_wrap_(std::make_shared<
-            WrappedTaskQueue<subsys::Concurrency>>(tasq_)),
+        tasq_(std::make_shared<Tasq>()),
+        tasq_wrap_(std::make_shared<SwitchingTasq>(tasq_, concurrency_)),
         ljctx_(luajit::Context::MakeSync(
             *SimpleEnv::Make(
                 {{typeid(subsys::Concurrency), tasq_wrap_}},
                 env.self()))),
         imgui_(ImGui::CreateContext()) { }
+
   Impl(const Impl&) = delete;
   Impl(Impl&&) = delete;
   Impl& operator=(const Impl&) = delete;
@@ -224,8 +241,8 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   const std::shared_ptr<subsys::Logger>      logger_;
   const std::unique_ptr<EventQueue>          events_;
 
-  const std::shared_ptr<SimpleTaskQueue<SyncTask>> tasq_;
-  const std::shared_ptr<WrappedTaskQueue<subsys::Concurrency>> tasq_wrap_;
+  const std::shared_ptr<Tasq>          tasq_;
+  const std::shared_ptr<SwitchingTasq> tasq_wrap_;
 
   const std::shared_ptr<luajit::Context> ljctx_;
   std::optional<Future<std::shared_ptr<luajit::Value>>::Completer> ljext_;
