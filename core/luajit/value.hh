@@ -9,8 +9,9 @@
 #include <string_view>
 #include <vector>
 
-#include "iface/common/value.hh"
 #include "iface/common/future.hh"
+#include "iface/common/leak_detector.hh"
+#include "iface/common/value.hh"
 #include "iface/env.hh"
 
 
@@ -19,7 +20,7 @@ namespace nf7::core::luajit {
 class Context;
 class TaskContext;
 
-class Value final : public nf7::Value::Data {
+class Value final : public nf7::Value::Data, public LeakDetector<Value> {
  public:
   static std::shared_ptr<Value> MakeFunction(
       TaskContext&,
