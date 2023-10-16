@@ -3,6 +3,7 @@ target_link_libraries(nf7_core
   PUBLIC
     git_hash
     imgui
+    imgui4lua
     luajit
     nf7_config
     nf7_iface
