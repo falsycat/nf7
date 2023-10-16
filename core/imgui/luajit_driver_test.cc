@@ -47,6 +47,4 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
         [&](auto&) { DropEnv(); },
       });
   ConsumeTasks();
-
-  // TODO FIXME fix leak
 }
