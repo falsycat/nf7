@@ -39,6 +39,17 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
         return 1;
       });
       lua_setfield(state_, -2, "type");
+
+      lua_pushcfunction(state_, [](auto L) {
+        const nf7::Value& v = CheckUserData<nf7::Value>(L, 1, "nf7::Value");
+        try {
+          v.data<luajit::Value>()->Push(L);
+        } catch (...) {
+          lua_pushnil(L);
+        }
+        return 1;
+      });
+      lua_setfield(state_, -2, "lua");
     }
     lua_setfield(state_, -2, "__index");
 
