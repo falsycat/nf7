@@ -1,6 +1,7 @@
 // No copyright
 #include "core/luajit/context.hh"
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -95,13 +96,16 @@ class SyncContext final :
   }
 
   void Push(Task&& task) noexcept override {
+    ++refcnt_;
+
     auto self = std::dynamic_pointer_cast<SyncContext>(shared_from_this());
     concurrency_->Push({
       task.after(),
-      [self, task = std::move(task)](auto&) mutable {
+      [this, self, task = std::move(task)](auto&) mutable {
         TaskContext ctx {self, self->state()};
         lua_settop(*ctx, 0);
         task(ctx);
+        if (0 == --refcnt_) { lua_gc(*ctx, LUA_GCCOLLECT, 0); }
       },
       task.location()
     });
@@ -111,7 +115,8 @@ class SyncContext final :
   using Context::shared_from_this;
 
  private:
-  std::shared_ptr<subsys::Concurrency> concurrency_;
+  const std::shared_ptr<subsys::Concurrency> concurrency_;
+  uint64_t refcnt_ {0};
 };
 
 class AsyncContext final :
@@ -125,6 +130,8 @@ class AsyncContext final :
   }
 
   void Push(Task&& task) noexcept override {
+    ++refcnt_;
+
     std::unique_lock<std::mutex> k {mtx_};
     const auto first = tasks_.empty();
     tasks_.push_back(std::move(task));
@@ -153,7 +160,9 @@ class AsyncContext final :
     TaskContext ctx {self, state()};
     for (auto& task : tasks) {
       task(ctx);
+      --refcnt_;
     }
+    if (0 == refcnt_) { lua_gc(*ctx, LUA_GCCOLLECT, 0); }
   }
 
  private:
@@ -161,6 +170,8 @@ class AsyncContext final :
 
   std::mutex mtx_;
   std::vector<Task> tasks_;
+
+  std::atomic<uint64_t> refcnt_ {0};
 };
 }  // namespace
 
