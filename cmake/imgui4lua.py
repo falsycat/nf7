@@ -3,6 +3,22 @@ import subprocess
 import sys
 
 # ---- GENERATOR DEFINITIONS
+def gen_enum(item):
+  name = item.get("name", "")
+  if name not in kEnumWhitelist:
+    return
+
+  short_name = name[5:-1]
+
+  print(f"{{  // {name}")
+  for child in item.get("inner", []):
+    member_name = child["name"]
+    if not member_name.startswith(name): continue
+    member_short_name = member_name[len(name):]
+    print(f"  lua_pushinteger(L, static_cast<lua_Integer>({member_name})); "+
+          f"lua_setfield(L, -2, \"{short_name}_{member_short_name}\");")
+  print(f"}}  // {name}")
+
 def gen_func(item):
   name = item["name"]
   if name not in kFuncWhitelist:
@@ -88,10 +104,10 @@ def gen_argument(pc, item):
 
 
 # ---- WALKER DEFINITIONS
-def walk_symbols(item):
+def walk_ns(item):
   kind = item.get("kind")
 
-  if kind == "FunctionDecl":
+  if "FunctionDecl" == kind:
     gen_func(item)
   else:
     walk(item)
@@ -99,12 +115,14 @@ def walk_symbols(item):
 def walk(item):
   kind = item.get("kind")
 
-  w = walk
-  if kind == "NamespaceDecl":
-    w = walk_symbols
-
-  for child in item.get("inner", []):
-    w(child)
+  if "EnumDecl" == kind:
+    gen_enum(item)
+  else:
+    w = walk
+    if kind == "NamespaceDecl":
+      w = walk_ns
+    for child in item.get("inner", []):
+      w(child)
 
 
 # ---- DATA DEFINITIONS
@@ -121,6 +139,9 @@ kFuncWhitelist = [
   "GetWindowSize",
   "GetWindowWidth",
   "GetWindowHeight",
+]
+kEnumWhitelist = [
+  "ImGuiWindowFlags_",
 ]
 
 

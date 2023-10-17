@@ -41,7 +41,7 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
       toVector(
           "local ctx = ...\nctx:trace(\"hello world\")\n"
           "local imgui = ctx:recv():lua()\n"
-          "imgui.Begin(\"helloworld\", true, 0)\n"
+          "imgui.Begin(\"helloworld\", true, imgui.WindowFlags_NoResize)\n"
           "imgui.End()"),
       "test chunk");
 
