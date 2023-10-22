@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+#include <lua.hpp>
+
 #include "iface/common/future.hh"
 #include "iface/common/leak_detector.hh"
 #include "iface/common/value.hh"
@@ -45,13 +47,17 @@ class Value final : public nf7::Value::Data, public LeakDetector<Value> {
   Value& operator=(const Value&) = delete;
   Value& operator=(Value&&) = delete;
 
+  void Push(lua_State* L) const noexcept {
+    lua_rawgeti(L, LUA_REGISTRYINDEX, index_);
+  }
+
  public:
   const std::shared_ptr<Context>& context() const noexcept { return ctx_; }
   int index() const noexcept { return index_; }
 
  private:
-  std::shared_ptr<Context> ctx_;
-  int index_;
+  const std::shared_ptr<Context> ctx_;
+  const int index_;
 };
 
 }  // namespace nf7::core::luajit

@@ -38,15 +38,17 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
 
   auto fu = nf7::core::imgui::LuaJITDriver::CompileAndInstall(
       *subenv,
-      toVector("local ctx = ...\nctx:trace(\"hello world\")"),
+      toVector(
+          "local ctx = ...\nctx:trace(\"hello world\")\n"
+          "local imgui = ctx:recv():lua()\n"
+          "imgui.Begin(\"helloworld\", true, imgui.WindowFlags_NoResize)\n"
+          "imgui.End()"),
       "test chunk");
 
   concurrency->Push(
       nf7::SyncTask {
-        clock->now() + std::chrono::seconds {2},
+        clock->now() + std::chrono::seconds {10},
         [&](auto&) { DropEnv(); },
       });
   ConsumeTasks();
-
-  // TODO FIXME fix leak
 }

@@ -1,6 +1,7 @@
 // No copyright
 #include "core/luajit/context.hh"
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -39,6 +40,17 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
         return 1;
       });
       lua_setfield(state_, -2, "type");
+
+      lua_pushcfunction(state_, [](auto L) {
+        const nf7::Value& v = CheckUserData<nf7::Value>(L, 1, "nf7::Value");
+        try {
+          v.data<luajit::Value>()->Push(L);
+        } catch (...) {
+          lua_pushnil(L);
+        }
+        return 1;
+      });
+      lua_setfield(state_, -2, "lua");
     }
     lua_setfield(state_, -2, "__index");
 
@@ -84,13 +96,16 @@ class SyncContext final :
   }
 
   void Push(Task&& task) noexcept override {
+    ++refcnt_;
+
     auto self = std::dynamic_pointer_cast<SyncContext>(shared_from_this());
     concurrency_->Push({
       task.after(),
-      [self, task = std::move(task)](auto&) mutable {
+      [this, self, task = std::move(task)](auto&) mutable {
         TaskContext ctx {self, self->state()};
         lua_settop(*ctx, 0);
         task(ctx);
+        if (0 == --refcnt_) { lua_gc(*ctx, LUA_GCCOLLECT, 0); }
       },
       task.location()
     });
@@ -100,7 +115,8 @@ class SyncContext final :
   using Context::shared_from_this;
 
  private:
-  std::shared_ptr<subsys::Concurrency> concurrency_;
+  const std::shared_ptr<subsys::Concurrency> concurrency_;
+  uint64_t refcnt_ {0};
 };
 
 class AsyncContext final :
@@ -114,6 +130,8 @@ class AsyncContext final :
   }
 
   void Push(Task&& task) noexcept override {
+    ++refcnt_;
+
     std::unique_lock<std::mutex> k {mtx_};
     const auto first = tasks_.empty();
     tasks_.push_back(std::move(task));
@@ -142,7 +160,9 @@ class AsyncContext final :
     TaskContext ctx {self, state()};
     for (auto& task : tasks) {
       task(ctx);
+      --refcnt_;
     }
+    if (0 == refcnt_) { lua_gc(*ctx, LUA_GCCOLLECT, 0); }
   }
 
  private:
@@ -150,6 +170,8 @@ class AsyncContext final :
 
   std::mutex mtx_;
   std::vector<Task> tasks_;
+
+  std::atomic<uint64_t> refcnt_ {0};
 };
 }  // namespace
 

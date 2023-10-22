@@ -12,7 +12,15 @@ namespace nf7::core::imgui {
 
 std::shared_ptr<luajit::Value> LuaJITDriver::MakeExtensionObject(
     luajit::TaskContext& lua) {
-  lua_pushnil(*lua);
+  auto L = *lua;
+
+  lua_newuserdata(L, 0);
+  if (luaL_newmetatable(L, "nf7::core::imgui::LuaJITDriver::Extension")) {
+    lua_createtable(L, 0, 0);
+#   include "generated/imgui4lua.inc"
+    lua_setfield(L, -2, "__index");
+  }
+  lua_setmetatable(L, -2);
   return lua.Register();
 }
 

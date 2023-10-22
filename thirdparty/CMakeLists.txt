@@ -19,6 +19,7 @@ FetchContent_Declare(
 )
 FetchContent_Populate(imgui)
 include(imgui.cmake)
+include(../cmake/imgui4lua.cmake)
 
 # ---- luajit (MIT)
 FetchContent_Declare(
