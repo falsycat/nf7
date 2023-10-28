@@ -66,16 +66,13 @@ class MetaEnv : public subsys::MetaEnv {
     return Pair {child.first, *child.second};
   }
 
-  std::vector<Pair> FetchAll() const override
-  try {
+  std::vector<Pair> FetchAll() const override {
     std::vector<Pair> ret;
     ret.reserve(children_.size());
     for (const auto& child : children_) {
       ret.emplace_back(child.first, *child.second);
     }
     return ret;
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {};
   }
 
  public:

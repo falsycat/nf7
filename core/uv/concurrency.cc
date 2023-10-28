@@ -7,7 +7,7 @@ using namespace std::literals;
 namespace nf7::core::uv {
 
 Concurrency::Concurrency(Env& env, const std::shared_ptr<Context>& ctx)
-try : subsys::Concurrency("nf7::core::uv::Concurrency"),
+    : subsys::Concurrency("nf7::core::uv::Concurrency"),
       impl_(std::make_shared<Impl>(env)),
       delete_(ctx->Make<uvw::async_handle>()),
       push_(ctx->Make<uvw::async_handle>()),
@@ -38,8 +38,6 @@ try : subsys::Concurrency("nf7::core::uv::Concurrency"),
       h.unreference();
     }
   });
-} catch(const std::bad_alloc&) {
-  throw MemoryException {};
 }
 
 Concurrency::~Concurrency() noexcept {
@@ -78,7 +76,7 @@ std::chrono::milliseconds Concurrency::Impl::Consume() noexcept {
     SyncTaskContext ctx {};
     try {
       task(ctx);
-    } catch (const Exception&) {
+    } catch (const std::exception&) {
       logger_->Error("task threw an exception");
     }
   }

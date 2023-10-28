@@ -146,7 +146,7 @@ try {
       throw;
     }
   });
-} catch (...) {
+} catch (const std::exception&) {
   return std::current_exception();
 }
 Future<Void> Database::Exec(std::string_view cmd, ColumnHandler&& f) noexcept {
@@ -157,7 +157,7 @@ Future<Void> Database::Exec(std::string_view cmd, ColumnHandler&& f) noexcept {
       auto self = reinterpret_cast<Database*>(ptr);
       A a {n, v};
       return int {self->column_handler_(a)? 0: 1};
-    } catch (...) {
+    } catch (const std::exception&) {
       return 1;
     }
 

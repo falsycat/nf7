@@ -177,7 +177,7 @@ class Value final {
 
     return MakeBuffer(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw MemoryException {};
+    std::throw_with_nested(Exception {"failed to allocate space for buffer"});
   }
   template <typename T>
   static Value MakeBuffer(std::initializer_list<T> v)
@@ -200,7 +200,7 @@ class Value final {
 
     return MakeObject(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw MemoryException {};
+    std::throw_with_nested(Exception {"failed to allocate memory for object"});
   }
   static Value MakeObject(std::initializer_list<Object::Pair> v) {
     return MakeObject(v.begin(), v.end());
@@ -218,7 +218,7 @@ class Value final {
 
     return MakeObject(n, ptr);
   } catch (const std::bad_alloc&) {
-    throw MemoryException {};
+    std::throw_with_nested(Exception {"failed to allocate memory for array"});
   }
   static Value MakeArray(std::initializer_list<Value> v) {
     return MakeArray(v.begin(), v.end());
@@ -229,7 +229,8 @@ class Value final {
   try {
     return Value {std::make_shared<T>(std::forward<Args>(args)...)};
   } catch (const std::bad_alloc&) {
-    throw MemoryException {};
+    std::throw_with_nested(
+        Exception {"failed to allocate memory for shared data"});
   }
 
  public:

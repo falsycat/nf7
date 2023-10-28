@@ -52,7 +52,7 @@ std::shared_ptr<File> File::Make(
 File::File(Env& env,
            std::string_view path,
            uvw::file_req::file_open_flags open_flags)
-try : subsys::FiniteBuffer("nf7::core::uv::File::Finite"),
+    : subsys::FiniteBuffer("nf7::core::uv::File::Finite"),
       subsys::ResizableBuffer("nf7::core::uv::File::Resizable"),
       subsys::ReadableBuffer("nf7::core::uv::File::Readable"),
       subsys::WritableBuffer("nf7::core::uv::File::Writable"),
@@ -67,8 +67,6 @@ try : subsys::FiniteBuffer("nf7::core::uv::File::Finite"),
     f->cancel();
     self.close();
   });
-} catch (const std::bad_alloc&) {
-  throw MemoryException {};
 }
 
 Future<Void> File::Open() noexcept
@@ -78,7 +76,7 @@ try {
     Open(comp, k);
   });
   return comp.future();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   return {std::current_exception()};
 }
 
@@ -102,7 +100,7 @@ try {
         comp.Throw(std::make_exception_ptr(e));
       });
   file_->open(path_, open_flags_, 0666);
-} catch (const Exception&) {
+} catch (const std::exception&) {
   comp.Throw();
 }
 
@@ -121,7 +119,7 @@ try {
       });
   });
   return comp.future();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   return std::current_exception();
 }
 
@@ -141,7 +139,7 @@ try {
       .Chain(comp, [k](auto&) { return Void {}; });
   });
   return comp.future();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   return std::current_exception();
 }
 
@@ -173,7 +171,7 @@ try {
       });
   });
   return comp.future();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   return std::current_exception();
 }
 
@@ -202,7 +200,7 @@ try {
       });
   });
   return comp.future();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   return std::current_exception();
 }
 

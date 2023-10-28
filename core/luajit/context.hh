@@ -136,7 +136,7 @@ class Context :
       : subsys::Interface(name), kind_(kind), state_(nullptr) {
     state_ = luaL_newstate();
     if (nullptr == state_) {
-      throw MemoryException {"lua_State allocation failure"};
+      throw Exception {"lua_State allocation failure"};
     }
   }
   ~Context() noexcept {

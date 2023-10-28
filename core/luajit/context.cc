@@ -45,7 +45,7 @@ void TaskContext::Push(const nf7::Value& v) noexcept {
         const nf7::Value& v = CheckUserData<nf7::Value>(L, 1, "nf7::Value");
         try {
           v.data<luajit::Value>()->Push(L);
-        } catch (...) {
+        } catch (const std::exception&) {
           lua_pushnil(L);
         }
         return 1;

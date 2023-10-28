@@ -5,6 +5,7 @@
 #include <chrono>
 #include <concepts>
 #include <condition_variable>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -86,8 +87,8 @@ class Task final {
   void operator()(Param param) {
     try {
       func_(std::forward<Param>(param));
-    } catch (...) {
-      throw Exception {"task throws an exception", location_};
+    } catch (const std::exception&) {
+      std::throw_with_nested(Exception {"task throws an exception", location_});
     }
   }
 
@@ -200,7 +201,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
       tasks_.push(std::move(task));
       cv_.notify_all();
       ++size_;
-    } catch (...) {
+    } catch (const std::exception&) {
       onErrorWhilePush(location);
     }
   }
@@ -236,7 +237,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
         }
       } catch (const std::system_error&) {
         driver.EndBusy();
-        throw Exception {"mutex error"};
+        std::throw_with_nested(Exception {"mutex error"});
       }
       driver.EndBusy();
 
@@ -257,7 +258,7 @@ class SimpleTaskQueue : public TaskQueue<T> {
           cv_.wait(k, pred);
         }
       } catch (const std::system_error&) {
-        throw Exception {"mutex error"};
+        std::throw_with_nested(Exception {"mutex error"});
       }
     }
   }

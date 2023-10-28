@@ -41,15 +41,12 @@ class Context : public subsys::Interface {
 
  public:
   template <typename T, typename... Args>
-  std::shared_ptr<T> Make(Args&&... args) const
-  try {
+  std::shared_ptr<T> Make(Args&&... args) const {
     auto ptr = loop_->resource<T>(std::forward<Args>(args)...);
     if (nullptr == ptr) {
       throw Exception {"failed to init libuv resource"};
     }
     return ptr;
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {"failed to allocate libuv resource"};
   }
 
   void Exit() noexcept {

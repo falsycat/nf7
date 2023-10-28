@@ -88,12 +88,11 @@ try {
     return pends_.back().future();
   }
   return MakeToken();
-} catch (const std::bad_alloc&) {
-  return MemoryException::MakePtr("failed to queue lock request");
+} catch (const std::exception&) {
+  return Exception::MakeNestedPtr("failed to queue lock request");
 }
 
-Mutex::SharedToken Mutex::Impl::TryLock(Mode mode)
-try {
+Mutex::SharedToken Mutex::Impl::TryLock(Mode mode) {
   assert(std::this_thread::get_id() == thid_);
 
   if (!pends_.empty()) {
@@ -116,8 +115,6 @@ try {
     break;
   }
   return MakeToken();
-} catch (const std::bad_alloc&) {
-  throw MemoryException {"failed to acquire lock"};
 }
 
 void Mutex::Impl::Unlock() noexcept {
@@ -135,7 +132,7 @@ void Mutex::Impl::Unlock() noexcept {
     auto token = MakeToken();
     comp.Complete(std::move(token));
   } catch (const std::bad_alloc&) {
-    comp.Throw(MemoryException::MakePtr("failed to allocate new token"));
+    comp.Throw(Exception::MakeNestedPtr("failed to allocate new token"));
   }
 }
 
@@ -150,15 +147,11 @@ try {
   current_ = ret;
   return ret;
 } catch (const std::bad_alloc&) {
-  throw MemoryException {"failed to make new mutex token"};
+  std::throw_with_nested(Exception {"failed to make new mutex token"});
 }
 
 
-Mutex::Mutex()
-try : impl_(std::make_shared<Impl>()) {
-} catch (const std::bad_alloc&) {
-  throw MemoryException {"memory shortage"};
-}
+Mutex::Mutex() : impl_(std::make_shared<Impl>()) { }
 
 Mutex::~Mutex() noexcept {
   impl_->TearDown();

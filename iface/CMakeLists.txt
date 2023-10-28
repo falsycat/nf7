@@ -38,7 +38,6 @@ add_executable(nf7_iface_test)
 target_sources(nf7_iface_test
   PRIVATE
     common/container_test.cc
-    common/exception_test.cc
     common/future_test.cc
     common/leak_detector_test.cc
     common/mutex_test.cc

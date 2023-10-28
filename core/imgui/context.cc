@@ -94,24 +94,18 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
     gl3_->Exec([this, self = shared_from_this()](auto& t) { TearDown(t); });
   }
 
-  const std::shared_ptr<Driver>& Register(const std::shared_ptr<Driver>& driver)
-  try {
+  const std::shared_ptr<Driver>& Register(const std::shared_ptr<Driver>& driver) {
     drivers_.emplace_back(driver);
     return driver;
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {};
   }
 
-  std::shared_ptr<Env> MakeDriversEnv(Env& env)
-  try {
+  std::shared_ptr<Env> MakeDriversEnv(Env& env) {
     return SimpleEnv::Make(
         {
           {typeid(subsys::Concurrency), tasq_wrap_},
           {typeid(luajit::Context), ljctx_},
         },
         env.self());
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {};
   }
 
   Future<std::shared_ptr<luajit::Value>> MakeLuaExtension() noexcept
@@ -121,7 +115,7 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
       ljext_->RunAsync(ljctx_, concurrency_, LuaJITDriver::MakeExtensionObject);
     }
     return ljext_->future();
-  } catch (...) {
+  } catch (const std::exception&) {
     return {std::current_exception()};
   }
 
@@ -211,7 +205,7 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
       try {
         SyncTaskContext ctx;
         task(ctx);
-      } catch (const Exception& e) {
+      } catch (const std::exception&) {
         logger_->Warn("error caused by a task came from ImGui driver");
       }
       SyncTask::Time tick() const noexcept { return tick_; }
@@ -252,11 +246,9 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
 };
 
 Context::Context(Env& env)
-try : subsys::Interface("nf7::core::imgui::Context"),
+    : subsys::Interface("nf7::core::imgui::Context"),
       impl_(std::make_shared<Impl>(env)) {
   impl_->ScheduleStart();
-} catch (const std::bad_alloc&) {
-  throw MemoryException {};
 }
 Context::~Context() noexcept {
   impl_->ScheduleTearDown();
