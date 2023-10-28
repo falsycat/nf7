@@ -20,11 +20,11 @@ std::shared_ptr<Value> Value::MakeFunction(
     return ctx.Register();
   case LUA_ERRMEM:
     lua_pop(*ctx, 1);
-    throw MemoryException {};
+    throw Exception {"lua memory error"};
   default:
     std::string msg {lua_tostring(*ctx, -1)};
     lua_pop(*ctx, 1);
-    throw Exception {"failed to compile a buffer" + msg};
+    throw Exception {"failed to compile a buffer: " + msg};
   }
 }
 Future<std::shared_ptr<Value>> Value::MakeFunction(

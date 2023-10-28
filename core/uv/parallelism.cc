@@ -52,15 +52,13 @@ try {
     AsyncTaskContext ctx {};
     try {
       task(ctx);
-    } catch (const Exception&) {
+    } catch (const std::exception&) {
       logger->Error("an async task threw an exception");
     }
   });
   work->queue();
-} catch (const Exception&) {
+} catch (const std::exception&) {
   logger_->Error("exception thrown");
-} catch (const std::bad_alloc&) {
-  logger_->Error("memory shortage");
 }
 
 void Parallelism::Impl::StartTimer(std::chrono::milliseconds wait, AsyncTask&& task) noexcept
@@ -72,10 +70,8 @@ try {
     QueueWork(std::move(task));
   });
   timer->start(wait, 0ms);
-} catch (const Exception&) {
+} catch (const std::exception&) {
   logger_->Error("exception thrown");
-} catch (...) {
-  logger_->Error("memory shortage");
 }
 
 }  // namespace nf7::core::uv

@@ -68,7 +68,7 @@ class EnvFixtureWithTasking : public EnvFixture {
     void Drive(AsyncTask&& task) noexcept {
       try {
         task(param_);
-      } catch (const Exception& e) {
+      } catch (const std::exception& e) {
         std::cerr
             << "unexpected exception while async task execution:\n"
             << e << std::endl;
@@ -102,7 +102,7 @@ class EnvFixtureWithTasking : public EnvFixture {
     void Drive(SyncTask&& task) noexcept {
       try {
         task(param_);
-      } catch (const Exception& e) {
+      } catch (const std::exception& e) {
         std::cerr
             << "unexpected exception while sync task execution:\n"
             << e << std::endl;

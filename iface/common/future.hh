@@ -57,7 +57,8 @@ class Future final {
         try {
           listeners_.push_back(std::move(listener));
         } catch (const std::exception&) {
-          throw MemoryException {};
+          std::throw_with_nested(
+              Exception {"failed to push a listner to the future"});
         }
       } else {
         calling_listener_ = true;
@@ -139,11 +140,11 @@ class Future final {
     });
     return *this;
   }
-  Future<T>& Catch(std::function<void(const Exception&)>&& f) {
+  Future<T>& Catch(std::function<void(const std::exception&)>&& f) {
     Listen([f = std::move(f)](auto& fu) noexcept {
       try {
         fu.value();
-      } catch (const Exception& e) {
+      } catch (const std::exception& e) {
         f(e);
       }
     });
@@ -156,7 +157,7 @@ class Future final {
     Listen([comp, f = std::move(f)](auto& fu) mutable {
       try {
         f(fu.value()).Chain(comp);
-      } catch (...) {
+      } catch (const std::exception&) {
         comp.Throw();
       }
     });
@@ -219,10 +220,8 @@ template <typename T>
 class Future<T>::Completer final {
  public:
   Completer()
-  try : internal_(std::make_shared<Internal>()) {
+      : internal_(std::make_shared<Internal>()) {
     internal_->Ref();
-  } catch (const std::exception&) {
-    throw MemoryException {};
   }
   ~Completer() noexcept {
     if (nullptr != internal_) {
@@ -278,7 +277,7 @@ class Future<T>::Completer final {
     assert(nullptr != internal_);
     try {
       Complete(f());
-    } catch (...) {
+    } catch (const std::exception&) {
       Throw();
     }
     return *this;
@@ -294,7 +293,7 @@ class Future<T>::Completer final {
         sq->Exec([*this, ret = f(ctx)](auto&) mutable {
           Complete(std::move(ret));
         });
-      } catch (...) {
+      } catch (const std::exception&) {
         const auto eptr = std::current_exception();
         sq->Exec([*this, eptr](auto&) mutable { Throw(eptr); });
       }

@@ -54,7 +54,7 @@ class Container : public std::enable_shared_from_this<Container<I>> {
     auto ptr = std::dynamic_pointer_cast<I2>(Get(typeid(I2)));
     assert(nullptr != ptr);
     return ptr;
-  } catch (...) {
+  } catch (const std::exception&) {
     return def;
   }
 
@@ -121,11 +121,8 @@ class SimpleContainer : public Container<I> {
  public:
   static std::shared_ptr<SimpleContainer<I>> Make(
       Map&& m = {},
-      const std::shared_ptr<Container<I>>& fb = NullContainer<I>::kInstance)
-  try {
+      const std::shared_ptr<Container<I>>& fb = NullContainer<I>::kInstance) {
     return std::make_shared<SimpleContainer<I>>(std::move(m), fb);
-  } catch (const std::bad_alloc&) {
-    throw MemoryException {};
   }
 
  public:
@@ -155,7 +152,7 @@ class SimpleContainer : public Container<I> {
       ++nest_;
       try {
         ret = std::get<Factory>(v)(*this);
-      } catch (...) {
+      } catch (const std::exception&) {
         --nest_;
         throw;
       }

@@ -54,7 +54,7 @@ try {
           },
           fu_func, fu_ext)
       .future();
-} catch (...) {
+} catch (const std::exception&) {
   return {std::current_exception()};
 }
 

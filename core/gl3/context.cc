@@ -29,7 +29,7 @@ class Context::Impl : public std::enable_shared_from_this<Impl> {
     }
     SetUpGL();
     SetUpWindow();
-  } catch (const Exception&) {
+  } catch (const std::exception&) {
     TearDown();
     throw;
   }
@@ -147,11 +147,9 @@ class Context::Impl : public std::enable_shared_from_this<Impl> {
 };
 
 Context::Context(Env& env)
-try : subsys::Interface("nf7::core::gl3::Context"),
+    : subsys::Interface("nf7::core::gl3::Context"),
       impl_(std::make_shared<Impl>(env, *this)) {
   impl_->SchedulePolling();
-} catch (const std::bad_alloc&) {
-  throw MemoryException {};
 }
 Context::~Context() noexcept {
   impl_->ScheduleTearDown();
