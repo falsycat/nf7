@@ -135,13 +135,7 @@ class LazyContainer : public Container<I> {
 
     auto itr = map_.find(idx);
     if (map_.end() == itr) {
-      if (const auto fb = fallback_.lock()) {
-        return fb->Get(idx);
-      } else {
-        throw Exception {
-          "missing dependency: " + std::string {idx.name()},
-        };
-      }
+      return fallback_->Get(idx);
     }
 
     auto& v   = itr->second;
@@ -176,7 +170,7 @@ class LazyContainer : public Container<I> {
 
  private:
   Map map_;
-  const std::weak_ptr<Container<I>> fallback_;
+  const std::shared_ptr<Container<I>> fallback_;
 
   uint32_t nest_ = 0;
 };
