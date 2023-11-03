@@ -33,7 +33,7 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
   ON_CALL(*logger, Push).WillByDefault(
       [](const auto& item) {std::cout << item.contents() << std::endl; });
 
-  const auto subenv = nf7::SimpleEnv::Make(
+  const auto subenv = nf7::LazyEnv::Make(
       {{typeid(nf7::subsys::Logger), logger}}, env().self());
 
   auto fu = nf7::core::imgui::LuaJITDriver::CompileAndInstall(

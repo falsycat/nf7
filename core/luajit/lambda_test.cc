@@ -153,7 +153,7 @@ TEST_P(LuaJIT_Lambda, CtxMultiSend) {
 
 TEST_P(LuaJIT_Lambda, CtxSleep) {
   const auto clock = std::make_shared<nf7::core::Clock>();
-  nf7::SimpleEnv env {{
+  nf7::LazyEnv env {{
     {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
   }, this->env().self()};
 
@@ -194,7 +194,7 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
         EXPECT_EQ(item.contents(), "this is error");
       });
 
-  nf7::SimpleEnv env {{
+  nf7::LazyEnv env {{
     {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
   }, this->env().self()};
 

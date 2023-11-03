@@ -13,9 +13,9 @@ static inline bool MatchPair(
 }
 
 TEST(MetaEnv, FindOrByName) {
-  const auto a = nf7::SimpleEnv::Make();
-  const auto b = nf7::SimpleEnv::Make();
-  const auto c = nf7::SimpleEnv::Make();
+  const auto a = nf7::LazyEnv::Make();
+  const auto b = nf7::LazyEnv::Make();
+  const auto c = nf7::LazyEnv::Make();
 
   nf7::core::MetaEnv sut {
     {
@@ -33,9 +33,9 @@ TEST(MetaEnv, FindOrByName) {
 }
 
 TEST(MetaEnv, FindOrByIndex) {
-  const auto a = nf7::SimpleEnv::Make();
-  const auto b = nf7::SimpleEnv::Make();
-  const auto c = nf7::SimpleEnv::Make();
+  const auto a = nf7::LazyEnv::Make();
+  const auto b = nf7::LazyEnv::Make();
+  const auto c = nf7::LazyEnv::Make();
 
   nf7::core::MetaEnv sut {
     {
@@ -52,9 +52,9 @@ TEST(MetaEnv, FindOrByIndex) {
 }
 
 TEST(MetaEnv, FetchAll) {
-  const auto a = nf7::SimpleEnv::Make();
-  const auto b = nf7::SimpleEnv::Make();
-  const auto c = nf7::SimpleEnv::Make();
+  const auto a = nf7::LazyEnv::Make();
+  const auto b = nf7::LazyEnv::Make();
+  const auto c = nf7::LazyEnv::Make();
 
   nf7::core::MetaEnv sut {
     {

@@ -35,7 +35,7 @@ try {
       supermaker.get());
 
   auto denv_base = ctx->MakeDriversEnv(env);
-  auto denv = SimpleEnv::Make(
+  auto denv = LazyEnv::Make(
       {{typeid(subsys::Maker<nf7::Value>), maker}},
       denv_base);
 

@@ -76,7 +76,7 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
         tasq_(std::make_shared<Tasq>()),
         tasq_wrap_(std::make_shared<SwitchingTasq>(tasq_, concurrency_)),
         ljctx_(luajit::Context::MakeSync(
-            *SimpleEnv::Make(
+            *LazyEnv::Make(
                 {{typeid(subsys::Concurrency), tasq_wrap_}},
                 env.self()))),
         imgui_(ImGui::CreateContext()) { }
@@ -100,7 +100,7 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
   }
 
   std::shared_ptr<Env> MakeDriversEnv(Env& env) {
-    return SimpleEnv::Make(
+    return LazyEnv::Make(
         {
           {typeid(subsys::Concurrency), tasq_wrap_},
           {typeid(luajit::Context), ljctx_},

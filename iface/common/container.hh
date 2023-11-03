@@ -82,7 +82,7 @@ class NullContainer : public Container<I> {
 };
 
 template <typename I>
-class SimpleContainer : public Container<I> {
+class LazyContainer : public Container<I> {
  public:
   using Object  = std::shared_ptr<I>;
   using Factory = std::function<Object(Container<I>&)>;
@@ -119,14 +119,14 @@ class SimpleContainer : public Container<I> {
   }
 
  public:
-  static std::shared_ptr<SimpleContainer<I>> Make(
+  static std::shared_ptr<LazyContainer<I>> Make(
       Map&& m = {},
       const std::shared_ptr<Container<I>>& fb = NullContainer<I>::kInstance) {
-    return std::make_shared<SimpleContainer<I>>(std::move(m), fb);
+    return std::make_shared<LazyContainer<I>>(std::move(m), fb);
   }
 
  public:
-  SimpleContainer(Map&& m, const std::shared_ptr<Container<I>>& fb) noexcept
+  LazyContainer(Map&& m, const std::shared_ptr<Container<I>>& fb) noexcept
       : map_(std::move(m)), fallback_(fb) { }
 
  public:
