@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "iface/common/exception.hh"
+#include "iface/common/leak_detector.hh"
 
 
 namespace nf7 {
@@ -82,7 +83,8 @@ class NullContainer : public Container<I> {
 };
 
 template <typename I>
-class LazyContainer : public Container<I> {
+class LazyContainer :
+    public Container<I>, public LeakDetector<LazyContainer<I>> {
  public:
   using Object  = std::shared_ptr<I>;
   using Factory = std::function<Object(Container<I>&)>;
