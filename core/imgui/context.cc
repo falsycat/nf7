@@ -99,13 +99,13 @@ class Context::Impl final : public std::enable_shared_from_this<Impl> {
     return driver;
   }
 
-  std::shared_ptr<Env> MakeDriversEnv(Env& env) {
+  std::shared_ptr<Env> MakeDriversEnv(const std::shared_ptr<Env>& env) {
     return LazyEnv::Make(
         {
           {typeid(subsys::Concurrency), tasq_wrap_},
           {typeid(luajit::Context), ljctx_},
         },
-        env.self());
+        env);
   }
 
   Future<std::shared_ptr<luajit::Value>> MakeLuaExtension() noexcept
@@ -257,7 +257,7 @@ const std::shared_ptr<Driver>& Context::Register(
     const std::shared_ptr<Driver>& driver) {
   return impl_->Register(driver);
 }
-std::shared_ptr<Env> Context::MakeDriversEnv(Env& env) {
+std::shared_ptr<Env> Context::MakeDriversEnv(const std::shared_ptr<Env>& env) {
   return impl_->MakeDriversEnv(env);
 }
 Future<std::shared_ptr<luajit::Value>> Context::MakeLuaExtension() noexcept {

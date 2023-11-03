@@ -6,7 +6,8 @@
 
 namespace nf7 {
 
-using Env     = Container<subsys::Interface>;
-using LazyEnv = LazyContainer<subsys::Interface>;
+using Env      = Container<subsys::Interface>;
+using LazyEnv  = LazyContainer<subsys::Interface>;
+using FixedEnv = FixedContainer<subsys::Interface>;
 
 }  // namespace nf7
