@@ -33,7 +33,7 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
   ON_CALL(*logger, Push).WillByDefault(
       [](const auto& item) {std::cout << item.contents() << std::endl; });
 
-  const auto subenv = nf7::LazyEnv::Make(
+  auto subenv = nf7::LazyEnv::Make(
       {{typeid(nf7::subsys::Logger), logger}}, env().self());
 
   auto fu = nf7::core::imgui::LuaJITDriver::CompileAndInstall(
@@ -48,7 +48,7 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
   concurrency->Push(
       nf7::SyncTask {
         clock->now() + std::chrono::seconds {10},
-        [&](auto&) { DropEnv(); },
+        [&](auto&) { DropEnv(); subenv = nullptr; },
       });
   ConsumeTasks();
 }
