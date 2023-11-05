@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "iface/common/exception.hh"
+#include "iface/common/leak_detector.hh"
 
 
 namespace nf7 {
@@ -82,7 +83,8 @@ class NullContainer : public Container<I> {
 };
 
 template <typename I>
-class SimpleContainer : public Container<I> {
+class LazyContainer :
+    public Container<I>, public LeakDetector<LazyContainer<I>> {
  public:
   using Object  = std::shared_ptr<I>;
   using Factory = std::function<Object(Container<I>&)>;
@@ -119,14 +121,14 @@ class SimpleContainer : public Container<I> {
   }
 
  public:
-  static std::shared_ptr<SimpleContainer<I>> Make(
+  static std::shared_ptr<LazyContainer<I>> Make(
       Map&& m = {},
       const std::shared_ptr<Container<I>>& fb = NullContainer<I>::kInstance) {
-    return std::make_shared<SimpleContainer<I>>(std::move(m), fb);
+    return std::make_shared<LazyContainer<I>>(std::move(m), fb);
   }
 
  public:
-  SimpleContainer(Map&& m, const std::shared_ptr<Container<I>>& fb) noexcept
+  LazyContainer(Map&& m, const std::shared_ptr<Container<I>>& fb) noexcept
       : map_(std::move(m)), fallback_(fb) { }
 
  public:
@@ -135,13 +137,7 @@ class SimpleContainer : public Container<I> {
 
     auto itr = map_.find(idx);
     if (map_.end() == itr) {
-      if (const auto fb = fallback_.lock()) {
-        return fb->Get(idx);
-      } else {
-        throw Exception {
-          "missing dependency: " + std::string {idx.name()},
-        };
-      }
+      return fallback_->Get(idx);
     }
 
     auto& v   = itr->second;
@@ -176,9 +172,57 @@ class SimpleContainer : public Container<I> {
 
  private:
   Map map_;
-  const std::weak_ptr<Container<I>> fallback_;
+  const std::shared_ptr<Container<I>> fallback_;
 
   uint32_t nest_ = 0;
+};
+
+template <typename I>
+class FixedContainer : public Container<I> {
+ public:
+  using Object = std::shared_ptr<I>;
+  using Map    = std::unordered_map<std::type_index, Object>;
+
+ public:
+  static std::shared_ptr<FixedContainer<I>> Make(Map&& m = {}) {
+    return std::make_shared<FixedContainer<I>>(std::move(m));
+  }
+  static std::shared_ptr<FixedContainer<I>> Make(
+      Container<I>& src,
+      std::initializer_list<std::type_index> types) {
+    Map m {};
+    for (const auto type : types) {
+      m.emplace(type, src.Get(type));
+    }
+    return std::make_shared<FixedContainer<I>>(std::move(m));
+  }
+  static std::shared_ptr<FixedContainer<I>> Make(
+      const std::shared_ptr<Container<I>>& src,
+      std::initializer_list<std::type_index> types,
+      LazyContainer<I>::Map&& items) {
+    Map m {};
+    auto lazy = LazyContainer<I>::Make(std::move(items), src);
+    for (const auto type : types) {
+      m.emplace(type, lazy->Get(type));
+    }
+    return std::make_shared<FixedContainer<I>>(std::move(m));
+  }
+
+ public:
+  explicit FixedContainer(Map&& m) noexcept : map_(std::move(m)) { }
+
+ public:
+  Object Get(std::type_index idx) override {
+    const auto itr = map_.find(idx);
+    return map_.end() != itr?
+        itr->second:
+        throw Exception {"missing dependency: " + std::string {idx.name()}};
+  }
+  using Container<I>::Get;
+  using Container<I>::GetOr;
+
+ private:
+  const Map map_;
 };
 
 }  // namespace nf7

@@ -10,7 +10,8 @@ class Object {
  public:
   virtual ~Object() = default;
 };
-using SUT = nf7::SimpleContainer<Object>;
+using Lazy  = nf7::LazyContainer<Object>;
+using Fixed = nf7::FixedContainer<Object>;
 
 class IA : public Object { };
 class IB : public Object { };
@@ -33,60 +34,83 @@ class BRecursive : public IB {
 };
 }  // namespace
 
-TEST(SimpleContainer, FetchIsolated) {
-  auto sut = SUT::Make({ SUT::MakeItem<IA, A>(), });
+
+TEST(LazyContainer, FetchIsolated) {
+  auto sut = Lazy::Make({ Lazy::MakeItem<IA, A>(), });
   auto ptr = sut->Get<IA>();
   EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
 }
-TEST(SimpleContainer, FetchDepending) {
-  auto sut = SUT::Make({
-    SUT::MakeItem<IA, A>(),
-    SUT::MakeItem<IB, B>(),
+TEST(LazyContainer, FetchIsolatedTwice) {
+  auto sut = Lazy::Make({ Lazy::MakeItem<IA, A>(), });
+  auto prev = sut->Get<IA>();
+  EXPECT_EQ(prev, sut->Get<IA>());
+}
+TEST(LazyContainer, FetchDepending) {
+  auto sut = Lazy::Make({
+    Lazy::MakeItem<IA, A>(),
+    Lazy::MakeItem<IB, B>(),
   });
   auto ptr = sut->Get<IB>();
   EXPECT_TRUE(std::dynamic_pointer_cast<B>(ptr));
 }
-TEST(SimpleContainer, FetchUnknown) {
-  auto sut = SUT::Make();
+TEST(LazyContainer, FetchUnknown) {
+  auto sut = Lazy::Make();
   EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
 }
-TEST(SimpleContainer, FetchUnknownDepending) {
-  auto sut = SUT::Make({ SUT::MakeItem<IB, B>(), });
+TEST(LazyContainer, FetchUnknownDepending) {
+  auto sut = Lazy::Make({ Lazy::MakeItem<IB, B>(), });
   EXPECT_THROW(sut->Get<IB>(), nf7::Exception);
 }
 
-TEST(SimpleContainer, FetchWithFallback) {
-  auto fb  = SUT::Make({ SUT::MakeItem<IA, A>(), });
-  auto sut = SUT::Make({}, fb);
+TEST(LazyContainer, FetchWithFallback) {
+  auto fb  = Lazy::Make({ Lazy::MakeItem<IA, A>(), });
+  auto sut = Lazy::Make({}, fb);
   auto ptr = sut->Get<IA>();
   EXPECT_TRUE(std::dynamic_pointer_cast<A>(ptr));
 }
-TEST(SimpleContainer, FetchUnknownWithFallback) {
-  auto fb  = SUT::Make();
-  auto sut = SUT::Make({}, fb);
+TEST(LazyContainer, FetchUnknownWithFallback) {
+  auto fb  = Lazy::Make();
+  auto sut = Lazy::Make({}, fb);
   EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
 }
 
-TEST(SimpleContainer, ConstructWithSharedInstance) {
+TEST(LazyContainer, ConstructWithSharedInstance) {
   class Ashared : public IA {
    public:
     Ashared(const std::shared_ptr<nf7::Container<Object>>&) { }
   };
-  auto sut = SUT::Make({ SUT::MakeItem<IA, Ashared>(), });
+  auto sut = Lazy::Make({ Lazy::MakeItem<IA, Ashared>(), });
   EXPECT_TRUE(sut->Get<IA>());
 }
-TEST(SimpleContainer, ConstructWithNothing) {
+TEST(LazyContainer, ConstructWithNothing) {
   class Anothing : public IA {
    public:
     Anothing() { }
   };
-  auto sut = SUT::Make({ SUT::MakeItem<IA, Anothing>(), });
+  auto sut = Lazy::Make({ Lazy::MakeItem<IA, Anothing>(), });
   EXPECT_TRUE(sut->Get<IA>());
 }
 
 #if !defined(NDEBUG)
-TEST(SimpleContainer, DeathByFetchRecursive) {
-  auto sut = SUT::Make({ SUT::MakeItem<IB, BRecursive>(), });
+TEST(LazyContainer, DeathByFetchRecursive) {
+  auto sut = Lazy::Make({ Lazy::MakeItem<IB, BRecursive>(), });
   ASSERT_DEATH_IF_SUPPORTED(sut->Get<IB>(), "");
 }
 #endif
+
+
+TEST(FixedContainer, Fetch) {
+  auto lazy = Lazy::Make({
+    Lazy::MakeItem<IA, A>(),
+    Lazy::MakeItem<IB, B>(),
+  });
+  auto sut = Fixed::Make(*lazy, {typeid(IB)});
+  EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
+  EXPECT_TRUE(sut->Get<IB>());
+}
+TEST(FixedContainer, MakeAndFetch) {
+  auto lazy = Lazy::Make({ Lazy::MakeItem<IA, A>(), });
+  auto sut  = Fixed::Make(lazy, {typeid(IB)}, {Lazy::MakeItem<IB, B>()});
+  EXPECT_THROW(sut->Get<IA>(), nf7::Exception);
+  EXPECT_TRUE(sut->Get<IB>());
+}

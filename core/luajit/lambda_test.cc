@@ -153,9 +153,8 @@ TEST_P(LuaJIT_Lambda, CtxMultiSend) {
 
 TEST_P(LuaJIT_Lambda, CtxSleep) {
   const auto clock = std::make_shared<nf7::core::Clock>();
-  nf7::SimpleEnv env {{
-    {typeid(nf7::subsys::Clock), [&](auto&) { return clock; }},
-  }, this->env().self()};
+  auto env = nf7::LazyEnv::Make(
+      {{ typeid(nf7::subsys::Clock), clock, }}, this->env().self());
 
   clock->Tick();
   const auto begin = clock->now();
@@ -165,7 +164,7 @@ TEST_P(LuaJIT_Lambda, CtxSleep) {
       {nf7::Value {}},
       1, 0,
       {},
-      &env);
+      env.get());
 
   clock->Tick();
   const auto end = clock->now();
@@ -194,9 +193,8 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
         EXPECT_EQ(item.contents(), "this is error");
       });
 
-  nf7::SimpleEnv env {{
-    {typeid(nf7::subsys::Logger), [&](auto&) { return logger; }},
-  }, this->env().self()};
+  auto env = nf7::LazyEnv::Make(
+      {{ typeid(nf7::subsys::Logger), logger, }}, this->env().self());
 
   Expect(
       "local ctx = ...\n"
@@ -207,7 +205,7 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
       {nf7::Value {}},
       1, 0,
       {},
-      &env);
+      env.get());
 }
 
 INSTANTIATE_TEST_SUITE_P(

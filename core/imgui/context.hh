@@ -26,7 +26,7 @@ class Context : public subsys::Interface {
   const std::shared_ptr<Driver>& Register(
       const std::shared_ptr<Driver>& driver);
 
-  std::shared_ptr<Env> MakeDriversEnv(Env&);
+  std::shared_ptr<Env> MakeDriversEnv(const std::shared_ptr<Env>&);
   Future<std::shared_ptr<luajit::Value>> MakeLuaExtension() noexcept;
 
  private:

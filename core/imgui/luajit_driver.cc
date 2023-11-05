@@ -34,8 +34,8 @@ try {
       "nf7::core::imgui::LuaJITDriver::Maker",
       supermaker.get());
 
-  auto denv_base = ctx->MakeDriversEnv(env);
-  auto denv = SimpleEnv::Make(
+  auto denv_base = ctx->MakeDriversEnv(env.self());
+  auto denv = LazyEnv::Make(
       {{typeid(subsys::Maker<nf7::Value>), maker}},
       denv_base);
 
