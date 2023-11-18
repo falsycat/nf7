@@ -2,7 +2,9 @@ import json
 import subprocess
 import sys
 
-# ---- GENERATOR DEFINITIONS
+# ---- GENERATOR ALGORITHM
+
+# generate Lua to define enum constants
 def gen_enum(item):
   name = item.get("name", "")
   if name not in kEnumWhitelist:
@@ -20,6 +22,7 @@ def gen_enum(item):
   print(f"}}  // {name}")
   print()
 
+# generate Lua to define an imgui function which switches overloads and calls
 def gen_func(name, ovlds):
   ovld_root = (0, {}, None)
   for ovld in ovlds:
@@ -38,7 +41,7 @@ def gen_func(name, ovlds):
   def _output(ovld_node, depth=1):
     indent = "  "*depth
     if 0 == len(ovld_node[1]):
-      gen_single_func(ovld_node[2], indent=indent)
+      gen_func_call(ovld_node[2], indent=indent)
     elif 1 == len(ovld_node[1]):
       _output(*ovld_node[1].values(), depth=depth)
     else:
@@ -55,20 +58,21 @@ def gen_func(name, ovlds):
   print(f"lua_setfield(L, -2, \"{name}\");")
   print()
 
-def gen_single_func(item, indent=""):
+# generate Lua to call the function declared by the AST
+def gen_func_call(item, indent=""):
   name   = item["name"]
   pops   = []
   params = []
   pcount = 0
   for arg in item.get("inner", []):
     if "ParmVarDecl" != arg.get("kind"): continue
-    pop, param, push = gen_argument(pcount, arg)
+    pop, param, push = gen_func_argument(pcount, arg)
     pcount += 1
     pops  .extend(pop)
     params.extend(param)
     push  .extend(push)
 
-  pushes  = gen_return(item)
+  pushes  = gen_func_return(item)
   use_ret = 0 < len(pushes)
 
   # text output
@@ -84,7 +88,9 @@ def gen_single_func(item, indent=""):
     print(f"{indent}{nl.join(pushes)}")
   print(f"{indent}return {len(pushes)};")
 
-def gen_return(item):
+# generate Lua to push return values of the function
+# returns lines of the source code
+def gen_func_return(item):
   ftype = item["type"]["qualType"]
   type  = ftype[0:ftype.find("(")-1]
 
@@ -96,14 +102,19 @@ def gen_return(item):
     return ["lua_pushnumber(L, static_cast<lua_Number>(r));"]
   if "ImVec2" == type:
     return [
-        "lua_pushnumber(L, static_cast<lua_Number>(r.x));",
-        "lua_pushnumber(L, static_cast<lua_Number>(r.y));",
+      "lua_pushnumber(L, static_cast<lua_Number>(r.x));",
+      "lua_pushnumber(L, static_cast<lua_Number>(r.y));",
     ]
 
   print(f"unknown return type: {type}", file=sys.stderr)
   return []
 
-def gen_argument(pc, item):
+# generate Lua to push one of parameters of the function
+# returns a tuple with the followings:
+#   - string list of sentences to define variable for storing the parameter
+#   - string list of expressions to pass to the actual C++ function
+#   - string list of sentences to load the parameter
+def gen_func_argument(pc, item):
   type = item["type"].get("desugaredQualType", item["type"]["qualType"])
   n    = pc+1
   pn   = f"p{pc}"
@@ -131,6 +142,8 @@ def gen_argument(pc, item):
 
 
 # ---- GENERATOR UTILITIES
+
+# get a variable type from the AST of an argument
 def get_type_from_argument(item):
   return item["type"].get("desugaredQualType", item["type"]["qualType"])
 
