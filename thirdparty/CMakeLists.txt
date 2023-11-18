@@ -15,7 +15,7 @@ FetchContent_MakeAvailable(googletest)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG        v1.89.9
+  GIT_TAG        v1.90
 )
 FetchContent_Populate(imgui)
 include(imgui.cmake)
