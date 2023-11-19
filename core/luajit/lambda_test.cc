@@ -208,6 +208,18 @@ TEST_P(LuaJIT_Lambda, CtxLogging) {
       env.get());
 }
 
+TEST_P(LuaJIT_Lambda, CtxUData) {
+  Expect(
+      "local ctx   = ...\n"
+      "local udata = ctx:udata()\n"
+      "udata.temp  = 1 + (udata.temp or 0)\n"
+      "ctx:send(nf7:value(udata.temp))\n",
+      {nf7::Value {}, nf7::Value {}},
+      2, 0,
+      {nf7::Value::Real {1}, nf7::Value::Real {2}},
+      &env());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SyncOrAsync, LuaJIT_Lambda,
     testing::Values(

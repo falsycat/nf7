@@ -63,6 +63,7 @@ class Lambda :
 
   std::shared_ptr<Thread> thread_;
   std::shared_ptr<Value>  ctx_;
+  std::shared_ptr<Value>  ctx_udata_;
 
   std::atomic<uint64_t> exit_count_ = 0;
   std::atomic<uint64_t> abort_count_ = 0;

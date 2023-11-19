@@ -198,6 +198,19 @@ void Lambda::PushLuaContextObject(TaskContext& lua) noexcept {
         return logFunc.operator()<subsys::Logger::kError>(L);
       });
       lua_setfield(*lua, -2, "error");
+
+      lua_pushcfunction(*lua, ([](auto L) {
+        const auto la = self(L);
+
+        TaskContext lua {la->lua_, L};
+        if (!la->ctx_udata_) {
+          lua_createtable(L, 0, 0);
+          la->ctx_udata_ = lua.Register();
+        }
+        lua.Push(la->ctx_udata_);
+        return 1;
+      }));
+      lua_setfield(*lua, -2, "udata");
     }
     lua_setfield(*lua, -2, "__index");
   }
