@@ -39,10 +39,29 @@ TEST_F(ImGuiLuaJITDriver, CompileAndInstall) {
   auto fu = nf7::core::imgui::LuaJITDriver::CompileAndInstall(
       *subenv,
       toVector(
-          "local ctx = ...\nctx:trace(\"hello world\")\n"
+          "local ctx   = ...\n"
+          "local udata = ctx:udata()\n"
           "local imgui = ctx:recv():lua()\n"
-          "imgui.Begin(\"helloworld\", true, imgui.WindowFlags_NoResize)\n"
-          "imgui.End()"),
+          "\n"
+          "udata.t  = (udata.t or 0) + 1\n"
+          "local tf   = udata.t / 30 / 10\n"
+          "local rtf  = 1-tf\n"
+          "local rtf3 = rtf*rtf*rtf*rtf*rtf*rtf*rtf*rtf*rtf*rtf*rtf*rtf\n"
+          "local col = imgui.GetColorU32(tf*0.5+0.5, 0.2, 0.2, 1)\n"
+          "\n"
+          "if imgui.Begin(\"helloworld\", true, imgui.WindowFlags_NoResize) then\n"
+          "  local bx, by = imgui.GetWindowPos()\n"
+          "  bx = bx + (1-rtf3)*100\n"
+          "  local dl  = imgui.GetWindowDrawList()\n"
+          "  for dx = 0, 3 do\n"
+          "    for dy = 0, 2 do\n"
+          "      local x = bx + dx*150*(1-rtf3) + (-200 - dy/2*100)*rtf3\n"
+          "      local y = by + dy*150 + 50\n"
+          "      dl:AddRectFilled(x,y-rtf3*5, x+100-rtf3*30,y+100+rtf3*5, col)\n"
+          "    end\n"
+          "  end\n"
+          "end\n"
+          "imgui.End()\n"),
       "test chunk");
 
   concurrency->Push(
