@@ -1,0 +1,12 @@
+add_library(nf7core_sdl2)
+target_sources(nf7core_sdl2
+  PRIVATE
+    mod.c
+)
+target_link_libraries(nf7core_sdl2
+  PRIVATE
+    nf7if
+    nf7util
+    OpenGL
+    SDL2
+)
