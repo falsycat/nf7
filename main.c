@@ -8,6 +8,8 @@
 
 #include "nf7.h"
 
+#include "util/malloc.h"
+
 #include "core/all.h"
 
 
@@ -25,6 +27,7 @@ int main(int argc, char** argv) {
     .argc = argc,
     .argv = (const char* const*) argv,
     .uv   = &uv,
+    .malloc = &(struct nf7_util_malloc) {0},
   };
 
   // load modules

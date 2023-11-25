@@ -44,6 +44,7 @@ struct nf7_mod* nf7_core_sdl2_new(const struct nf7* nf7) {
 
     .poll_interval = 30,
   };
+  nf7_util_signal_init(&this->update, this->malloc);
 
   if (!(new_setup_gl_() && new_init_win_(this))) {
     goto ABORT;
@@ -104,6 +105,8 @@ static void del_(struct nf7_mod* this_) {
     if (nullptr != this->win) {
       SDL_DestroyWindow(this->win);
     }
+
+    nf7_util_signal_deinit(&this->update);
     nf7_util_malloc_del(this->malloc, this);
   }
   if (0 == atomic_fetch_sub(&sdl_refcnt_, 1)) {
