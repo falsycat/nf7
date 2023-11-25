@@ -2,6 +2,7 @@ add_library(nf7core_sdl2)
 target_sources(nf7core_sdl2
   PRIVATE
     mod.c
+    poll.h
 )
 target_link_libraries(nf7core_sdl2
   PRIVATE
