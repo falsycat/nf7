@@ -4,6 +4,7 @@ target_sources(nf7util
     malloc.c
   PUBLIC
     array.h
+    log.h
     malloc.h
     signal.h
 )

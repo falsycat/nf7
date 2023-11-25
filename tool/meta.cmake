@@ -36,7 +36,7 @@ function(target_meta_source args_target args_scope args_src)
   add_custom_command(
     COMMAND "${src_abs}" ${args_ARGS} > "${dst_abs}"
     OUTPUT "${dst_abs}"
-    DEPENDS ${args_DEPENDS}
+    DEPENDS "${src_abs}" ${args_DEPENDS}
     WORKING_DIRECTORY "${src_dir_abs}"
     VERBATIM
   )

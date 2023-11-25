@@ -4,6 +4,8 @@ echo "#include \"core/all.h\""
 echo
 echo "#include <assert.h>"
 echo
+echo "#include \"util/log.h\""
+echo
 echo "const uint32_t NF7_CORE_MAX_MODS = UINT32_C($#);"
 echo
 echo "uint32_t nf7_core_new(const struct nf7* nf7, struct nf7_mod** mods) {"
@@ -13,11 +15,16 @@ echo
 echo "  uint32_t i = 0;"
 echo
 for name in $@; do
+  echo "  extern const struct nf7_mod_meta nf7_core_${name};"
   echo "  extern struct nf7_mod* nf7_core_${name}_new(const struct nf7*);"
+  echo "  nf7_util_log_debug(\"loading module: %s\", nf7_core_${name}.name);"
   echo "  mods[i] = nf7_core_${name}_new(nf7);"
   echo "  if (nullptr != mods[i]) {"
   echo "    assert(nullptr != mods[i]->meta);"
   echo "    ++i;"
+  echo "    nf7_util_log_info(\"loaded module: %s\", nf7_core_${name}.name);"
+  echo "  } else {"
+  echo "    nf7_util_log_warn(\"failed to load module: %s\", nf7_core_${name}.name);"
   echo "  }"
   echo
 done
