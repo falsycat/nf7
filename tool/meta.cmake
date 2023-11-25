@@ -10,13 +10,17 @@ function(target_meta_source args_target args_scope args_src)
     ${ARGN}
   )
 
+  string(REGEX REPLACE "^${PROJECT_SOURCE_DIR}/" "" CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  set(GENERATED_DIR "${PROJECT_BINARY_DIR}/generated")
+  set(GENERATED_CURRENT_DIR "${GENERATED_DIR}/${CURRENT_DIR}")
+
   if (IS_ABSOLUTE "${args_src}")
     set(src_abs "${args_src}")
   else()
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${args_src}")
       set(src_abs "${CMAKE_CURRENT_SOURCE_DIR}/${args_src}")
-    elseif(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${args_src}")
-      set(src_abs "${CMAKE_CURRENT_BINARY_DIR}/${args_src}")
+    elseif(EXISTS "${GENERATED_CURRENT_DIR}/${args_src}")
+      set(src_abs "${GENERATED_CURRENT_DIR}/${args_src}")
     else()
       message(FATAL_ERROR "no source file found: ${args_src}")
     endif()
@@ -26,18 +30,14 @@ function(target_meta_source args_target args_scope args_src)
   get_filename_component(src_name "${src_abs}" NAME)
   string(REGEX REPLACE "${src_ext}$" "" dst_name "${src_name}")
 
-  get_filename_component(src_dir_abs "${src_abs}" DIRECTORY)
-  string(REGEX REPLACE "^${CMAKE_SOURCE_DIR}/" "" src_dir "${src_dir_abs}")
-
-  set(dst_dir_abs "${CMAKE_BINARY_DIR}/generated/${src_dir}")
-  file(MAKE_DIRECTORY "${dst_dir_abs}")
-  set(dst_abs "${dst_dir_abs}/${dst_name}")
+  file(MAKE_DIRECTORY "${GENERATED_CURRENT_DIR}")
+  set(dst_abs "${GENERATED_CURRENT_DIR}/${dst_name}")
 
   add_custom_command(
     COMMAND "${src_abs}" ${args_ARGS} > "${dst_abs}"
     OUTPUT "${dst_abs}"
     DEPENDS "${src_abs}" ${args_DEPENDS}
-    WORKING_DIRECTORY "${src_dir_abs}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     VERBATIM
   )
   target_sources(${args_target} ${args_scope} "${dst_abs}")
