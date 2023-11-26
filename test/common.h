@@ -4,16 +4,18 @@
 #include <stdint.h>
 
 
-#define NF7_TEST(name) bool name([[maybe_unused]] struct nf7_test*)
+#define NF7_TEST(name) bool name([[maybe_unused]] struct nf7_test* test_)
 
 struct nf7;
 struct nf7_test;
+struct nf7_util_malloc;
 
 typedef bool (*nf7_test_func)(struct nf7_test*);
 
 struct nf7_test {
-  struct nf7* nf7;
-  void*       data;
+  struct nf7*             nf7;
+  struct nf7_util_malloc* malloc;
+  void*                   data;
 
   uint64_t refcnt;
 
@@ -32,7 +34,7 @@ static inline void nf7_test_unref(struct nf7_test* test) {
   }
 }
 
-#define nf7_test_expect(test, expr) nf7_test_expect_(test, (expr), #expr)
+#define nf7_test_expect(expr) nf7_test_expect_(test_, (expr), #expr)
 static inline bool nf7_test_expect_(
     struct nf7_test* test, bool val, const char* expr) {
   test->expect(test, val, expr);

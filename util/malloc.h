@@ -14,14 +14,18 @@ struct nf7_util_malloc { atomic_uint_least64_t count; };
 static inline void* nf7_util_malloc_new(struct nf7_util_malloc* this, uint64_t n) {
   assert(nullptr != this);
 
-  if (0 < n) {
-    const uint64_t prev_count = atomic_fetch_add(&this->count, 1);
-    assert(UINT64_MAX > prev_count);
-
-    return calloc(n, 1);
-  } else {
+  if (0 == n) {
     return nullptr;
   }
+
+  void* ret = calloc(n, 1);
+  if (nullptr == ret) {
+    return nullptr;
+  }
+
+  const uint64_t prev_count = atomic_fetch_add(&this->count, 1);
+  assert(UINT64_MAX > prev_count);
+  return ret;
 }
 static inline void nf7_util_malloc_del(struct nf7_util_malloc* this, void* ptr) {
   assert(nullptr != this);
@@ -37,7 +41,7 @@ static inline void* nf7_util_malloc_renew(struct nf7_util_malloc* this, void* pt
   assert(nullptr != this);
 
   if (n > 0) {
-    return nullptr != ptr? realloc(ptr, n): malloc(n);
+    return nullptr != ptr? realloc(ptr, n): nf7_util_malloc_new(this, n);
   } else {
     nf7_util_malloc_del(this, ptr);
     return nullptr;

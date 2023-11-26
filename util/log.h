@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <uv.h>
+
 
 #define NF7_UTIL_LOG_CURRENT_FILE  \
     ((const char*) __FILE__ + NF7_PROJECT_DIR_LEN)

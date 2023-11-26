@@ -51,8 +51,9 @@ static bool run_trigger_setup_(struct nf7_core_test* mod) {
     .malloc = mod->malloc,
     .uv     = mod->uv,
     .test = {
-      .nf7  = mod->nf7,
-      .data = this,
+      .nf7    = mod->nf7,
+      .malloc = mod->malloc,
+      .data   = this,
       .run      = run_single_test_,
       .expect   = run_expect_,
       .finalize = run_finalize_,
@@ -100,6 +101,8 @@ static void run_single_test_(
   assert(nullptr != func);
 
   struct nf7_core_test_run* this = test->data;
+
+  nf7_util_log_info("running test: %s", name);
 
   this->running_test_name = name;
   const bool result = func(&this->test);
