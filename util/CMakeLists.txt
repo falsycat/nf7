@@ -8,4 +8,11 @@ target_sources(nf7util
     malloc.h
     signal.h
 )
-target_link_libraries(nf7util PRIVATE nf7config)
+target_tests(nf7util
+  array.test.c
+)
+target_link_libraries(nf7util
+  PRIVATE
+    nf7config
+    uv
+)

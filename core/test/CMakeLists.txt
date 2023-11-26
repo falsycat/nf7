@@ -1,0 +1,14 @@
+add_library(nf7core_test)
+target_sources(nf7core_test
+  PRIVATE
+    mod.c
+    run.h
+  PUBLIC
+    mod.h
+)
+target_link_libraries(nf7core_test
+  PRIVATE
+    nf7if
+    nf7util
+    nf7test
+)

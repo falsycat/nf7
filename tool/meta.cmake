@@ -10,7 +10,7 @@ function(target_meta_source args_target args_scope args_src)
     ${ARGN}
   )
 
-  string(REGEX REPLACE "^${PROJECT_SOURCE_DIR}/" "" CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  file(RELATIVE_PATH CURRENT_DIR "${PROJECT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
   set(GENERATED_DIR "${PROJECT_BINARY_DIR}/generated")
   set(GENERATED_CURRENT_DIR "${GENERATED_DIR}/${CURRENT_DIR}")
 

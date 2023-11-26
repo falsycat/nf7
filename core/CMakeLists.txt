@@ -1,6 +1,7 @@
 # ---- basic modules
 set(MODS
   sdl2
+  test
 )
 
 # ---- core library

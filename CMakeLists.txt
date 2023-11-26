@@ -16,9 +16,6 @@ include(tool/meta.cmake)
 # ---- thirdparty import
 add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
 
-# ---- generation
-include(tool/meta.cmake)
-
 # ---- common config
 add_library(nf7config INTERFACE)
 target_include_directories(nf7config
@@ -41,6 +38,9 @@ target_compile_options(nf7config INTERFACE
     $<$<CONFIG:Debug>:-Werror>
   >
 )
+
+# ---- test library
+add_subdirectory(test EXCLUDE_FROM_ALL)
 
 # ---- util library
 add_subdirectory(util)
