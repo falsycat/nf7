@@ -20,6 +20,7 @@ static void cb_close_all_handles_(uv_handle_t*, void*);
 
 int main(int argc, char** argv) {
   nf7_util_log_info("HELLO :)");
+  struct nf7_util_malloc malloc = {0};
 
   // init loop
   uv_loop_t uv;
@@ -32,7 +33,7 @@ int main(int argc, char** argv) {
     .argc = argc,
     .argv = (const char* const*) argv,
     .uv   = &uv,
-    .malloc = &(struct nf7_util_malloc) {0},
+    .malloc = &malloc,
   };
 
   // load modules
@@ -64,6 +65,11 @@ int main(int argc, char** argv) {
   if (0 != uv_loop_close(&uv)) {
     nf7_util_log_warn("failed to close main loop gracefully");
     return EXIT_FAILURE;
+  }
+
+  const uint64_t leaks = nf7_util_malloc_get_count(&malloc);
+  if (0 < leaks) {
+    nf7_util_log_warn("%" PRIu64 " memory leaks detected", leaks);
   }
 
   nf7_util_log_info("ALL DONE X)");
