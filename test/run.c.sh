@@ -1,6 +1,6 @@
 #!/bin/bash
 
-tests=$(cat $@ | sed -e '/^NF7_TEST(/!d; s|^NF7_TEST(\([^)]*\)).*$|\1|' | xargs echo)
+tests=$(cat ${@//;/ } | sed -e '/^NF7_TEST(/!d; s|^NF7_TEST(\([^)]*\)).*$|\1|' | xargs echo)
 
 echo "#include \"test/common.h\""
 echo "#include \"test/run.h\""
