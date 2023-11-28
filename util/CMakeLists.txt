@@ -6,10 +6,12 @@ target_sources(nf7util
     array.h
     log.h
     malloc.h
+    refcnt.h
     signal.h
 )
 target_tests(nf7util
   array.test.c
+  refcnt.test.c
 )
 target_link_libraries(nf7util
   PRIVATE
