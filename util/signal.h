@@ -8,7 +8,7 @@
 struct nf7_util_signal;
 struct nf7_util_signal_recv;
 
-NF7_UTIL_ARRAY(nf7_util_signal_recvs, struct nf7_util_signal_recv*);
+NF7_UTIL_ARRAY_INLINE(nf7_util_signal_recvs, struct nf7_util_signal_recv*);
 
 
 struct nf7_util_signal {
