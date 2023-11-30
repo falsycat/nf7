@@ -12,6 +12,7 @@ target_sources(nf7util
 target_tests(nf7util
   array.test.c
   refcnt.test.c
+  signal.test.c
 )
 target_link_libraries(nf7util
   PRIVATE
