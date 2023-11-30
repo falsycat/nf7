@@ -79,7 +79,7 @@
     \
     T* const newptr =  \
         nf7_util_malloc_renew(this->malloc, this->ptr, n*sizeof(T));  \
-    if (nullptr == newptr) {  \
+    if (0 < n && nullptr == newptr) {  \
       if (extend) { return false; }  \
     } else {  \
       this->ptr = newptr;  \
