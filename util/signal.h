@@ -41,24 +41,12 @@ static inline void nf7_util_signal_deinit(struct nf7_util_signal* this) {
 static inline void nf7_util_signal_emit(struct nf7_util_signal* this) {
   this->emitting = true;
   for (uint64_t i = 0; i < this->recvs.n; ++i) {
-    const struct nf7_util_signal_recv* recv = this->recvs.ptr[i];
-    recv->func(recv->data);
+    struct nf7_util_signal_recv* recv = this->recvs.ptr[i];
+    recv->func(recv);
   }
   this->emitting = false;
 }
 
-static inline bool nf7_util_signal_recv_set(
-    struct nf7_util_signal_recv* this, struct nf7_util_signal* signal) {
-  assert(nullptr != this);
-  assert(nullptr != this->func);
-  assert(!signal->emitting);
-
-  if (!nf7_util_signal_recvs_insert(&signal->recvs, UINT64_MAX, this)) {
-    return false;
-  }
-  this->signal = signal;
-  return true;
-}
 static inline void nf7_util_signal_recv_unset(struct nf7_util_signal_recv* this) {
   assert(nullptr != this);
 
@@ -66,4 +54,18 @@ static inline void nf7_util_signal_recv_unset(struct nf7_util_signal_recv* this)
     return;
   }
   nf7_util_signal_recvs_find_and_remove(&this->signal->recvs, this);
+}
+static inline bool nf7_util_signal_recv_set(
+    struct nf7_util_signal_recv* this, struct nf7_util_signal* signal) {
+  assert(nullptr != this);
+  assert(nullptr != this->func);
+  assert(!signal->emitting);
+
+  nf7_util_signal_recv_unset(this);
+
+  if (!nf7_util_signal_recvs_insert(&signal->recvs, UINT64_MAX, this)) {
+    return false;
+  }
+  this->signal = signal;
+  return true;
 }

@@ -9,12 +9,25 @@
 
 
 static void setup_gl_(void);
+static void handle_(struct nf7_util_signal_recv* recv);
 
 
 bool nf7_core_sdl2_win_init(struct nf7_core_sdl2_win* this) {
   assert(nullptr != this);
   assert(nullptr != this->mod);
   assert(nullptr != this->malloc);
+
+  // TODO error handling
+
+  this->event_recv = (struct nf7_util_signal_recv) {
+    .signal = &this->mod->event_signal,
+  };
+  this->event_recv.data = this;
+  this->event_recv.func = handle_;
+  if (!nf7_util_signal_recv_set(&this->event_recv, &this->mod->event_signal)) {
+    nf7_util_log_error("failed to listen event signal");
+    return false;
+  }
 
   setup_gl_();
   SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
@@ -31,7 +44,12 @@ bool nf7_core_sdl2_win_init(struct nf7_core_sdl2_win* this) {
     nf7_util_log_error("failed to create SDL window: %s", SDL_GetError());
     return false;
   }
-  nf7_util_log_debug("GUI window is created");
+  this->win_id = SDL_GetWindowID(this->win);
+  if (0 == this->win_id) {
+    nf7_util_log_error("failed to get window id: %s", SDL_GetError());
+    return false;
+  }
+  nf7_util_log_debug("GUI window %" PRIu32 " is created", this->win_id);
 
   this->gl = SDL_GL_CreateContext(this->win);
   if (nullptr == this->gl) {
@@ -60,6 +78,7 @@ void nf7_core_sdl2_win_deinit(struct nf7_core_sdl2_win* this) {
       SDL_DestroyWindow(this->win);
       nf7_util_log_debug("GUI window is destroyed");
     }
+    nf7_util_signal_recv_unset(&this->event_recv);
     nf7_core_sdl2_unref(this->mod);
   }
 }
@@ -76,4 +95,27 @@ static void setup_gl_(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 # endif
+}
+
+static void handle_(struct nf7_util_signal_recv* recv) {
+  struct nf7_core_sdl2_win* this = recv->data;
+  assert(nullptr != this);
+
+  const SDL_Event* e = this->mod->event;
+  if (SDL_WINDOWEVENT != e->type) {
+    return;
+  }
+
+  const SDL_WindowEvent* we = &e->window;
+  if (this->win_id != we->windowID) {
+    return;
+  }
+
+  switch (we->event) {
+  case SDL_WINDOWEVENT_CLOSE:
+    nf7_util_log_debug("received close request");
+    break;
+  default:
+    break;
+  }
 }
