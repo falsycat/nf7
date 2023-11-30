@@ -26,6 +26,9 @@ static void on_close_(uv_handle_t*);
 NF7_TEST(nf7_core_sdl2_win_test) {
   struct nf7_core_sdl2* mod = (void*) nf7_get_mod_by_meta(
       test_->nf7, (struct nf7_mod_meta*) &nf7_core_sdl2);
+  if (!nf7_test_expect(nullptr != mod)) {
+    return false;
+  }
 
   struct nf7_core_sdl2_win_test* this =
     nf7_util_malloc_new(test_->malloc, sizeof(*this));

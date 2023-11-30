@@ -47,7 +47,8 @@ struct nf7_mod* nf7_core_sdl2_new(const struct nf7* nf7) {
     .uv     = nf7->uv,
   };
 
-  if (!poll_setup_(this)) {
+  this->poll = poll_new_(this);
+  if (nullptr == this->poll) {
     nf7_util_log_error("failed to setup polling");
     goto ABORT;
   }
@@ -62,9 +63,13 @@ ABORT:
 }
 
 static void finalize_(struct nf7_core_sdl2* this) {
-  if (nullptr != this) {
-    nf7_util_malloc_del(this->malloc, this);
+  if (nullptr == this) {
+    return;
   }
+
+  poll_del_(this->poll);
+  nf7_util_malloc_del(this->malloc, this);
+
   if (1 == atomic_fetch_sub(&sdl_refcnt_, 1)) {
     nf7_util_log_debug("finalizing SDL...");
     SDL_Quit();

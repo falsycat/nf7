@@ -15,6 +15,8 @@
 
 extern const struct nf7_mod_meta nf7_core_sdl2;
 
+struct nf7_core_sdl2_poll;
+
 struct nf7_core_sdl2 {
   const struct nf7_mod_meta* meta;
 
@@ -26,5 +28,7 @@ struct nf7_core_sdl2 {
   void*                   gl;
 
   uint32_t refcnt;
+
+  struct nf7_core_sdl2_poll* poll;
 };
 NF7_UTIL_REFCNT_DECL(, nf7_core_sdl2);
