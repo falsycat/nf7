@@ -7,13 +7,13 @@
 #include "util/malloc.h"
 
 
-#define NF7_REFCNT_DECL(ATTR, T)  \
+#define NF7_UTIL_REFCNT_DECL(ATTR, T)  \
   ATTR void T##_ref(struct T*);  \
   ATTR bool T##_unref(struct T*);  \
   static_assert(true)
 
 
-#define NF7_REFCNT_IMPL(ATTR, T, DELETER)  \
+#define NF7_UTIL_REFCNT_IMPL(ATTR, T, DELETER)  \
   ATTR void T##_ref(struct T* this) {  \
     ++this->refcnt;  \
   }  \
@@ -27,7 +27,7 @@
   }  \
   static_assert(true)
 
-#define NF7_REFCNT_IMPL_ATOMIC(ATTR, T, DELETER)  \
+#define NF7_UTIL_REFCNT_IMPL_ATOMIC(ATTR, T, DELETER)  \
   ATTR void T##_ref(struct T* this) {  \
     atomic_fetch_add(&this->refcnt, 1);  \
   }  \

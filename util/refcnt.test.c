@@ -11,13 +11,13 @@ struct mystruct {
   bool deleted;
   uint64_t refcnt;
 };
-NF7_REFCNT_IMPL(static inline, mystruct, {this->deleted = true;});
+NF7_UTIL_REFCNT_IMPL(static inline, mystruct, {this->deleted = true;});
 
 struct mystruct_atomic {
   bool deleted;
   atomic_uint_least64_t refcnt;
 };
-NF7_REFCNT_IMPL_ATOMIC(static inline, mystruct_atomic, {this->deleted = true;});
+NF7_UTIL_REFCNT_IMPL_ATOMIC(static inline, mystruct_atomic, {this->deleted = true;});
 
 
 NF7_TEST(nf7_util_refcnt_test_delete) {
