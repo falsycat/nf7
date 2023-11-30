@@ -14,8 +14,10 @@ struct nf7_core_sdl2_poll {
   uv_loop_t*              uv;
 
   uv_timer_t timer;
+  uint64_t   interval;
 
-  uint64_t interval;
+  void* data;
+  void (*handler)(struct nf7_core_sdl2_poll*, const SDL_Event*);
 };
 
 
@@ -62,10 +64,10 @@ static void poll_del_(struct nf7_core_sdl2_poll* this) {
     return;
   }
   if (this == this->timer.data) {
+    this->handler = nullptr;
     uv_close((uv_handle_t*) &this->timer, poll_on_close_);
     return;
   }
-
   nf7_util_malloc_del(this->malloc, this);
 }
 
@@ -76,6 +78,9 @@ static void poll_on_time_(uv_timer_t* timer) {
 
   SDL_Event e;
   while (0 != SDL_PollEvent(&e)) {
+    if (nullptr != this->handler) {
+      this->handler(this, &e);
+    }
   }
 
   if (0 != uv_timer_start(&this->timer, poll_on_time_, this->interval, 0)) {

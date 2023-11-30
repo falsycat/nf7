@@ -12,7 +12,7 @@
 #include "util/log.h"
 #include "util/malloc.h"
 
-#include "core/sdl2/poll.h"
+#include "core/sdl2/poll.priv.h"
 
 
 static atomic_uint_least32_t sdl_refcnt_ = 0;

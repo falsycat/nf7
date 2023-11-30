@@ -2,7 +2,7 @@ add_library(nf7core_sdl2)
 target_sources(nf7core_sdl2
   PRIVATE
     mod.c
-    poll.h
+    poll.priv.h
     win.c
   PUBLIC
     win.h
