@@ -3,6 +3,9 @@ target_sources(nf7core_sdl2
   PRIVATE
     mod.c
     poll.h
+    win.c
+  PUBLIC
+    win.h
 )
 target_link_libraries(nf7core_sdl2
   PRIVATE
@@ -10,4 +13,7 @@ target_link_libraries(nf7core_sdl2
     nf7util
     OpenGL
     SDL2
+)
+target_tests(nf7core_sdl2
+  win.test.c
 )

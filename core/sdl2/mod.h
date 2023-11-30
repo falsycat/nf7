@@ -9,6 +9,7 @@
 #include "nf7.h"
 
 #include "util/malloc.h"
+#include "util/refcnt.h"
 #include "util/signal.h"
 
 
@@ -24,12 +25,6 @@ struct nf7_core_sdl2 {
   SDL_Window*             win;
   void*                   gl;
 
-  // uv handles (immutable)
-  uv_timer_t poll_timer;
-
-  // signals
-  struct nf7_util_signal update;
-
-  // mutable parameters
-  uint64_t poll_interval;
+  uint32_t refcnt;
 };
+NF7_UTIL_REFCNT_DECL(, nf7_core_sdl2);
