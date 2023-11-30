@@ -40,3 +40,14 @@ struct nf7_mod_meta {
   void (*delete)(struct nf7_mod*);
   void (*push_lua)(struct nf7_mod*);
 };
+
+
+static inline struct nf7_mod* nf7_get_mod_by_meta(
+    const struct nf7* nf7, const struct nf7_mod_meta* meta) {
+  for (uint32_t i = 0; i < nf7->mods.n; ++i) {
+    if (meta == nf7->mods.ptr[i]->meta) {
+      return nf7->mods.ptr[i];
+    }
+  }
+  return nullptr;
+}
