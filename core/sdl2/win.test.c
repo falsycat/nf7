@@ -22,6 +22,7 @@ struct nf7_core_sdl2_win_test {
 static void finalize_(struct nf7_core_sdl2_win_test*);
 static void on_time_(uv_timer_t*);
 static void on_close_(uv_handle_t*);
+static void on_handle_(struct nf7_core_sdl2_win*, const SDL_WindowEvent*);
 
 NF7_TEST(nf7_core_sdl2_win_test) {
   struct nf7_core_sdl2* mod = (void*) nf7_get_mod_by_meta(
@@ -49,6 +50,8 @@ NF7_TEST(nf7_core_sdl2_win_test) {
   if (!nf7_test_expect(nf7_core_sdl2_win_init(&this->win))) {
     goto ABORT;
   }
+  this->win.data    = this;
+  this->win.handler = on_handle_;
 
   if (0 != nf7_util_log_uv(uv_timer_init(this->uv, &this->timer))) {
     goto ABORT;
@@ -67,6 +70,7 @@ ABORT:
 
 static void finalize_(struct nf7_core_sdl2_win_test* this) {
   if (nullptr != this->timer.data) {
+    nf7_util_log_uv_assert(uv_timer_stop(&this->timer));
     uv_close((uv_handle_t*) &this->timer, on_close_);
     return;
   }
@@ -84,4 +88,16 @@ static void on_close_(uv_handle_t* handle) {
   struct nf7_core_sdl2_win_test* this = handle->data;
   handle->data = nullptr;
   finalize_(this);
+}
+
+static void on_handle_(struct nf7_core_sdl2_win* win, const SDL_WindowEvent* e) {
+  struct nf7_core_sdl2_win_test* this = win->data;
+
+  switch (e->event) {
+  case SDL_WINDOWEVENT_CLOSE:
+    finalize_(this);
+    break;
+  default:
+    break;
+  }
 }

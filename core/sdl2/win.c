@@ -118,4 +118,9 @@ static void handle_(struct nf7_util_signal_recv* recv) {
   default:
     break;
   }
+
+  // Be careful, the handler may delete `this`.
+  if (nullptr != this->handler) {
+    this->handler(this, we);
+  }
 }

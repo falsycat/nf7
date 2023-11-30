@@ -21,6 +21,9 @@ struct nf7_core_sdl2_win {
   void*       gl;
 
   struct nf7_util_signal_recv event_recv;
+
+  void* data;
+  void (*handler)(struct nf7_core_sdl2_win*, const SDL_WindowEvent*);
 };
 
 bool nf7_core_sdl2_win_init(struct nf7_core_sdl2_win*);
