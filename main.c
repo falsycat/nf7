@@ -77,7 +77,11 @@ int main(int argc, char** argv) {
 }
 
 static void cb_close_all_handles_(uv_handle_t* handle, void*) {
-  nf7_util_log_debug(
-      "closing remaining handle: %s", uv_handle_type_name(handle->type));
-  uv_close(handle, nullptr);
+  const char* name = uv_handle_type_name(handle->type);
+  if (!uv_is_closing(handle)) {
+    nf7_util_log_debug("closing remaining handle: %s", name);
+    uv_close(handle, nullptr);
+  } else {
+    nf7_util_log_debug("remaining handle is closing itself: %s", name);
+  }
 }
