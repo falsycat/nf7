@@ -12,6 +12,8 @@ NF7_UTIL_ARRAY_INLINE(nf7_util_signal_recvs, struct nf7_util_signal_recv*);
 
 
 struct nf7_util_signal {
+  struct nf7_util_malloc* malloc;
+
   bool emitting;
   struct nf7_util_signal_recvs recvs;
 };
@@ -24,12 +26,10 @@ struct nf7_util_signal_recv {
 };
 
 
-static inline void nf7_util_signal_init(
-    struct nf7_util_signal* this, struct nf7_util_malloc* malloc) {
+static inline void nf7_util_signal_init(struct nf7_util_signal* this) {
   assert(nullptr != this);
-  assert(nullptr != malloc);
-  *this = (struct nf7_util_signal) {};
-  nf7_util_signal_recvs_init(&this->recvs, malloc);
+  assert(nullptr != this->malloc);
+  nf7_util_signal_recvs_init(&this->recvs, this->malloc);
 }
 static inline void nf7_util_signal_deinit(struct nf7_util_signal* this) {
   assert(nullptr != this);

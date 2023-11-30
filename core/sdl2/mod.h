@@ -30,5 +30,7 @@ struct nf7_core_sdl2 {
   uint32_t refcnt;
 
   struct nf7_core_sdl2_poll* poll;
+  const SDL_Event*       event;
+  struct nf7_util_signal event_signal;
 };
 NF7_UTIL_REFCNT_DECL(, nf7_core_sdl2);

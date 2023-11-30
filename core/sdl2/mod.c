@@ -18,8 +18,9 @@
 static atomic_uint_least32_t sdl_refcnt_ = 0;
 
 
-static void finalize_(struct nf7_core_sdl2*);
-NF7_UTIL_REFCNT_IMPL(, nf7_core_sdl2, {finalize_(this);});
+static void poll_(struct nf7_core_sdl2_poll*, const SDL_Event*);
+static void del_(struct nf7_core_sdl2*);
+NF7_UTIL_REFCNT_IMPL(, nf7_core_sdl2, {del_(this);});
 
 
 struct nf7_mod* nf7_core_sdl2_new(const struct nf7* nf7) {
@@ -45,6 +46,9 @@ struct nf7_mod* nf7_core_sdl2_new(const struct nf7* nf7) {
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
+    .event_signal = {
+      .malloc = nf7->malloc,
+    },
   };
 
   this->poll = poll_new_(this);
@@ -52,21 +56,32 @@ struct nf7_mod* nf7_core_sdl2_new(const struct nf7* nf7) {
     nf7_util_log_error("failed to setup polling");
     goto ABORT;
   }
+  this->poll->data    = this;
+  this->poll->handler = poll_;
 
+  nf7_util_signal_init(&this->event_signal);
   nf7_core_sdl2_ref(this);
   return (struct nf7_mod*) this;
 
 ABORT:
   nf7_util_log_warn("initialization is aborted");
-  finalize_(this);
+  del_(this);
   return nullptr;
 }
 
-static void finalize_(struct nf7_core_sdl2* this) {
+static void poll_(struct nf7_core_sdl2_poll* poll, const SDL_Event* e) {
+  struct nf7_core_sdl2* this = poll->data;
+  this->event = e;
+  nf7_util_signal_emit(&this->event_signal);
+  this->event = nullptr;
+}
+
+static void del_(struct nf7_core_sdl2* this) {
   if (nullptr == this) {
     return;
   }
 
+  nf7_util_signal_deinit(&this->event_signal);
   poll_del_(this->poll);
   nf7_util_malloc_del(this->malloc, this);
 
