@@ -1,5 +1,6 @@
 # ---- basic modules
 set(MODS
+  lua
   sdl2
   test
 )

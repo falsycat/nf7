@@ -1,0 +1,13 @@
+add_library(nf7core_lua)
+target_sources(nf7core_lua
+  PRIVATE
+    mod.c
+  PUBLIC
+    mod.h
+)
+target_link_libraries(nf7core_lua
+  PRIVATE
+    nf7if
+    nf7util
+    luajit
+)
