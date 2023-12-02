@@ -62,8 +62,8 @@ static void unref_(struct nf7_mod* mod) {
 
 const struct nf7_mod_meta nf7_core_luajit = {
   .name = (const uint8_t*) "nf7core_lua",
-  .desc = (const uint8_t*) "lua",
-  .ver  = 0,
+  .desc = (const uint8_t*) "lua script execution",
+  .ver  = NF7_VERSION,
 
   .delete = unref_,
 };

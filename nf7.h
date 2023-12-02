@@ -8,6 +8,8 @@
 #include "util/malloc.h"
 
 
+#define NF7_VERSION UINT32_C(0)
+
 struct nf7;
 struct nf7_mod;
 struct nf7_mod_meta;

@@ -100,7 +100,7 @@ static void unref_(struct nf7_mod* this_) {
 const struct nf7_mod_meta nf7_core_sdl2 = {
   .name = (const uint8_t*) "nf7core_sdl2",
   .desc = (const uint8_t*) "provides SDL2 features",
-  .ver  = 0,
+  .ver  = NF7_VERSION,
 
   .delete = unref_,
 };
