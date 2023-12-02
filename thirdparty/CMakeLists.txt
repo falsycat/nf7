@@ -9,6 +9,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(libuv)
 
+# ---- LuaJIT (MIT)
+FetchContent_Declare(
+  luajit
+  GIT_REPOSITORY https://github.com/LuaJIT/LuaJIT.git
+  GIT_TAG        8635cbabf3094c4d8bd00578c7d812bea87bb2d3
+)
+FetchContent_Populate(luajit)
+include(luajit.cmake)
+
 # ---- OpenGL
 find_package(OpenGL REQUIRED GLOBAL)
 add_library(OpenGL ALIAS OpenGL::GL)
