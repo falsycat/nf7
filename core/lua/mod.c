@@ -5,11 +5,10 @@
 
 #include "util/log.h"
 
+#include "core/lua/thread.h"
 
-static void* alloc_(void*, void*, size_t, size_t);
+
 static void del_(struct nf7core_lua*);
-
-NF7UTIL_REFCNT_IMPL(, nf7core_lua, {del_(this);});
 
 struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
   assert(nullptr != nf7);
@@ -24,41 +23,36 @@ struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
     .meta   = &nf7core_lua,
     .nf7    = nf7,
     .malloc = nf7->malloc,
+    .uv     = nf7->uv,
   };
 
-  this->lua = lua_newstate(alloc_, this);
-  if (nullptr == this->lua) {
-    nf7util_log_error("failed to create new lua state");
+  this->thread = nf7core_lua_thread_new(this, nullptr, nullptr);
+  if (nullptr == this->thread) {
+    nf7util_log_error("failed to create main thread");
     goto ABORT;
   }
-
-  nf7core_lua_ref(this);
   return (struct nf7_mod*) this;
 
 ABORT:
-  nf7util_log_warn("lua initialization failed");
+  nf7util_log_warn("aborting lua module init");
   del_(this);
   return nullptr;
 }
 
-static void* alloc_(void* data, void* ptr, size_t, size_t nsize) {
-  struct nf7core_lua* this = data;
-  return nf7util_malloc_renew(this->malloc, ptr, nsize);
-}
-
 static void del_(struct nf7core_lua* this) {
-  if (nullptr != this) {
-    if (nullptr != this->lua) {
-      lua_close(this->lua);
-      nf7util_log_info("lua state is destroyed");
-    }
-    nf7util_malloc_del(this->malloc, this);
+  if (nullptr == this) {
+    return;
   }
+
+  if (nullptr != this->thread) {
+    nf7core_lua_thread_unref(this->thread);
+  }
+  nf7util_malloc_del(this->malloc, this);
 }
 
-static void unref_(struct nf7_mod* mod) {
-  struct nf7core_lua* this = (struct nf7core_lua*) mod;
-  nf7core_lua_unref(this);
+static void del_mod_(struct nf7_mod* mod) {
+  struct nf7core_lua* this = (void*) mod;
+  del_(this);
 }
 
 const struct nf7_mod_meta nf7core_lua = {
@@ -66,5 +60,5 @@ const struct nf7_mod_meta nf7core_lua = {
   .desc = (const uint8_t*) "lua script execution",
   .ver  = NF7_VERSION,
 
-  .delete = unref_,
+  .delete = del_mod_,
 };

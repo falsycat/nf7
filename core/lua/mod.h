@@ -16,12 +16,11 @@ extern const struct nf7_mod_meta nf7core_lua;
 struct nf7core_lua {
   const struct nf7_mod_meta* meta;
 
-  const struct nf7*       nf7;
+  const struct nf7*      nf7;
   struct nf7util_malloc* malloc;
-  lua_State*              lua;
+  uv_loop_t*             uv;
 
-  uint32_t refcnt;
+  struct nf7core_lua_thread* thread;
 };
-NF7UTIL_REFCNT_DECL(, nf7core_lua);
 
 struct nf7_mod* nf7core_lua_new(struct nf7*);

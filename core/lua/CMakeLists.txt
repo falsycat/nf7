@@ -2,12 +2,20 @@ add_library(nf7core_lua)
 target_sources(nf7core_lua
   PRIVATE
     mod.c
+    thread.c
+    value_ptr.c
   PUBLIC
     mod.h
+    thread.h
+    value.h
+    value_ptr.h
 )
 target_link_libraries(nf7core_lua
   PRIVATE
     nf7if
     nf7util
     luajit
+)
+target_tests(nf7core_lua
+  thread.test.c
 )

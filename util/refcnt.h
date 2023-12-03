@@ -15,9 +15,11 @@
 
 #define NF7UTIL_REFCNT_IMPL(ATTR, T, DELETER)  \
   ATTR void T##_ref(struct T* this) {  \
+    assert(nullptr != this);  \
     ++this->refcnt;  \
   }  \
   ATTR bool T##_unref(struct T* this) {  \
+    assert(nullptr != this);  \
     assert(0 < this->refcnt);  \
     if (0 == --this->refcnt) {  \
       {DELETER};  \
@@ -29,9 +31,11 @@
 
 #define NF7UTIL_REFCNT_IMPL_ATOMIC(ATTR, T, DELETER)  \
   ATTR void T##_ref(struct T* this) {  \
+    assert(nullptr != this);  \
     atomic_fetch_add(&this->refcnt, 1);  \
   }  \
   ATTR bool T##_unref(struct T* this) {  \
+    assert(nullptr != this);  \
     assert(0 < this->refcnt);  \
     if (1 == atomic_fetch_sub(&this->refcnt, 1)) {  \
       {DELETER};  \
