@@ -14,29 +14,29 @@
 //
 //   When you need an array of integers, the following array structs are
 //   available:
-//     - nf7_util_array_u8  / nf7_util_array_s8
-//     - nf7_util_array_u16 / nf7_util_array_s16
-//     - nf7_util_array_u32 / nf7_util_array_s32
-//     - nf7_util_array_u64 / nf7_util_array_s64
+//     - nf7util_array_u8  / nf7util_array_s8
+//     - nf7util_array_u16 / nf7util_array_s16
+//     - nf7util_array_u32 / nf7util_array_s32
+//     - nf7util_array_u64 / nf7util_array_s64
 //
-//   When you need an array of any other types, expand NF7_UTIL_ARRAY macro on
+//   When you need an array of any other types, expand NF7UTIL_ARRAY macro on
 //   your *.h like this:
-//       `NF7_UTIL_ARRAY(my_array, struct A);`
-//   In addition, expand `NF7_UTIL_ARRAY_IMPL` macro on your *.c like this:
-//       `NF7_UTIL_ARRAY_IMPL(, my_array, struct A);`
+//       `NF7UTIL_ARRAY(my_array, struct A);`
+//   In addition, expand `NF7UTIL_ARRAY_IMPL` macro on your *.c like this:
+//       `NF7UTIL_ARRAY_IMPL(, my_array, struct A);`
 //   After that, `struct my_array` can be used as an array struct.
 //
-//   If you need the functions be inline, expand NF7_UTIL_ARRAY_INLINE macro on
-//   your *.h as same as NF7_UTIL_ARRAY but NF7_UTIL_ARRAY_IMPL is unnecessary.
+//   If you need the functions be inline, expand NF7UTIL_ARRAY_INLINE macro on
+//   your *.h as same as NF7UTIL_ARRAY but NF7UTIL_ARRAY_IMPL is unnecessary.
 //
 //   You can see declarations of the functions on a definition of
-//   NF7_UTIL_ARRAY_DECL macro. They all are prefixed by a name of your array
+//   NF7UTIL_ARRAY_DECL macro. They all are prefixed by a name of your array
 //   struct.
 
 
-#define NF7_UTIL_ARRAY_TYPE(PREFIX, T)  \
+#define NF7UTIL_ARRAY_TYPE(PREFIX, T)  \
   struct PREFIX {  \
-    struct nf7_util_malloc* malloc;  \
+    struct nf7util_malloc* malloc;  \
     \
     uint64_t n;  \
     T*       ptr;  \
@@ -44,8 +44,8 @@
   static_assert(true)
 
 
-#define NF7_UTIL_ARRAY_DECL(ATTR, PREFIX, T)  \
-  ATTR void PREFIX##_init(struct PREFIX*, struct nf7_util_malloc*);  \
+#define NF7UTIL_ARRAY_DECL(ATTR, PREFIX, T)  \
+  ATTR void PREFIX##_init(struct PREFIX*, struct nf7util_malloc*);  \
   ATTR void PREFIX##_deinit(struct PREFIX*);  \
   ATTR bool PREFIX##_resize(struct PREFIX*, uint64_t);  \
   ATTR bool PREFIX##_insert(struct PREFIX*, uint64_t, T);  \
@@ -55,8 +55,8 @@
   static_assert(true)
 
 
-#define NF7_UTIL_ARRAY_IMPL(ATTR, PREFIX, T)  \
-  ATTR void PREFIX##_init(struct PREFIX* this, struct nf7_util_malloc* malloc) {  \
+#define NF7UTIL_ARRAY_IMPL(ATTR, PREFIX, T)  \
+  ATTR void PREFIX##_init(struct PREFIX* this, struct nf7util_malloc* malloc) {  \
     assert(nullptr != this);  \
     assert(nullptr != malloc);  \
     *this = (struct PREFIX) {  \
@@ -65,7 +65,7 @@
   }  \
   ATTR void PREFIX##_deinit(struct PREFIX* this) {  \
     assert(nullptr != this);  \
-    nf7_util_malloc_del(this->malloc, this->ptr);  \
+    nf7util_malloc_del(this->malloc, this->ptr);  \
     *this = (struct PREFIX) {0};  \
   }  \
   \
@@ -78,7 +78,7 @@
     const bool extend = this->n < n;  \
     \
     T* const newptr =  \
-        nf7_util_malloc_renew(this->malloc, this->ptr, n*sizeof(T));  \
+        nf7util_malloc_renew(this->malloc, this->ptr, n*sizeof(T));  \
     if (0 < n && nullptr == newptr) {  \
       if (extend) { return false; }  \
     } else {  \
@@ -146,23 +146,23 @@
   static_assert(true)
 
 
-#define NF7_UTIL_ARRAY(PREFIX, T)  \
-  NF7_UTIL_ARRAY_TYPE(PREFIX, T);  \
-  NF7_UTIL_ARRAY_DECL(, PREFIX, T);  \
+#define NF7UTIL_ARRAY(PREFIX, T)  \
+  NF7UTIL_ARRAY_TYPE(PREFIX, T);  \
+  NF7UTIL_ARRAY_DECL(, PREFIX, T);  \
   static_assert(true)
 
-#define NF7_UTIL_ARRAY_INLINE(PREFIX, T)  \
-  NF7_UTIL_ARRAY_TYPE(PREFIX, T);  \
-  NF7_UTIL_ARRAY_DECL(static inline, PREFIX, T);  \
-  NF7_UTIL_ARRAY_IMPL(static inline, PREFIX, T);  \
+#define NF7UTIL_ARRAY_INLINE(PREFIX, T)  \
+  NF7UTIL_ARRAY_TYPE(PREFIX, T);  \
+  NF7UTIL_ARRAY_DECL(static inline, PREFIX, T);  \
+  NF7UTIL_ARRAY_IMPL(static inline, PREFIX, T);  \
   static_assert(true)
 
 
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_u8 , uint8_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_u16, uint16_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_u32, uint32_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_u64, uint64_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_s8 , int8_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_s16, int16_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_s32, int32_t);
-NF7_UTIL_ARRAY_INLINE(nf7_util_array_s64, int64_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_u8 , uint8_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_u16, uint16_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_u32, uint32_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_u64, uint64_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_s8 , int8_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_s16, int16_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_s32, int32_t);
+NF7UTIL_ARRAY_INLINE(nf7util_array_s64, int64_t);

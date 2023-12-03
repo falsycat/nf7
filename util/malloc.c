@@ -4,14 +4,14 @@
 #include <assert.h>
 
 
-void* nf7_util_malloc_stack_new(struct nf7_util_malloc_stack* const this, const uint64_t n) {
+void* nf7util_malloc_stack_new(struct nf7util_malloc_stack* const this, const uint64_t n) {
   assert(nullptr != this);
 
   if (this->end < this->tail + n) {
     const uint64_t tail = this->tail - this->begin;
     const uint64_t size = tail + n;
 
-    uint8_t* const ptr = nf7_util_malloc_renew(this->malloc, this->begin, size);
+    uint8_t* const ptr = nf7util_malloc_renew(this->malloc, this->begin, size);
     if (nullptr == ptr) {
       return nullptr;
     }
@@ -27,7 +27,7 @@ void* nf7_util_malloc_stack_new(struct nf7_util_malloc_stack* const this, const 
   return this->head;
 }
 
-void nf7_util_malloc_stack_del(struct nf7_util_malloc_stack* const this, void* const ptr) {
+void nf7util_malloc_stack_del(struct nf7util_malloc_stack* const this, void* const ptr) {
   assert(nullptr != this);
   assert(0 < this->refcnt);
 

@@ -9,9 +9,9 @@
 
 // ---- General Purpose Memory Allocator
 // The current implementation is just a wrap of malloc/free.
-struct nf7_util_malloc { atomic_uint_least64_t count; };
+struct nf7util_malloc { atomic_uint_least64_t count; };
 
-static inline void* nf7_util_malloc_new(struct nf7_util_malloc* this, uint64_t n) {
+static inline void* nf7util_malloc_new(struct nf7util_malloc* this, uint64_t n) {
   assert(nullptr != this);
 
   if (0 == n) {
@@ -27,7 +27,7 @@ static inline void* nf7_util_malloc_new(struct nf7_util_malloc* this, uint64_t n
   assert(UINT64_MAX > prev_count);
   return ret;
 }
-static inline void nf7_util_malloc_del(struct nf7_util_malloc* this, void* ptr) {
+static inline void nf7util_malloc_del(struct nf7util_malloc* this, void* ptr) {
   assert(nullptr != this);
 
   if (nullptr != ptr) {
@@ -37,25 +37,25 @@ static inline void nf7_util_malloc_del(struct nf7_util_malloc* this, void* ptr) 
     free(ptr);
   }
 }
-static inline void* nf7_util_malloc_renew(struct nf7_util_malloc* this, void* ptr, uint64_t n) {
+static inline void* nf7util_malloc_renew(struct nf7util_malloc* this, void* ptr, uint64_t n) {
   assert(nullptr != this);
 
   if (n > 0) {
-    return nullptr != ptr? realloc(ptr, n): nf7_util_malloc_new(this, n);
+    return nullptr != ptr? realloc(ptr, n): nf7util_malloc_new(this, n);
   } else {
-    nf7_util_malloc_del(this, ptr);
+    nf7util_malloc_del(this, ptr);
     return nullptr;
   }
 }
 
-static inline uint64_t nf7_util_malloc_get_count(const struct nf7_util_malloc* this) {
+static inline uint64_t nf7util_malloc_get_count(const struct nf7util_malloc* this) {
   return atomic_load(&this->count);
 }
 
 
 // ---- Stack Allocator
-struct nf7_util_malloc_stack {
-  struct nf7_util_malloc* malloc;
+struct nf7util_malloc_stack {
+  struct nf7util_malloc* malloc;
 
   uint8_t* begin;
   uint8_t* end;
@@ -64,5 +64,5 @@ struct nf7_util_malloc_stack {
   uint64_t refcnt;
 };
 
-void* nf7_util_malloc_stack_new(struct nf7_util_malloc_stack* this, uint64_t n);
-void nf7_util_malloc_stack_del(struct nf7_util_malloc_stack* this, void*);
+void* nf7util_malloc_stack_new(struct nf7util_malloc_stack* this, uint64_t n);
+void nf7util_malloc_stack_del(struct nf7util_malloc_stack* this, void*);

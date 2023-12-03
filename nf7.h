@@ -21,8 +21,8 @@ struct nf7 {
   uint32_t argc;
   const char* const* argv;
 
-  uv_loop_t*              uv;
-  struct nf7_util_malloc* malloc;
+  uv_loop_t*             uv;
+  struct nf7util_malloc* malloc;
 
   struct {
     uint32_t n;
