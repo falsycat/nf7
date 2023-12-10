@@ -66,6 +66,7 @@ static inline void nf7util_signal_recv_unset(struct nf7util_signal_recv* this) {
   if (nullptr == signal) {
     return;
   }
+  this->signal = nullptr;
 
   if (!signal->emitting) {
     nf7util_signal_recvs_find_and_remove(&signal->recvs, this);
@@ -82,7 +83,6 @@ static inline bool nf7util_signal_recv_set(
     struct nf7util_signal_recv* this, struct nf7util_signal* signal) {
   assert(nullptr != this);
   assert(nullptr != this->func);
-  assert(!signal->emitting);
 
   nf7util_signal_recv_unset(this);
 
