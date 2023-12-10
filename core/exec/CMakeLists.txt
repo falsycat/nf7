@@ -1,0 +1,12 @@
+add_library(nf7core_exec)
+target_sources(nf7core_exec
+  PRIVATE
+    mod.c
+  PUBLIC
+    mod.h
+)
+target_link_libraries(nf7core_exec
+  PRIVATE
+    nf7if
+    nf7util
+)

@@ -1,7 +1,10 @@
 # ---- basic modules
 set(MODS
+  exec
+
   lua
   sdl2
+
   test
 )
 
