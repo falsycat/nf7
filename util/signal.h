@@ -35,22 +35,48 @@ static inline void nf7util_signal_deinit(struct nf7util_signal* this) {
   }
   nf7util_signal_recvs_deinit(&this->recvs);
 }
+
 static inline void nf7util_signal_emit(struct nf7util_signal* this) {
+  struct nf7util_signal_recvs* recvs = &this->recvs;
+
   this->emitting = true;
-  for (uint64_t i = 0; i < this->recvs.n; ++i) {
-    struct nf7util_signal_recv* recv = this->recvs.ptr[i];
+  for (uint64_t i = 0; i < recvs->n; ++i) {
+    struct nf7util_signal_recv* recv = recvs->ptr[i];
     recv->func(recv);
   }
   this->emitting = false;
+
+  // remove nullptr in recvs because a removed receiver replaces their pointer
+  // to nullptr in `recvs` while `this->emitting` is true
+  uint64_t lead_index   = 0;
+  uint64_t follow_index = 0;
+  for (; lead_index < recvs->n; ++lead_index) {
+    if (nullptr != recvs->ptr[lead_index]) {
+      recvs->ptr[follow_index] = recvs->ptr[lead_index];
+      ++follow_index;
+    }
+  }
+  nf7util_signal_recvs_resize(recvs, follow_index);
 }
 
 static inline void nf7util_signal_recv_unset(struct nf7util_signal_recv* this) {
   assert(nullptr != this);
 
-  if (nullptr == this->signal) {
+  struct nf7util_signal* signal = this->signal;
+  if (nullptr == signal) {
     return;
   }
-  nf7util_signal_recvs_find_and_remove(&this->signal->recvs, this);
+
+  if (!signal->emitting) {
+    nf7util_signal_recvs_find_and_remove(&signal->recvs, this);
+  } else {
+    // replace myself to nullptr in `signal->recvs`
+    // because the array is being iterated while `signal->emitting` is true
+    uint64_t index;
+    if (nf7util_signal_recvs_find(&signal->recvs, &index, this)) {
+      signal->recvs.ptr[index] = nullptr;
+    }
+  }
 }
 static inline bool nf7util_signal_recv_set(
     struct nf7util_signal_recv* this, struct nf7util_signal* signal) {

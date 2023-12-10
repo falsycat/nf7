@@ -23,9 +23,6 @@ bool nf7core_sdl2_win_init(struct nf7core_sdl2_win* this, struct nf7core_sdl2* m
 
   // TODO error handling
 
-  this->event_recv = (struct nf7util_signal_recv) {
-    .signal = &this->mod->event_signal,
-  };
   this->event_recv.data = this;
   this->event_recv.func = handle_;
   if (!nf7util_signal_recv_set(&this->event_recv, &this->mod->event_signal)) {
