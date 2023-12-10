@@ -1,4 +1,11 @@
 // No copyright
+//
+// nf7util_signal is an emitter, and nf7util_signal_recv is its receiver.
+// When nf7util_signal emits, all of corresponding nf7util_signal_recv receive
+// and call their callbacks.
+//
+// This is useful to implement an observer pattern.
+//
 #pragma once
 
 #include "util/array.h"
@@ -24,7 +31,8 @@ struct nf7util_signal_recv {
 };
 
 
-static inline void nf7util_signal_init(struct nf7util_signal* this, struct nf7util_malloc* malloc) {
+static inline void nf7util_signal_init(
+    struct nf7util_signal* this, struct nf7util_malloc* malloc) {
   assert(nullptr != this);
   nf7util_signal_recvs_init(&this->recvs, malloc);
 }
@@ -47,7 +55,7 @@ static inline void nf7util_signal_emit(struct nf7util_signal* this) {
   this->emitting = false;
 
   // remove nullptr in recvs because a removed receiver replaces their pointer
-  // to nullptr in `recvs` while `this->emitting` is true
+  // in 'recvs' to nullptr while `this->emitting` is true
   uint64_t lead_index   = 0;
   uint64_t follow_index = 0;
   for (; lead_index < recvs->n; ++lead_index) {
@@ -71,7 +79,7 @@ static inline void nf7util_signal_recv_unset(struct nf7util_signal_recv* this) {
   if (!signal->emitting) {
     nf7util_signal_recvs_find_and_remove(&signal->recvs, this);
   } else {
-    // replace myself to nullptr in `signal->recvs`
+    // replace myself `signal->recvs` to nullptr in
     // because the array is being iterated while `signal->emitting` is true
     uint64_t index;
     if (nf7util_signal_recvs_find(&signal->recvs, &index, this)) {

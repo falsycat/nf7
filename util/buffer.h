@@ -1,4 +1,8 @@
 // No copyright
+//
+// nf7util_buffer is a generic buffer object which can be shared between
+// multiple owners. Only a unique owner can modify the buffer contents.
+//
 #pragma once
 
 #include <stdint.h>
@@ -7,9 +11,6 @@
 #include "util/malloc.h"
 #include "util/refcnt.h"
 
-
-// nf7util_buffer is a generic buffer object which can be shared between
-// multiple owners. Only a unique owner can modify the buffer contents.
 
 struct nf7util_buffer {
   struct nf7util_malloc* malloc;

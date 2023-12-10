@@ -1,4 +1,7 @@
 // No copyright
+//
+// functions macros for logging
+//
 #pragma once
 
 #include <assert.h>

@@ -1,4 +1,9 @@
 // No copyright
+//
+// nf7util_malloc is a general purpose memory allocator
+// The current implementation is just a wrapper of malloc/free.
+// All methods are thread-safe.
+//
 #pragma once
 
 #include <assert.h>
@@ -7,9 +12,6 @@
 #include <stdlib.h>
 
 
-// ---- General Purpose Memory Allocator
-// The current implementation is just a wrap of malloc/free.
-// All methods are thread-safe.
 struct nf7util_malloc { atomic_uint_least64_t count; };
 
 static inline void* nf7util_malloc_alloc(struct nf7util_malloc* this, uint64_t n) {

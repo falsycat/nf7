@@ -1,16 +1,10 @@
 // No copyright
-#pragma once
-
-#include <assert.h>
-#include <stdint.h>
-#include <string.h>
-
-#include "util/malloc.h"
-
-
+//
+// Array util is a template macro of an array type.
+//
 // HOW TO USE
-//   To use an array, you must prepare an array struct, and use its functions for
-//   any operations to the array.
+//   To use an array, you must prepare an array struct, and use its functions
+//   for any operations to the array.
 //
 //   When you need an array of integers, the following array structs are
 //   available:
@@ -32,6 +26,14 @@
 //   You can see declarations of the functions on a definition of
 //   NF7UTIL_ARRAY_DECL macro. They all are prefixed by a name of your array
 //   struct.
+//
+#pragma once
+
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "util/malloc.h"
 
 
 #define NF7UTIL_ARRAY_TYPE(PREFIX, T)  \
