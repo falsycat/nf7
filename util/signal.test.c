@@ -12,10 +12,8 @@ static void on_recv_(struct nf7util_signal_recv* recv) {
 NF7TEST(nf7util_signal_test_emit) {
   uint32_t cnt = 0;
 
-  struct nf7util_signal signal = {
-    .malloc = test_->malloc,
-  };
-  nf7util_signal_init(&signal);
+  struct nf7util_signal signal = {0};
+  nf7util_signal_init(&signal, test_->malloc);
 
   struct nf7util_signal_recv recv = {
     .data = &cnt,
@@ -35,10 +33,8 @@ NF7TEST(nf7util_signal_test_emit) {
 NF7TEST(nf7util_signal_test_emit_after_unset) {
   uint32_t cnt = 0;
 
-  struct nf7util_signal signal = {
-    .malloc = test_->malloc,
-  };
-  nf7util_signal_init(&signal);
+  struct nf7util_signal signal = {0};
+  nf7util_signal_init(&signal, test_->malloc);
 
   struct nf7util_signal_recv recv = {
     .data = &cnt,
@@ -59,10 +55,8 @@ NF7TEST(nf7util_signal_test_emit_after_unset) {
 NF7TEST(nf7util_signal_test_del_after_set) {
   uint32_t cnt = 0;
 
-  struct nf7util_signal signal = {
-    .malloc = test_->malloc,
-  };
-  nf7util_signal_init(&signal);
+  struct nf7util_signal signal = {0};
+  nf7util_signal_init(&signal, test_->malloc);
 
   struct nf7util_signal_recv recv = {
     .data = &cnt,

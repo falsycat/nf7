@@ -46,9 +46,6 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
-    .event_signal = {
-      .malloc = nf7->malloc,
-    },
   };
 
   this->poll = poll_new_(this);
@@ -59,7 +56,7 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
   this->poll->data    = this;
   this->poll->handler = poll_;
 
-  nf7util_signal_init(&this->event_signal);
+  nf7util_signal_init(&this->event_signal, this->malloc);
   nf7core_sdl2_ref(this);
   return (struct nf7_mod*) this;
 
