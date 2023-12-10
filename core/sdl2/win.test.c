@@ -40,14 +40,10 @@ NF7TEST(nf7core_sdl2_win_test) {
     .test   = test_,
     .malloc = test_->malloc,
     .uv     = test_->nf7->uv,
-    .win = {
-      .mod    = mod,
-      .malloc = test_->malloc,
-    },
   };
   nf7test_ref(this->test);
 
-  if (!nf7test_expect(nf7core_sdl2_win_init(&this->win))) {
+  if (!nf7test_expect(nf7core_sdl2_win_init(&this->win, mod))) {
     goto ABORT;
   }
   this->win.data    = this;

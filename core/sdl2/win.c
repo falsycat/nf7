@@ -12,10 +12,14 @@ static void setup_gl_(void);
 static void handle_(struct nf7util_signal_recv* recv);
 
 
-bool nf7core_sdl2_win_init(struct nf7core_sdl2_win* this) {
+bool nf7core_sdl2_win_init(struct nf7core_sdl2_win* this, struct nf7core_sdl2* mod) {
   assert(nullptr != this);
-  assert(nullptr != this->mod);
-  assert(nullptr != this->malloc);
+  assert(nullptr != mod);
+
+  *this = (struct nf7core_sdl2_win) {
+    .mod    = mod,
+    .malloc = mod->malloc,
+  };
 
   // TODO error handling
 
