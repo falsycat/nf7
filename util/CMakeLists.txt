@@ -4,6 +4,7 @@ target_sources(nf7util
     malloc.c
   PUBLIC
     array.h
+    buffer.h
     log.h
     malloc.h
     refcnt.h
@@ -11,6 +12,7 @@ target_sources(nf7util
 )
 target_tests(nf7util
   array.test.c
+  buffer.test.c
   refcnt.test.c
   signal.test.c
 )
