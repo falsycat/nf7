@@ -1,7 +1,5 @@
 add_library(nf7util)
 target_sources(nf7util
-  PRIVATE
-    malloc.c
   PUBLIC
     array.h
     buffer.h

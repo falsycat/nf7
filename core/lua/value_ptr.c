@@ -27,7 +27,7 @@ struct nf7core_lua_value_ptr* nf7core_lua_value_ptr_new(
   assert(nullptr != L);
 
   struct nf7core_lua_value_ptr* this =
-      nf7util_malloc_new(thread->malloc, sizeof(*this));
+      nf7util_malloc_alloc(thread->malloc, sizeof(*this));
   if (nullptr == this) {
     goto ABORT;
   }
@@ -60,5 +60,5 @@ static void del_(struct nf7core_lua_value_ptr* this) {
   assert(nullptr != this);
   luaL_unref(this->lua, LUA_REGISTRYINDEX, this->index);
   nf7core_lua_thread_unref(this->thread);
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }

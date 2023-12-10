@@ -17,7 +17,7 @@ static void del_(struct nf7_mod*);
 struct nf7_mod* nf7core_test_new(const struct nf7* nf7) {
   assert(nullptr != nf7);
 
-  struct nf7core_test* this = nf7util_malloc_new(nf7->malloc, sizeof(*this));
+  struct nf7core_test* this = nf7util_malloc_alloc(nf7->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate instance");
     return nullptr;
@@ -38,7 +38,7 @@ struct nf7_mod* nf7core_test_new(const struct nf7* nf7) {
 
 static void del_(struct nf7_mod* mod) {
   struct nf7core_test* this = (struct nf7core_test*) mod;
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }
 
 

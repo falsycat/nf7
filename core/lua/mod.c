@@ -14,7 +14,7 @@ struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
   assert(nullptr != nf7);
 
   struct nf7core_lua* this =
-    nf7util_malloc_new(nf7->malloc, sizeof(*this));
+    nf7util_malloc_alloc(nf7->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate a module context");
     goto ABORT;
@@ -47,7 +47,7 @@ static void del_(struct nf7core_lua* this) {
   if (nullptr != this->thread) {
     nf7core_lua_thread_unref(this->thread);
   }
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }
 
 static void del_mod_(struct nf7_mod* mod) {

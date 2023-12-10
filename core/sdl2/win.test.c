@@ -32,7 +32,7 @@ NF7TEST(nf7core_sdl2_win_test) {
   }
 
   struct nf7core_sdl2_win_test* this =
-    nf7util_malloc_new(test_->malloc, sizeof(*this));
+    nf7util_malloc_alloc(test_->malloc, sizeof(*this));
   if (!nf7test_expect(nullptr != this)) {
     goto ABORT;
   }
@@ -72,7 +72,7 @@ static void finalize_(struct nf7core_sdl2_win_test* this) {
   }
   nf7core_sdl2_win_deinit(&this->win);
   nf7test_unref(this->test);
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }
 
 static void on_time_(uv_timer_t* timer) {

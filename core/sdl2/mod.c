@@ -36,7 +36,7 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
     return nullptr;
   }
 
-  struct nf7core_sdl2* this = nf7util_malloc_new(nf7->malloc, sizeof(*this));
+  struct nf7core_sdl2* this = nf7util_malloc_alloc(nf7->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate instance");
     goto ABORT;
@@ -80,7 +80,7 @@ static void del_(struct nf7core_sdl2* this) {
 
   nf7util_signal_deinit(&this->event_signal);
   poll_del_(this->poll);
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 
   if (1 == atomic_fetch_sub(&sdl_refcnt_, 1)) {
     nf7util_log_debug("finalizing SDL...");

@@ -21,14 +21,14 @@ NF7UTIL_REFCNT_IMPL(
     static inline, nf7util_buffer,
     {
       nf7util_array_u8_deinit(&this->array);
-      nf7util_malloc_del(this->malloc, this);
+      nf7util_malloc_free(this->malloc, this);
     });
 
 static inline struct nf7util_buffer* nf7util_buffer_new(
     struct nf7util_malloc* malloc, uint64_t size) {
   assert(nullptr != malloc);
 
-  struct nf7util_buffer* this = nf7util_malloc_new(malloc, sizeof(*this));
+  struct nf7util_buffer* this = nf7util_malloc_alloc(malloc, sizeof(*this));
   if (nullptr == this) {
     return nullptr;
   }

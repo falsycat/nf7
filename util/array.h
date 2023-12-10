@@ -65,7 +65,7 @@
   }  \
   ATTR void PREFIX##_deinit(struct PREFIX* this) {  \
     assert(nullptr != this);  \
-    nf7util_malloc_del(this->malloc, this->ptr);  \
+    nf7util_malloc_free(this->malloc, this->ptr);  \
     *this = (struct PREFIX) {0};  \
   }  \
   \
@@ -78,7 +78,7 @@
     const bool extend = this->n < n;  \
     \
     T* const newptr =  \
-        nf7util_malloc_renew(this->malloc, this->ptr, n*sizeof(T));  \
+        nf7util_malloc_realloc(this->malloc, this->ptr, n*sizeof(T));  \
     if (0 < n && nullptr == newptr) {  \
       if (extend) { return false; }  \
     } else {  \

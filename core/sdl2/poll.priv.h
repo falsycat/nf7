@@ -32,7 +32,7 @@ static struct nf7core_sdl2_poll* poll_new_(struct nf7core_sdl2* mod) {
   assert(nullptr != mod);
 
   struct nf7core_sdl2_poll* this =
-      nf7util_malloc_new(mod->malloc, sizeof(*this));
+      nf7util_malloc_alloc(mod->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate poll context");
     return nullptr;
@@ -68,7 +68,7 @@ static void poll_del_(struct nf7core_sdl2_poll* this) {
     uv_close((uv_handle_t*) &this->timer, poll_on_close_);
     return;
   }
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }
 
 static void poll_on_time_(uv_timer_t* timer) {

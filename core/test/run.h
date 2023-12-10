@@ -41,7 +41,7 @@ struct nf7core_test_run {
 static bool run_trigger_setup_(struct nf7core_test* mod) {
   assert(nullptr != mod);
 
-  struct nf7core_test_run* this = nf7util_malloc_new(mod->malloc, sizeof(*this));
+  struct nf7core_test_run* this = nf7util_malloc_alloc(mod->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate an test context");
     return false;
@@ -142,5 +142,5 @@ static void run_finalize_(struct nf7test* test) {
           this->run_tests);
     }
   }
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }

@@ -21,7 +21,7 @@ struct nf7core_lua_thread* nf7core_lua_thread_new(
   assert(nullptr != mod);
 
   struct nf7core_lua_thread* this =
-      nf7util_malloc_new(mod->malloc, sizeof(*this));
+      nf7util_malloc_alloc(mod->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate new thread context");
     return nullptr;
@@ -109,7 +109,7 @@ bool nf7core_lua_thread_resume_varg_after(
 
 static void* alloc_(void* data, void* ptr, size_t, size_t nsize) {
   struct nf7core_lua_thread* this = data;
-  return nf7util_malloc_renew(this->malloc, ptr, nsize);
+  return nf7util_malloc_realloc(this->malloc, ptr, nsize);
 }
 
 static void del_(struct nf7core_lua_thread* this) {
@@ -128,7 +128,7 @@ static void del_(struct nf7core_lua_thread* this) {
   if (nullptr != this->base) {
     nf7core_lua_thread_unref(this->base);
   }
-  nf7util_malloc_del(this->malloc, this);
+  nf7util_malloc_free(this->malloc, this);
 }
 
 static void on_time_(uv_timer_t* timer) {
