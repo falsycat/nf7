@@ -6,11 +6,6 @@ set(CMAKE_C_STANDARD              23)
 set(CMAKE_C_STANDARD_REQUIRED     ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if (NOT PROJECT_BINARY_DIR MATCHES "^${PROJECT_SOURCE_DIR}")
-  message(FATAL_ERROR "build dir must be inside of source dir")
-endif()
-string(LENGTH "${PROJECT_SOURCE_DIR}" PROJECT_DIR_LEN)
-
 include(tool/meta.cmake)
 
 # ---- thirdparty import
@@ -22,10 +17,6 @@ target_include_directories(nf7config
   INTERFACE
     ${PROJECT_SOURCE_DIR}
     ${NF7_GENERATED_DIR}
-)
-target_compile_definitions(nf7config
-  INTERFACE
-    NF7_PROJECT_DIR_LEN=${PROJECT_DIR_LEN}
 )
 target_compile_options(nf7config INTERFACE
   $<$<CXX_COMPILER_ID:MSVC>:

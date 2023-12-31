@@ -1,6 +1,7 @@
 add_library(nf7util)
 target_sources(nf7util
   PUBLIC
+    ansi.h
     array.h
     buffer.h
     log.h
