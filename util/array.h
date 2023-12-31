@@ -52,8 +52,8 @@
   ATTR bool PREFIX##_resize(struct PREFIX*, uint64_t);  \
   ATTR bool PREFIX##_insert(struct PREFIX*, uint64_t, T);  \
   ATTR void PREFIX##_remove(struct PREFIX*, uint64_t);  \
-  ATTR bool PREFIX##_find(struct PREFIX*, uint64_t*, const T);  \
-  ATTR bool PREFIX##_find_and_remove(struct PREFIX*, const T);  \
+  ATTR bool PREFIX##_find(struct PREFIX*, uint64_t*, T const);  \
+  ATTR bool PREFIX##_find_and_remove(struct PREFIX*, T const);  \
   static_assert(true)
 
 
@@ -123,7 +123,7 @@
     PREFIX##_resize(this, this->n - 1);  \
   }  \
   \
-  ATTR bool PREFIX##_find(struct PREFIX* this, uint64_t* idx, const T needle) {  \
+  ATTR bool PREFIX##_find(struct PREFIX* this, uint64_t* idx, T const needle) {  \
     assert(nullptr != this);  \
     assert(nullptr != idx);  \
   \
@@ -135,7 +135,7 @@
     }  \
     return false;  \
   }  \
-  ATTR bool PREFIX##_find_and_remove(struct PREFIX* this, const T needle) {  \
+  ATTR bool PREFIX##_find_and_remove(struct PREFIX* this, T const needle) {  \
     assert(nullptr != this);  \
   \
     uint64_t idx;  \
