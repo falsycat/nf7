@@ -42,7 +42,9 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
     goto ABORT;
   }
   *this = (struct nf7core_sdl2) {
-    .meta   = &nf7core_sdl2,
+    .super = {
+      .meta = &nf7core_sdl2,
+    },
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,

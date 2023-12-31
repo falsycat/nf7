@@ -23,7 +23,9 @@ struct nf7_mod* nf7core_test_new(const struct nf7* nf7) {
     return nullptr;
   }
   *this = (struct nf7core_test) {
-    .meta = &nf7core_test,
+    .super = {
+      .meta = &nf7core_test,
+    },
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,

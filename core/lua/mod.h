@@ -14,7 +14,7 @@
 extern const struct nf7_mod_meta nf7core_lua;
 
 struct nf7core_lua {
-  const struct nf7_mod_meta* meta;
+  struct nf7_mod super;
 
   const struct nf7*      nf7;
   struct nf7util_malloc* malloc;

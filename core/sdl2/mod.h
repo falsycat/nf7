@@ -18,7 +18,7 @@ extern const struct nf7_mod_meta nf7core_sdl2;
 struct nf7core_sdl2_poll;
 
 struct nf7core_sdl2 {
-  const struct nf7_mod_meta* meta;
+  struct nf7_mod super;
 
   // library pointers (immutable)
   const struct nf7*      nf7;

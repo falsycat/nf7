@@ -20,7 +20,9 @@ struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
     goto ABORT;
   }
   *this = (struct nf7core_lua) {
-    .meta   = &nf7core_lua,
+    .super = {
+      .meta = &nf7core_lua,
+    },
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
