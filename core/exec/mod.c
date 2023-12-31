@@ -26,7 +26,7 @@ struct nf7_mod* nf7core_exec_new(struct nf7* nf7) {
     .malloc = nf7->malloc,
   };
 
-  nf7core_exec_metas_init(&this->metas, this->malloc);
+  nf7core_exec_ideas_init(&this->ideas, this->malloc);
   return (struct nf7_mod*) this;
 
 ABORT:
@@ -37,7 +37,7 @@ ABORT:
 
 static void del_(struct nf7_mod* mod) {
   struct nf7core_exec* this = (void*) mod;
-  nf7core_exec_metas_deinit(&this->metas);
+  nf7core_exec_ideas_deinit(&this->ideas);
   nf7util_malloc_free(this->malloc, this);
 }
 

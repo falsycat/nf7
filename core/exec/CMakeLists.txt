@@ -3,6 +3,8 @@ target_sources(nf7core_exec
   PRIVATE
     mod.c
   PUBLIC
+    entity.h
+    idea.h
     mod.h
 )
 target_link_libraries(nf7core_exec
