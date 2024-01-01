@@ -1,10 +1,14 @@
 # ---- basic modules
 set(MODS
+  # ---- interface layer
   exec
 
+  # ---- implementation layer
   lua
+  null
   sdl2
 
+  # ---- usecase layer
   test
 )
 
