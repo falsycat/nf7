@@ -24,9 +24,9 @@ struct nf7_mod* nf7core_test_new(const struct nf7* nf7) {
   }
   *this = (struct nf7core_test) {
     .super = {
+      .nf7  = nf7,
       .meta = &nf7core_test,
     },
-    .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
   };
@@ -35,7 +35,7 @@ struct nf7_mod* nf7core_test_new(const struct nf7* nf7) {
     nf7util_log_error("failed to setup runner");
     return nullptr;
   }
-  return (struct nf7_mod*) this;
+  return &this->super;
 }
 
 static void del_(struct nf7_mod* mod) {
@@ -49,5 +49,5 @@ const struct nf7_mod_meta nf7core_test = {
   .desc = (const uint8_t*) "executes tests after the initialization",
   .ver  = NF7_VERSION,
 
-  .delete = del_,
+  .del = del_,
 };

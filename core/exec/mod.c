@@ -20,14 +20,14 @@ struct nf7_mod* nf7core_exec_new(struct nf7* nf7) {
 
   *this = (struct nf7core_exec) {
     .super = {
+      .nf7  = nf7,
       .meta = &nf7core_exec,
     },
-    .nf7    = nf7,
     .malloc = nf7->malloc,
   };
 
   nf7core_exec_ideas_init(&this->ideas, this->malloc);
-  return (struct nf7_mod*) this;
+  return &this->super;
 
 ABORT:
   nf7util_log_warn("aborting module init");
@@ -46,5 +46,5 @@ const struct nf7_mod_meta nf7core_exec = {
   .desc = (const uint8_t*) "provides a registry for executables",
   .ver  = NF7_VERSION,
 
-  .delete = del_,
+  .del = del_,
 };

@@ -51,7 +51,7 @@ static bool run_trigger_setup_(struct nf7core_test* mod) {
     .malloc = mod->malloc,
     .uv     = mod->uv,
     .test = {
-      .nf7    = mod->nf7,
+      .nf7    = mod->super.nf7,
       .malloc = mod->malloc,
       .data   = this,
       .run      = run_single_test_,

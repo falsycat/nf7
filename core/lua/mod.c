@@ -21,9 +21,9 @@ struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
   }
   *this = (struct nf7core_lua) {
     .super = {
+      .nf7    = nf7,
       .meta = &nf7core_lua,
     },
-    .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
   };
@@ -33,7 +33,7 @@ struct nf7_mod* nf7core_lua_new(struct nf7* nf7) {
     nf7util_log_error("failed to create main thread");
     goto ABORT;
   }
-  return (struct nf7_mod*) this;
+  return &this->super;
 
 ABORT:
   nf7util_log_warn("aborting lua module init");
@@ -62,5 +62,5 @@ const struct nf7_mod_meta nf7core_lua = {
   .desc = (const uint8_t*) "lua script execution",
   .ver  = NF7_VERSION,
 
-  .delete = del_mod_,
+  .del = del_mod_,
 };

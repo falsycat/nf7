@@ -20,6 +20,7 @@ for name in $@; do
   echo "  nf7util_log_debug(\"loading module: %s\", nf7core_${name}.name);"
   echo "  mods[i] = nf7core_${name}_new(nf7);"
   echo "  if (nullptr != mods[i]) {"
+  echo "    assert(nullptr != mods[i]->nf7);"
   echo "    assert(nullptr != mods[i]->meta);"
   echo "    ++i;"
   echo "    nf7util_log_info(\"loaded module: %s\", nf7core_${name}.name);"

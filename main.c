@@ -52,10 +52,10 @@ int main(int argc, char** argv) {
   // destroy modules
   for (uint32_t i = 0; i < nf7.mods.n; ++i) {
     struct nf7_mod* mod = nf7.mods.ptr[i];
-    assert(mod->meta->delete);
+    assert(mod->meta->del);
 
     nf7util_log_debug("unloading module: %s", mod->meta->name);
-    mod->meta->delete(mod);
+    mod->meta->del(mod);
   }
   nf7util_log_info("unloaded all modules");
 

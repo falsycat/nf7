@@ -14,7 +14,6 @@ struct nf7core_test_run;
 struct nf7core_test {
   struct nf7_mod super;
 
-  const struct nf7*      nf7;
   struct nf7util_malloc* malloc;
   uv_loop_t*             uv;
 

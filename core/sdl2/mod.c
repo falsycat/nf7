@@ -43,9 +43,9 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
   }
   *this = (struct nf7core_sdl2) {
     .super = {
+      .nf7  = nf7,
       .meta = &nf7core_sdl2,
     },
-    .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
   };
@@ -60,7 +60,7 @@ struct nf7_mod* nf7core_sdl2_new(const struct nf7* nf7) {
 
   nf7util_signal_init(&this->event_signal, this->malloc);
   nf7core_sdl2_ref(this);
-  return (struct nf7_mod*) this;
+  return &this->super;
 
 ABORT:
   nf7util_log_warn("initialization is aborted");
@@ -101,5 +101,5 @@ const struct nf7_mod_meta nf7core_sdl2 = {
   .desc = (const uint8_t*) "provides SDL2 features",
   .ver  = NF7_VERSION,
 
-  .delete = unref_,
+  .del = unref_,
 };

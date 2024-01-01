@@ -31,6 +31,7 @@ struct nf7 {
 };
 
 struct nf7_mod {
+  const struct nf7*          nf7;
   const struct nf7_mod_meta* meta;
 };
 
@@ -39,8 +40,7 @@ struct nf7_mod_meta {
   const uint8_t* desc;
   uint32_t       ver;
 
-  void (*delete)(struct nf7_mod*);
-  void (*push_lua)(struct nf7_mod*);
+  void (*del)(struct nf7_mod*);
 };
 
 
