@@ -10,9 +10,9 @@
 
 
 struct nf7core_exec_idea {
-  const char* name;
-  const char* details;
-  const struct nf7_mod* mod;
+  const uint8_t* name;
+  const uint8_t* details;
+  const struct nf7_mod_meta* mod;
 
   struct nf7core_exec_entity* (*new)(struct nf7core_exec*);
   void (*del)(struct nf7core_exec_entity*);

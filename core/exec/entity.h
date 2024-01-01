@@ -3,13 +3,15 @@
 
 #include <assert.h>
 
+#include "util/log.h"
+
 #include "core/exec/idea.h"
 #include "core/exec/mod.h"
 
 
 struct nf7core_exec_entity {
-  struct nf7core_exec*            mod;
   const struct nf7core_exec_idea* idea;
+  struct nf7core_exec* mod;
 
   void* data;
   void (*on_recv)(
@@ -32,6 +34,8 @@ static inline struct nf7core_exec_entity* nf7core_exec_entity_new(
     nf7util_log_error("failed to create entity of '%.*s'", (int) namelen, name);
     return nullptr;
   }
+  assert(idea == entity->idea);
+  assert(mod  == entity->mod);
   return entity;
 }
 
