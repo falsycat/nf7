@@ -9,6 +9,7 @@ set(MODS
   sdl2
 
   # ---- usecase layer
+  init
   test
 )
 
