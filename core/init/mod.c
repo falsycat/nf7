@@ -14,7 +14,8 @@
 #include "core/init/factory.priv.h"
 
 
-#define IDEA_NAME "luajit"
+#define IDEA_NAME "nf7core_any"
+
 
 static void del_(struct nf7_mod*);
 static void start_(struct nf7core_init_factory*, struct nf7core_exec_entity*);
