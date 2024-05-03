@@ -14,7 +14,6 @@
 static void del_(struct nf7_mod*);
 
 static void idle_handle_(uv_idle_t*);
-static void idle_teardown_(uv_idle_t*);
 static void idle_close_(uv_handle_t*);
 
 
@@ -41,9 +40,8 @@ struct nf7_mod* nf7core_any_new(struct nf7* nf7) {
     goto ABORT;
   }
   uv_idle_init(this->uv, idle);
-  uv_idle_start(idle, idle_handle_);
   idle->data = nf7;
-  this->idle = idle;
+  uv_idle_start(idle, idle_handle_);
 
   return &this->super;
 
@@ -55,9 +53,6 @@ ABORT:
 static void del_(struct nf7_mod* mod) {
   struct nf7core_any* this = (void*) mod;
   if (nullptr != this) {
-    if (nullptr != this->idle) {
-      idle_teardown_(this->idle);
-    }
     nf7util_malloc_free(this->malloc, this);
   }
 }
@@ -78,17 +73,9 @@ static void idle_handle_(uv_idle_t* idle) {
     nf7util_log_error("failed to register an idea, nf7core_any");
     goto EXIT;
   }
+  nf7util_log_debug("lazy initialization succeeded");
 
 EXIT:
-  idle_teardown_(idle);
-}
-
-static void idle_teardown_(uv_idle_t* idle) {
-  assert(nullptr != idle);
-
-  struct nf7* nf7 = idle->data;
-  assert(nullptr != nf7);
-
   uv_idle_stop(idle);
   uv_close((uv_handle_t*) idle, idle_close_);
 }

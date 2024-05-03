@@ -16,7 +16,5 @@ struct nf7core_any {
 
   struct nf7util_malloc* malloc;
   uv_loop_t*             uv;
-
-  uv_idle_t* idle;
 };
 extern const struct nf7_mod_meta nf7core_any;
