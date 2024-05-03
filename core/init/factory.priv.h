@@ -17,8 +17,8 @@ struct nf7core_init_factory {
   uv_loop_t*             uv;
   uv_idle_t              idle;
 
-  const uint8_t* entity_name;
-  size_t         entity_namelen;
+  const uint8_t* idea_name;
+  size_t         idea_namelen;
 
   void* data;
   void (*on_created)(struct nf7core_init_factory*, struct nf7core_exec_entity*);
@@ -32,7 +32,7 @@ static void factory_on_close_(uv_handle_t*);
 
 
 static inline struct nf7core_init_factory* factory_new_(
-    struct nf7* nf7, const uint8_t* entity_name, size_t entity_namelen) {
+    struct nf7* nf7, const uint8_t* idea_name, size_t idea_namelen) {
   struct nf7core_init_factory* this = nf7util_malloc_alloc(nf7->malloc, sizeof(*this));
   if (nullptr == this) {
     nf7util_log_error("failed to allocate the first factory");
@@ -42,8 +42,8 @@ static inline struct nf7core_init_factory* factory_new_(
     .nf7    = nf7,
     .malloc = nf7->malloc,
     .uv     = nf7->uv,
-    .entity_name    = entity_name,
-    .entity_namelen = entity_namelen,
+    .idea_name    = idea_name,
+    .idea_namelen = idea_namelen,
   };
 
   uv_idle_init(this->uv, &this->idle);
@@ -75,7 +75,7 @@ static inline void factory_on_idle_(uv_idle_t* idle) {
     goto EXIT;
   }
 
-  struct nf7core_exec_entity* entity = nf7core_exec_entity_new(exec, this->entity_name, this->entity_namelen);
+  struct nf7core_exec_entity* entity = nf7core_exec_entity_new(exec, this->idea_name, this->idea_namelen);
   if (nullptr == entity) {
     nf7util_log_error("failed to create new entity");
     goto EXIT;
