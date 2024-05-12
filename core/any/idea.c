@@ -60,11 +60,13 @@ void send_(struct nf7core_exec_entity* entity, struct nf7util_buffer* buf) {
   (void) this;
   (void) buf;
   // TODO
+
+  nf7util_buffer_unref(buf);
 }
 
 
 const struct nf7core_exec_idea nf7core_any_idea = {
-  .name    = (const uint8_t*) "nf7core_exec",
+  .name    = (const uint8_t*) "nf7core_any",
   .details = (const uint8_t*) "creates and wraps other entity of an idea chosen at runtime",
   .mod     = &nf7core_any,
 

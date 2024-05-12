@@ -6,15 +6,10 @@
 
 #include "nf7.h"
 
-#include <uv.h>
-
-#include "core/exec/idea.h"
-
 
 struct nf7core_any {
   struct nf7_mod super;
 
   struct nf7util_malloc* malloc;
-  uv_loop_t*             uv;
 };
 extern const struct nf7_mod_meta nf7core_any;
