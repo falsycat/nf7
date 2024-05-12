@@ -45,7 +45,11 @@ static inline void nf7core_exec_entity_recv(struct nf7core_exec_entity* this, st
   assert(nullptr != this);
   assert(nullptr != buf);
 
-  this->on_recv(this, buf);
+  if (nullptr != this->on_recv) {
+    this->on_recv(this, buf);
+  } else {
+    nf7util_buffer_unref(buf);
+  }
 }
 
 // The client of entity use this to send buffer to the implementation.
