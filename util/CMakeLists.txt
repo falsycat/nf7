@@ -8,6 +8,7 @@ target_sources(nf7util
     malloc.h
     refcnt.h
     signal.h
+    str.h
 )
 target_tests(nf7util
   array.test.c
