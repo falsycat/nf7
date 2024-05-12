@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "util/buffer.h"
+#include "util/str.h"
 
 #include "core/exec/mod.h"
 
@@ -35,11 +36,11 @@ static inline bool nf7core_exec_idea_register(
 static inline const struct nf7core_exec_idea* nf7core_exec_idea_find(
     const struct nf7core_exec* mod, const uint8_t* name, size_t namelen) {
   assert(nullptr != mod);
-  assert(nullptr != name);
+  assert(nullptr != name || 0U == namelen);
 
   for (uint32_t i = 0; i < mod->ideas.n; ++i) {
     const struct nf7core_exec_idea* idea = mod->ideas.ptr[i];
-    if (0 == strncmp((const char*) idea->name, (const char*) name, namelen)) {
+    if (nf7util_str_equal_cstr(name, namelen, idea->name)) {
       return idea;
     }
   }
