@@ -39,6 +39,17 @@ static inline struct nf7core_exec_entity* nf7core_exec_entity_new(
   return entity;
 }
 
+// The implementation of entity use this to send buffer to the client.
+// Takes ownership of buf.
+static inline void nf7core_exec_entity_recv(struct nf7core_exec_entity* this, struct nf7util_buffer* buf) {
+  assert(nullptr != this);
+  assert(nullptr != buf);
+
+  this->on_recv(this, buf);
+}
+
+// The client of entity use this to send buffer to the implementation.
+// Takes ownership of buf.
 static inline void nf7core_exec_entity_send(
     struct nf7core_exec_entity* this, struct nf7util_buffer* buf) {
   assert(nullptr != this);

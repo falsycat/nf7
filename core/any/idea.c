@@ -1,3 +1,4 @@
+// No copyright
 #include "core/any/idea.h"
 
 #include <assert.h>
@@ -49,18 +50,44 @@ void del_(struct nf7core_exec_entity* entity) {
 }
 
 void send_(struct nf7core_exec_entity* entity, struct nf7util_buffer* buf) {
-  struct nf7core_any_entity* this = (void*) entity;
-  assert(nullptr != this);
+  assert(nullptr != entity);
+  assert(nullptr != buf);
 
+  struct nf7core_any_entity* this = (void*) entity;
   if (nullptr != this->entity) {
     nf7core_exec_entity_send(this->entity, buf);
     return;
   }
 
-  (void) this;
-  (void) buf;
-  // TODO
+  // get name of the requested idea
+  const uint8_t* name    = buf->array.ptr;
+  const uint64_t namelen = buf->array.n;
+  if (0U == namelen) {
+    nf7util_log_warn("expected an idea name, but got an empty string");
+    goto EXIT;
+  }
 
+  // find the requested idea and create new entity
+  this->entity = nf7core_exec_entity_new(this->super.mod, name, namelen);
+
+  // assign the return value
+  struct nf7util_buffer* result = nullptr;
+  if (nullptr != this->entity) {
+    result = nf7util_buffer_new_from_cstr(this->malloc, "");
+    nf7util_log_debug("sub-entity is created: %.*s", (int) namelen, name);
+  } else {
+    result = nf7util_buffer_new_from_cstr(this->malloc, "FAIL");
+    nf7util_log_warn("unknown idea requested: %.*s", (int) namelen, name);
+  }
+
+  // return the result
+  if (nullptr == result) {
+    nf7util_log_error("failed to allocate a buffer to return result");
+    goto EXIT;
+  }
+  nf7core_exec_entity_recv(&this->super, result);
+
+EXIT:
   nf7util_buffer_unref(buf);
 }
 

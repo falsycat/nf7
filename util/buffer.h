@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <string.h>
 
 #include "util/array.h"
 #include "util/malloc.h"
@@ -47,6 +48,18 @@ static inline struct nf7util_buffer* nf7util_buffer_new(
 ABORT:
   nf7util_buffer_unref(this);
   return nullptr;
+}
+
+static inline struct nf7util_buffer* nf7util_buffer_new_from_cstr(
+    struct nf7util_malloc* malloc, const char* cstr) {
+  assert(nullptr != malloc);
+
+  const uint64_t n = cstr? strlen(cstr): 0U;
+  struct nf7util_buffer* buf = nf7util_buffer_new(malloc, n);
+  if (nullptr != buf) {
+    memcpy(buf->array.ptr, cstr, n);
+  }
+  return buf;
 }
 
 static inline struct nf7util_buffer* nf7util_buffer_clone(

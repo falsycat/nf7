@@ -35,6 +35,7 @@ struct nf7_mod* nf7core_any_new(struct nf7* nf7) {
       .meta = &nf7core_any,
     },
     .malloc = nf7->malloc,
+    .exec   = exec,
   };
 
   // register idea

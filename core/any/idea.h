@@ -1,3 +1,4 @@
+// No copyright
 #pragma once
 
 #include "core/any/mod.h"
