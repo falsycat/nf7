@@ -38,8 +38,7 @@ int main(int argc, char** argv) {
 
   // load modules
   struct nf7_mod* nf7_mods[NF7CORE_MAX_MODS];
-  nf7.mods.n   = nf7core_new(&nf7, nf7_mods);
-  nf7.mods.ptr = nf7_mods;
+  nf7core_new(&nf7, nf7_mods);
   nf7util_log_info("loaded %" PRIu32 " modules", nf7.mods.n);
 
   // main loop
